@@ -167,9 +167,6 @@ export default function LandingPage({ onEnterApp }: LandingPageProps) {
         </div>
 
         <div className="hidden md:flex items-center gap-8">
-          <a href="#objetivos" className="text-[11px] font-bold tracking-wider text-blue-600 hover:text-blue-900 transition-colors uppercase">Objetivos</a>
-          <a href="#como-funciona" className="text-[11px] font-bold tracking-wider text-blue-600 hover:text-blue-900 transition-colors uppercase">Como Funciona</a>
-          <a href="#modulos" className="text-[11px] font-bold tracking-wider text-blue-600 hover:text-blue-900 transition-colors uppercase">Seu Papel</a>
           <button 
             onClick={onEnterApp}
             className="font-sans text-xs font-black tracking-[1.5px] uppercase bg-blue-600 text-white px-5 py-2.5 rounded-lg hover:bg-blue-700 hover:shadow-md hover:shadow-blue-200 transition-all cursor-pointer flex items-center gap-1.5 border-none"
