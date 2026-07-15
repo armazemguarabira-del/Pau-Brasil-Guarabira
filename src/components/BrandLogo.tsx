@@ -1,6 +1,6 @@
 import React from 'react';
-// @ts-expect-error - Vite handles loading PNG assets
-import logoUrl from '../assets/logo.png';
+
+const logoUrl = '/logo.png';
 
 interface BrandLogoProps {
   variant?: 'full' | 'icon-only' | 'header' | 'login';
