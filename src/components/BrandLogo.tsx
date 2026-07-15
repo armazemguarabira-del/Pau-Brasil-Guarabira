@@ -1,6 +1,6 @@
 import React from 'react';
-
-const LOGO_BASE64 = "./logo.png";
+// @ts-expect-error - Vite handles loading PNG assets
+import logoUrl from '../assets/logo.png';
 
 interface BrandLogoProps {
   variant?: 'full' | 'icon-only' | 'header' | 'login';
@@ -28,7 +28,7 @@ export function BrandLogo({
 
   const logoIcon = (
     <img
-      src={LOGO_BASE64}
+      src={logoUrl}
       alt="Pau Brasil Distribuidora Ambev"
       className={`${selectedSize} shrink-0 object-contain`}
     />
@@ -60,7 +60,7 @@ export function BrandLogo({
     return (
       <div className={`flex items-center space-x-3 ${className}`} id="brand_logo_header">
         <img
-          src={LOGO_BASE64}
+          src={logoUrl}
           alt="Pau Brasil"
           className="w-9 h-9 object-contain"
         />
