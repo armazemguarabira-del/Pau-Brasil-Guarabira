@@ -1,6 +1,6 @@
 import React from 'react';
-
-const logoUrl = '/logo.png';
+// @ts-ignore
+import logoUrl from '../assets/logo.png';
 
 interface BrandLogoProps {
   variant?: 'full' | 'icon-only' | 'header' | 'login';
