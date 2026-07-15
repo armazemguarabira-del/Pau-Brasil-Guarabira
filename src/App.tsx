@@ -203,7 +203,7 @@ export default function App() {
             } else if (savedMode === 'operacao') {
               completeUser.isControle = false;
             } else {
-              completeUser.isControle = isNixon || uData.isControle || uData.papel === 'controle';
+              completeUser.isControle = isNixon || uData.isControle || uData.papel === 'controle' || (uData.papel || '').split(',').map((s: string) => s.trim()).includes('controle');
             }
             setUser(completeUser);
 
@@ -212,7 +212,8 @@ export default function App() {
               const eDoc = await getDoc(doc(db, 'empresas', uData.empresaId));
               if (eDoc.exists()) {
                 const eData = { id: uData.empresaId, ...eDoc.data() } as Empresa;
-                if (completeUser.isControle || completeUser.papel === 'admin' || completeUser.papel === 'controle') {
+                const userRolesList = (completeUser.papel || '').split(',').map((s: string) => s.trim());
+                if (completeUser.isControle || userRolesList.includes('admin') || userRolesList.includes('controle')) {
                   eData.modulos = ['repack', 'validades', 'quebras', 'despejo', 'empilhador', 'refugo'];
                   eData.plano = 'completo';
                 }
@@ -261,7 +262,8 @@ export default function App() {
 
     if (uProfile.empresa) {
       const eData = { ...uProfile.empresa };
-      if (completeUser.isControle || completeUser.papel === 'admin' || completeUser.papel === 'controle') {
+      const userRolesList = (completeUser.papel || '').split(',').map((s: string) => s.trim());
+      if (completeUser.isControle || userRolesList.includes('admin') || userRolesList.includes('controle')) {
         eData.modulos = ['repack', 'validades', 'quebras', 'despejo', 'empilhador', 'refugo'];
         eData.plano = 'completo';
       }
@@ -467,57 +469,57 @@ export default function App() {
         };
       case 'repack':
         return {
-          breadcrumbs: ['Setores de Operação', 'Registro de Repack'],
+          breadcrumbs: ['Setores de Operação', 'Operação Repack'],
           title: 'Operação Repack',
           subtitle: 'Área para operadores registrarem produtividade e volumes reembalados.',
           color: 'from-purple-500/10 to-transparent'
         };
       case 'despejo':
         return {
-          breadcrumbs: ['Setores de Operação', 'Registro de Despejo'],
+          breadcrumbs: ['Setores de Operação', 'Operação Despejo'],
           title: 'Operação Despejo',
           subtitle: 'Lançamento de caixas de garrafas e líquidos destinados a descarte.',
           color: 'from-rose-500/10 to-transparent'
         };
       case 'armazem':
         return {
-          breadcrumbs: ['Setores de Operação', 'Operação de Pátio'],
-          title: 'Operação de Pátio',
+          breadcrumbs: ['Setores de Operação', 'Operação EFC / EFD'],
+          title: 'Operação EFC / EFD',
           subtitle: 'Controle de fluxo de carretas, carregamento e janelas logísticas de faturamento.',
           color: 'from-sky-500/10 to-transparent'
         };
       case 'quebras':
         return {
-          breadcrumbs: ['Setores de Operação', 'Registro de Quebras'],
+          breadcrumbs: ['Setores de Operação', 'Operação Quebras'],
           title: 'Operação Quebras',
           subtitle: 'Registro imediato de avarias físicas identificadas nas ruas de estoque.',
           color: 'from-red-500/10 to-transparent'
         };
       case 'validades':
         return {
-          breadcrumbs: ['Setores de Operação', 'Registro de Validades'],
-          title: 'Operação Validades',
+          breadcrumbs: ['Setores de Operação', 'Operação Validade'],
+          title: 'Operação Validade',
           subtitle: 'Cadastro de lotes e datas de vencimento para controle de giro (FEFO).',
           color: 'from-emerald-500/10 to-transparent'
         };
       case 'refugo':
         return {
-          breadcrumbs: ['Setores de Operação', 'Blitz Refugo'],
-          title: 'Blitz Refugo',
+          breadcrumbs: ['Setores de Operação', 'Operação Blitz Refugo'],
+          title: 'Operação Blitz Refugo',
           subtitle: 'Auditoria de caixas descartadas para detecção de itens aproveitáveis.',
           color: 'from-indigo-500/10 to-transparent'
         };
       case 'empilhador':
         return {
-          breadcrumbs: ['Setores de Operação', 'Movimentação Picking'],
+          breadcrumbs: ['Setores de Operação', 'Operação Picking'],
           title: 'Operação Picking',
           subtitle: 'Atribuição and acompanhamento de tarefas para operadores de empilhadeira.',
           color: 'from-sky-500/10 to-transparent'
         };
       case 'conferente':
         return {
-          breadcrumbs: ['Setores de Operação', 'Conferência Geral'],
-          title: 'Conferência Geral',
+          breadcrumbs: ['Setores de Operação', 'Operação Conferênte'],
+          title: 'Operação Conferênte',
           subtitle: 'Validação de volumes expedidos, recebimentos e auditoria de pallets.',
           color: 'from-teal-500/10 to-transparent'
         };

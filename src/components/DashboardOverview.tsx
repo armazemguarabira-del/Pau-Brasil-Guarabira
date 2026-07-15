@@ -42,19 +42,23 @@ import { db, isCustomFirebaseConnected } from '../firebase';
 
 const getRoleLabel = (role?: string) => {
   if (!role) return '';
-  switch (role) {
-    case 'repack': return 'Operador Repack';
-    case 'despejo': return 'Operador Despejo';
-    case 'armazem': return 'Armazém Fácil';
-    case 'quebras': return 'Fiscal de Quebras';
-    case 'validades': return 'Gestor de Validades (FEFO)';
-    case 'refugo': return 'Operador Blitz Refugo';
-    case 'empilhador': return 'Picking/Empilhadeira';
-    case 'conferente': return 'Conferente Geral';
-    case 'controle': return 'Supervisor de Controle';
-    case 'admin': return 'Administrador';
-    default: return role.toUpperCase();
-  }
+  const roles = role.split(',');
+  const mapped = roles.map(r => {
+    switch (r.trim()) {
+      case 'repack': return 'Operação Repack';
+      case 'despejo': return 'Operação Despejo';
+      case 'armazem': return 'Operação EFC / EFD';
+      case 'quebras': return 'Operação Quebras';
+      case 'validades': return 'Operação Validade';
+      case 'refugo': return 'Operação Blitz Refugo';
+      case 'empilhador': return 'Operação Picking';
+      case 'conferente': return 'Operação Conferênte';
+      case 'controle': return 'Supervisor Controle';
+      case 'admin': return 'Administrador';
+      default: return r;
+    }
+  });
+  return mapped.join(', ');
 };
 
 const getGreeting = () => {
@@ -628,23 +632,36 @@ export default function DashboardOverview({
               </button>
             ) : (
               (() => {
-                const papel = user.papel || '';
-                const tabId = papel === 'empilhador' ? 'empilhador' : papel;
-                const label = papel === 'repack' ? 'Reembalagem / Repack' :
-                              papel === 'despejo' ? 'Descarte / Despejo' :
-                              papel === 'armazem' ? 'Movimentação / Armazém' :
-                              papel === 'quebras' ? 'Fiscal de Quebras' :
-                              papel === 'validades' ? 'Validades (FEFO)' :
-                              papel === 'refugo' ? 'Aferição Blitz Refugo' :
-                              papel === 'empilhador' ? 'Picking / Empilhador' :
-                              papel === 'conferente' ? 'Fila de Despacho Conferente' : 'Minha Operação';
+                const roles = (user.papel || '').split(',').map((s: string) => s.trim()).filter(Boolean);
+                if (roles.length === 0) return null;
+                
                 return (
-                  <button 
-                    onClick={() => onNavigate(tabId)}
-                    className="w-full text-center py-3 bg-[#f5a623]/10 hover:bg-[#f5a623]/20 text-[#f5a623] hover:text-white rounded-xl text-xs uppercase font-black tracking-widest border border-[#f5a623]/25 transition-all cursor-pointer flex items-center justify-center gap-2"
-                  >
-                    🚀 Ir para {label}
-                  </button>
+                  <div className="flex flex-col gap-2 w-full">
+                    <span className="text-[10px] font-black text-[#6a7d92] uppercase tracking-wider mb-1 block">Acessos Rápidos da sua Matrícula:</span>
+                    <div className="grid grid-cols-1 gap-2">
+                      {roles.map((papel) => {
+                        const tabId = papel === 'empilhador' ? 'empilhador' : papel;
+                        const label = papel === 'repack' ? 'Operação Repack' :
+                                      papel === 'despejo' ? 'Operação Despejo' :
+                                      papel === 'armazem' ? 'Operação EFC / EFD' :
+                                      papel === 'quebras' ? 'Operação Quebras' :
+                                      papel === 'validades' ? 'Operação Validade' :
+                                      papel === 'refugo' ? 'Operação Blitz Refugo' :
+                                      papel === 'empilhador' ? 'Operação Picking' :
+                                      papel === 'conferente' ? 'Operação Conferênte' :
+                                      papel === 'controle' ? 'Supervisor Controle' : 'Minha Operação';
+                        return (
+                          <button 
+                            key={papel}
+                            onClick={() => onNavigate(tabId)}
+                            className="w-full text-center py-3 bg-[#f5a623]/10 hover:bg-[#f5a623]/20 text-[#f5a623] hover:text-white rounded-xl text-xs uppercase font-black tracking-widest border border-[#f5a623]/25 transition-all cursor-pointer flex items-center justify-center gap-2"
+                          >
+                            🚀 Ir para {label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                 );
               })()
             )}

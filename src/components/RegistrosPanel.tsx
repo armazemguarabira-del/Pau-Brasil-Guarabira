@@ -124,7 +124,7 @@ export default function RegistrosPanel({ user, empresa, onNavigate }: RegistrosP
     },
     {
       id: 'armazem',
-      label: 'Operação de Pátio',
+      label: 'Operação EFC / EFD',
       description: 'Controle de fluxo de caminhões, tempos de carregamento e janelas de faturamento.',
       icon: Truck,
       colorKey: 'sky',
@@ -140,7 +140,7 @@ export default function RegistrosPanel({ user, empresa, onNavigate }: RegistrosP
     },
     {
       id: 'validades',
-      label: 'Operação Validades',
+      label: 'Operação Validade',
       description: 'Cadastro de lotes e vencimentos de produtos para controle de giro do estoque.',
       icon: Calendar,
       colorKey: 'emerald',
@@ -148,7 +148,7 @@ export default function RegistrosPanel({ user, empresa, onNavigate }: RegistrosP
     },
     {
       id: 'refugo',
-      label: 'Blitz Refugo',
+      label: 'Operação Blitz Refugo',
       description: 'Inspeções e auditorias em paletes destinados a descarte para resgate de embalagens boas.',
       icon: Search,
       colorKey: 'indigo',
@@ -164,7 +164,7 @@ export default function RegistrosPanel({ user, empresa, onNavigate }: RegistrosP
     },
     {
       id: 'conferente',
-      label: 'Conferência Geral',
+      label: 'Operação Conferênte',
       description: 'Vistoria de volumes e auditoria para conciliação física de cargas prontas para rota.',
       icon: ClipboardCheck,
       colorKey: 'teal',

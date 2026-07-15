@@ -80,6 +80,26 @@ const REPACK_EMBALAGENS = [
   { nome: '300 OW', meta: '00:04:00' },
 ];
 
+const getFormattedRoles = (funcaoStr?: string) => {
+  if (!funcaoStr) return 'Sem Função';
+  const roles = funcaoStr.split(',');
+  const mapped = roles.map(role => {
+    switch (role.trim()) {
+      case 'repack': return 'Operação Repack';
+      case 'despejo': return 'Operação Despejo';
+      case 'armazem': return 'Operação EFC / EFD';
+      case 'quebras': return 'Operação Quebras';
+      case 'validades': return 'Operação Validade';
+      case 'refugo': return 'Operação Blitz Refugo';
+      case 'empilhador': return 'Operação Picking';
+      case 'conferente': return 'Operação Conferênte';
+      case 'controle': return 'Supervisor Controle';
+      default: return role;
+    }
+  });
+  return mapped.join(', ');
+};
+
 export default function ControlePanel({ user, empresa }: ControlePanelProps) {
   // Navigation: 'hub' shows the main interactive landing dashboard
   // Navigation: 'hub' shows the main interactive landing dashboard
@@ -1751,22 +1771,42 @@ export default function ControlePanel({ user, empresa }: ControlePanelProps) {
                     </div>
 
                     <div className="flex flex-col gap-1.5">
-                      <label className="text-[10px] font-bold tracking-widest text-[#6a7d92] uppercase">Função Operacional</label>
-                      <select 
-                        value={newFuncao}
-                        onChange={e => setNewFuncao(e.target.value)}
-                        className="g-select cursor-pointer"
-                      >
-                        <option value="repack">Operador de Repack</option>
-                        <option value="despejo">Operador de Despejo</option>
-                        <option value="armazem">Operador de Armazém Fácil</option>
-                        <option value="quebras">Fiscal de Quebras</option>
-                        <option value="validades">Gestor de Validades (FEFO)</option>
-                        <option value="refugo">Operador Blitz Refugo</option>
-                        <option value="empilhador">Picking / Empilhadeira</option>
-                        <option value="conferente">Conferente Geral</option>
-                        <option value="controle">Controle / Supervisor</option>
-                      </select>
+                      <label className="text-[10px] font-bold tracking-widest text-[#6a7d92] uppercase">Função Operacional / Acessos (Selecione um ou mais)</label>
+                      <div className="grid grid-cols-1 gap-1.5 p-3 bg-[#151b23] border border-[#222d3a] rounded-xl max-h-56 overflow-y-auto">
+                        {[
+                          { id: 'repack', label: 'Operação Repack' },
+                          { id: 'despejo', label: 'Operação Despejo' },
+                          { id: 'armazem', label: 'Operação EFC / EFD' },
+                          { id: 'quebras', label: 'Operação Quebras' },
+                          { id: 'validades', label: 'Operação Validade' },
+                          { id: 'refugo', label: 'Operação Blitz Refugo' },
+                          { id: 'empilhador', label: 'Operação Picking' },
+                          { id: 'conferente', label: 'Operação Conferênte' },
+                          { id: 'controle', label: 'Supervisor Controle' }
+                        ].map(op => {
+                          const isChecked = newFuncao.split(',').map(s => s.trim()).includes(op.id);
+                          return (
+                            <label key={op.id} className="flex items-center gap-2 cursor-pointer hover:bg-slate-800/40 p-1.5 rounded-lg text-xs text-snow transition-colors">
+                              <input 
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={e => {
+                                  const currentRoles = newFuncao ? newFuncao.split(',').map(s => s.trim()).filter(Boolean) : [];
+                                  let nextRoles: string[];
+                                  if (e.target.checked) {
+                                    nextRoles = [...currentRoles, op.id];
+                                  } else {
+                                    nextRoles = currentRoles.filter(r => r !== op.id);
+                                  }
+                                  setNewFuncao(nextRoles.join(','));
+                                }}
+                                className="rounded border-[#222d3a] bg-[#0d1117] text-[#f5a623] focus:ring-0 focus:ring-offset-0 w-4 h-4 cursor-pointer"
+                              />
+                              <span>{op.label}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
                     </div>
 
                     {colabMsg && (
@@ -1848,21 +1888,13 @@ export default function ControlePanel({ user, empresa }: ControlePanelProps) {
                             </td>
                             <td className="p-3 text-center">
                               <span className={`text-[9px] font-black tracking-wider uppercase px-2.5 py-1 rounded border ${
-                                colab.funcao === 'controle' 
+                                (colab.funcao || '').includes('controle') 
                                   ? 'bg-rose-500/10 text-rose-400 border-rose-500/20' 
-                                  : colab.funcao === 'conferente' 
+                                  : (colab.funcao || '').includes('conferente') 
                                     ? 'bg-amber-500/10 text-[#f5a623] border-[#f5a623]/20' 
                                     : 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20'
                               }`}>
-                                {colab.funcao === 'repack' ? 'Operador Repack' :
-                                 colab.funcao === 'despejo' ? 'Operador Despejo' :
-                                 colab.funcao === 'armazem' ? 'Armazém Fácil' :
-                                 colab.funcao === 'quebras' ? 'Fiscal de Quebras' :
-                                 colab.funcao === 'validades' ? 'Gestor de Validades' :
-                                 colab.funcao === 'refugo' ? 'Operador Blitz Refugo' :
-                                 colab.funcao === 'empilhador' ? 'Picking/Empilhadeira' :
-                                 colab.funcao === 'conferente' ? 'Conferente Geral' :
-                                 colab.funcao === 'controle' ? 'Supervisor Controle' : colab.funcao}
+                                {getFormattedRoles(colab.funcao)}
                               </span>
                             </td>
                             <td className="p-3 text-center font-mono text-[#6a7d92]">{colab.senha}</td>
@@ -2045,21 +2077,13 @@ export default function ControlePanel({ user, empresa }: ControlePanelProps) {
                             </td>
                             <td className="p-3 text-center">
                               <span className={`text-[9px] font-black tracking-wider uppercase px-2.5 py-1 rounded border ${
-                                colab.funcao === 'controle' 
+                                (colab.funcao || '').includes('controle') 
                                   ? 'bg-rose-500/10 text-rose-400 border-rose-500/20' 
-                                  : colab.funcao === 'conferente' 
+                                  : (colab.funcao || '').includes('conferente') 
                                     ? 'bg-amber-500/10 text-[#f5a623] border-[#f5a623]/20' 
                                     : 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20'
                               }`}>
-                                {colab.funcao === 'repack' ? 'Operador Repack' :
-                                 colab.funcao === 'despejo' ? 'Operador Despejo' :
-                                 colab.funcao === 'armazem' ? 'Armazém Fácil' :
-                                 colab.funcao === 'quebras' ? 'Fiscal de Quebras' :
-                                 colab.funcao === 'validades' ? 'Gestor de Validades' :
-                                 colab.funcao === 'refugo' ? 'Operador Blitz Refugo' :
-                                 colab.funcao === 'empilhador' ? 'Picking/Empilhadeira' :
-                                 colab.funcao === 'conferente' ? 'Conferente Geral' :
-                                 colab.funcao === 'controle' ? 'Supervisor Controle' : colab.funcao}
+                                {getFormattedRoles(colab.funcao)}
                               </span>
                             </td>
                             <td className="p-3 text-center">

@@ -29,10 +29,7 @@ import {
   Shield,
   HelpCircle,
   Clock,
-  ClipboardList,
-  Users,
-  FileText,
-  AlertCircle
+  ClipboardList
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -58,15 +55,17 @@ export default function Sidebar({
 }: SidebarProps) {
   const collapsed = false;
   const isNixon = user.email.toLowerCase().trim() === 'nixon.a.a100.nh@gmail.com';
-  const isControleOuSupervisor = user.isControle || user.papel === 'controle';
-  const isSupervisorOrAdmin = user.isControle || user.papel === 'admin' || user.papel === 'controle' || isNixon;
+  const userRoles = (user.papel || '').split(',').map((s: string) => s.trim());
+  const hasRole = (role: string) => userRoles.includes(role);
+  const isControleOuSupervisor = user.isControle || hasRole('controle');
+  const isSupervisorOrAdmin = user.isControle || hasRole('admin') || hasRole('controle') || isNixon;
 
   const [timeStr, setTimeStr] = useState('');
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({
     'DASHBOARD': isControleOuSupervisor ? true : false,
-    'SETORES DE OPERAÇÃO': false,
+    'SETORES DE OPERAÇÃO': !isControleOuSupervisor ? true : false,
     'ADMINISTRAÇÃO & GESTÃO': false
   });
 
@@ -85,16 +84,7 @@ export default function Sidebar({
     setMobileOpen(false);
   };
 
-  const handleSubClick = (subId: string) => {
-    if (activeTab !== 'repack') {
-      onSelectTab('repack');
-      setTimeout(() => {
-        window.dispatchEvent(new CustomEvent('repack-sidebar-action', { detail: subId }));
-      }, 150);
-    } else {
-      window.dispatchEvent(new CustomEvent('repack-sidebar-action', { detail: subId }));
-    }
-  };
+
 
   // Let's model all potential navigation items with category tags
   const navItems = [
@@ -164,56 +154,56 @@ export default function Sidebar({
       label: 'Operação Repack',
       icon: <RefreshCw className="w-4 h-4 text-purple-400 animate-spin-hover" />,
       category: 'SETORES DE OPERAÇÃO',
-      visible: !isControleOuSupervisor && (isSupervisorOrAdmin || user.papel === 'repack' || user.papel === 'admin')
+      visible: !isControleOuSupervisor && (isSupervisorOrAdmin || hasRole('repack') || hasRole('admin'))
     },
     {
       id: 'despejo',
       label: 'Operação Despejo',
       icon: <Trash2 className="w-4 h-4 text-rose-500" />,
       category: 'SETORES DE OPERAÇÃO',
-      visible: !isControleOuSupervisor && (isSupervisorOrAdmin || user.papel === 'despejo' || user.papel === 'admin')
+      visible: !isControleOuSupervisor && (isSupervisorOrAdmin || hasRole('despejo') || hasRole('admin'))
     },
     {
       id: 'armazem',
-      label: 'Operação de Pátio',
+      label: 'Operação EFC / EFD',
       icon: <Truck className="w-4 h-4 text-sky-400" />,
       category: 'SETORES DE OPERAÇÃO',
-      visible: !isControleOuSupervisor && (isSupervisorOrAdmin || user.papel === 'armazem' || user.papel === 'admin')
+      visible: !isControleOuSupervisor && (isSupervisorOrAdmin || hasRole('armazem') || hasRole('admin'))
     },
     {
       id: 'quebras',
       label: 'Operação Quebras',
       icon: <AlertTriangle className="w-4 h-4 text-red-500" />,
       category: 'SETORES DE OPERAÇÃO',
-      visible: !isControleOuSupervisor && (isSupervisorOrAdmin || user.papel === 'quebras' || user.papel === 'admin')
+      visible: !isControleOuSupervisor && (isSupervisorOrAdmin || hasRole('quebras') || hasRole('admin'))
     },
     {
       id: 'validades',
-      label: 'Operação Validades',
+      label: 'Operação Validade',
       icon: <Calendar className="w-4 h-4 text-emerald-500" />,
       category: 'SETORES DE OPERAÇÃO',
-      visible: !isControleOuSupervisor && (isSupervisorOrAdmin || user.papel === 'validades' || user.papel === 'admin')
+      visible: !isControleOuSupervisor && (isSupervisorOrAdmin || hasRole('validades') || hasRole('admin'))
     },
     {
       id: 'refugo',
-      label: 'Blitz Refugo',
+      label: 'Operação Blitz Refugo',
       icon: <Search className="w-4 h-4 text-indigo-400" />,
       category: 'SETORES DE OPERAÇÃO',
-      visible: !isControleOuSupervisor && (isSupervisorOrAdmin || user.papel === 'refugo' || user.papel === 'admin')
+      visible: !isControleOuSupervisor && (isSupervisorOrAdmin || hasRole('refugo') || hasRole('admin'))
     },
     {
       id: 'empilhador',
       label: 'Operação Picking',
       icon: <Package className="w-4 h-4 text-amber-500" />,
       category: 'SETORES DE OPERAÇÃO',
-      visible: !isControleOuSupervisor && (isSupervisorOrAdmin || user.papel === 'empilhador' || user.papel === 'admin')
+      visible: !isControleOuSupervisor && (isSupervisorOrAdmin || hasRole('empilhador') || hasRole('admin'))
     },
     {
       id: 'conferente',
-      label: 'Conferência Geral',
+      label: 'Operação Conferênte',
       icon: <ClipboardCheck className="w-4 h-4 text-teal-400" />,
       category: 'SETORES DE OPERAÇÃO',
-      visible: !isControleOuSupervisor && (isSupervisorOrAdmin || user.papel === 'conferente' || user.papel === 'admin')
+      visible: !isControleOuSupervisor && (isSupervisorOrAdmin || hasRole('conferente') || hasRole('admin'))
     },
 
     // Administrative / Core
@@ -309,34 +299,7 @@ export default function Sidebar({
           </span>
         </button>
 
-        {isRepack && !collapsed && (
-          <div className="pl-6 pr-1 py-1 flex flex-col gap-1 border-l border-[#1c2530] ml-4 mt-0.5 mb-2">
-            <button
-              type="button"
-              onClick={() => handleSubClick('raci')}
-              className="text-left py-1 text-[8px] font-sans font-bold tracking-wider uppercase text-[#6a7d92] hover:text-[#f5a623] transition-colors flex items-center gap-1.5 bg-transparent border-none cursor-pointer"
-            >
-              <Users className="w-2.5 h-2.5 text-[#f5a623]" />
-              Matriz RACI
-            </button>
-            <button
-              type="button"
-              onClick={() => handleSubClick('pop')}
-              className="text-left py-1 text-[8px] font-sans font-bold tracking-wider uppercase text-[#6a7d92] hover:text-[#f5a623] transition-colors flex items-center gap-1.5 bg-transparent border-none cursor-pointer"
-            >
-              <FileText className="w-2.5 h-2.5 text-[#f5a623]" />
-              Procedimento POP
-            </button>
-            <button
-              type="button"
-              onClick={() => handleSubClick('lup')}
-              className="text-left py-1 text-[8px] font-sans font-bold tracking-wider uppercase text-[#6a7d92] hover:text-[#f5a623] transition-colors flex items-center gap-1.5 bg-transparent border-none cursor-pointer"
-            >
-              <AlertCircle className="w-2.5 h-2.5 text-[#f5a623]" />
-              Lição LUP
-            </button>
-          </div>
-        )}
+
       </div>
     );
   };
