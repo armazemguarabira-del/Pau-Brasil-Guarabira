@@ -61,6 +61,9 @@ export default function ArmazemPanel({ user, empresa }: ArmazemPanelProps) {
   // Accordion collapsed state: key is date string, value is true/false (collapsed)
   const [expandedDates, setExpandedDates] = useState<Record<string, boolean>>({});
 
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
   // Sync state with local draft saving
   useEffect(() => {
     const draftData = {
@@ -193,14 +196,17 @@ export default function ArmazemPanel({ user, empresa }: ArmazemPanelProps) {
   };
 
   const handleRegister = async () => {
+    setErrorMsg(null);
+    setSuccessMsg(null);
+
     if (!inicio || !fim || !empilhador) {
-      alert('Preencha os horários e o nome do empilhador.');
+      setErrorMsg('Preencha os horários e o nome do empilhador responsável.');
       return;
     }
 
     const isOk = inicio >= '07:00' && fim <= '21:00';
     if (!isOk && !obs.trim()) {
-      alert('Observação obrigatória ao lançar registros FORA da janela de horário regular de faturamento (07:00 – 21:00).');
+      setErrorMsg('Observação obrigatória ao lançar registros FORA da janela de faturamento (07:00 – 21:00).');
       return;
     }
 
@@ -224,7 +230,7 @@ export default function ArmazemPanel({ user, empresa }: ArmazemPanelProps) {
       placa: finalPlaca,
       tipo,
       palhete: Number(palhete),
-      obs: obs.trim() || undefined
+      obs: obs.trim()
     };
 
     try {
@@ -236,6 +242,7 @@ export default function ArmazemPanel({ user, empresa }: ArmazemPanelProps) {
         localStorage.setItem(`armazem_rows_${empresaId}`, JSON.stringify(current));
       }
       
+      setSuccessMsg('Lançamento de pátio salvo com sucesso!');
       // Reset form
       setInicio('');
       setFim('');
@@ -247,7 +254,7 @@ export default function ArmazemPanel({ user, empresa }: ArmazemPanelProps) {
       setDraftRestored(false);
       localStorage.removeItem(draftKey);
     } catch (e) {
-      alert('Erro ao salvar no banco: ' + e);
+      setErrorMsg('Erro ao salvar no banco: ' + e);
     } finally {
       setRegistering(false);
     }
@@ -261,6 +268,8 @@ export default function ArmazemPanel({ user, empresa }: ArmazemPanelProps) {
   };
 
   const handleDelete = async (docId?: string) => {
+    setErrorMsg(null);
+    setSuccessMsg(null);
     if (!docId || !confirm('Excluir este lançamento de pátio?')) return;
     try {
       if (db) {
@@ -270,8 +279,9 @@ export default function ArmazemPanel({ user, empresa }: ArmazemPanelProps) {
         setArmazemRows(remaining);
         localStorage.setItem(`armazem_rows_${empresaId}`, JSON.stringify(remaining));
       }
+      setSuccessMsg('Registro excluído com sucesso!');
     } catch (e) {
-      alert('Erro ao excluir: ' + e);
+      setErrorMsg('Erro ao excluir: ' + e);
     }
   };
 
@@ -448,6 +458,36 @@ export default function ArmazemPanel({ user, empresa }: ArmazemPanelProps) {
                 className="text-[9px] uppercase font-black tracking-wider text-amber-400 hover:text-amber-300 transition-colors cursor-pointer"
               >
                 Limpar formulário
+              </button>
+            </div>
+          )}
+
+          {errorMsg && (
+            <div className="flex items-center justify-between gap-3 bg-red-500/10 border border-red-500/20 px-4 py-3 rounded-xl text-xs text-red-400">
+              <div className="flex items-center gap-2">
+                <span>⚠ {errorMsg}</span>
+              </div>
+              <button 
+                type="button" 
+                onClick={() => setErrorMsg(null)} 
+                className="text-xs font-bold text-red-400 hover:text-red-300 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
+          {successMsg && (
+            <div className="flex items-center justify-between gap-3 bg-emerald-500/10 border border-emerald-500/20 px-4 py-3 rounded-xl text-xs text-emerald-400">
+              <div className="flex items-center gap-2">
+                <span>✓ {successMsg}</span>
+              </div>
+              <button 
+                type="button" 
+                onClick={() => setSuccessMsg(null)} 
+                className="text-xs font-bold text-emerald-400 hover:text-emerald-300 cursor-pointer"
+              >
+                ✕
               </button>
             </div>
           )}
