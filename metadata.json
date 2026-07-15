@@ -1,0 +1,6 @@
+{
+  "name": "Pau Brasil Distribuidora",
+  "description": "Sistema integrado de gestão de armazém de alta performance para distribuidores Ambev com suporte a Repack, Validades, Quebras, Despejo, Blitz de Refugo, Empilhador e controle em tempo real.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
