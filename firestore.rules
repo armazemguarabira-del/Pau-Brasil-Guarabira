@@ -30,6 +30,10 @@ service cloud.firestore {
       allow read, write: if isSignedIn();
     }
 
+    match /repack_validades/{docId} {
+      allow read, write: if isSignedIn();
+    }
+
     match /despejo/{docId} {
       allow read, write: if isSignedIn();
     }

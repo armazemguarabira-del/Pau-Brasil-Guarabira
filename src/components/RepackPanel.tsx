@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { db, isCustomFirebaseConnected } from '../firebase';
 import { collection, addDoc, onSnapshot, query, where, deleteDoc, doc } from 'firebase/firestore';
-import { Usuario, Empresa, RepackRow } from '../types';
+import { Usuario, Empresa, RepackRow, RepackValidadeRow } from '../types';
+import { PRODUCTS } from '../planosData';
 import { TrendingUp, CheckCircle, Clock, Award, BarChart2, BookOpen, Users, FileText, ChevronDown, ChevronUp, AlertCircle, ShieldAlert } from 'lucide-react';
 
 interface RepackPanelProps {
@@ -49,9 +50,23 @@ export default function RepackPanel({ user, empresa }: RepackPanelProps) {
   const [fim, setFim] = useState<string>(() => getDraftValue('fim', ''));
   const [duracao, setDuracao] = useState('00:00:00');
   const [statusMeta, setStatusMeta] = useState('—');
-  const [activeTab, setActiveTab] = useState<'form' | 'stats' | 'hist' | 'raci' | 'pop' | 'lup'>('form');
+  const [activeTab, setActiveTab] = useState<'form' | 'stats' | 'hist' | 'validade' | 'raci' | 'pop' | 'lup'>('form');
   const [repackRows, setRepackRows] = useState<RepackRow[]>([]);
   const [registering, setRegistering] = useState(false);
+
+  // State variables for Repack Validade tab
+  const [vProdutoBusca, setVProdutoBusca] = useState<string>('');
+  const [vSelectedProd, setVSelectedProd] = useState<{ codigo: number, descricao: string } | null>(null);
+  const [vShowDropdown, setVShowDropdown] = useState(false);
+
+  const [vQuantidade, setVQuantidade] = useState<number>(1);
+  const [vValidade, setVValidade] = useState<string>('');
+  const [vLocalizacao, setVLocalizacao] = useState<string>('repack'); // 'repack' or 'outro'
+  const [vNomeManual, setVNomeManual] = useState<string>('');
+
+  const [repackValidades, setRepackValidades] = useState<RepackValidadeRow[]>([]);
+  const [vRegistering, setVRegistering] = useState(false);
+
   const [draftRestored, setDraftRestored] = useState<boolean>(() => {
     try {
       const saved = localStorage.getItem(draftKey);
@@ -166,6 +181,27 @@ export default function RepackPanel({ user, empresa }: RepackPanelProps) {
     return () => unsub();
   }, [empresa?.id]);
 
+  // Listen for repack_validades
+  useEffect(() => {
+    if (!db || !empresa?.id) {
+      const saved = localStorage.getItem(`repack_validades_${empresa?.id || 'demo'}`);
+      if (saved) setRepackValidades(JSON.parse(saved));
+      return;
+    }
+
+    const companyId = empresa?.id || 'demo';
+    const q = query(collection(db, 'repack_validades'));
+    const unsub = onSnapshot(q, (snap) => {
+      const rows = snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as RepackValidadeRow));
+      const filtered = isCustomFirebaseConnected() ? rows : rows.filter(r => r.empresaId === companyId);
+      filtered.sort((a, b) => (a.validade || '').localeCompare(b.validade || '') || (a.descricao || '').localeCompare(b.descricao || ''));
+      setRepackValidades(filtered);
+      localStorage.setItem(`repack_validades_${companyId}`, JSON.stringify(filtered));
+    });
+
+    return () => unsub();
+  }, [empresa?.id]);
+
   useEffect(() => {
     calcDuration();
   }, [inicio, fim, embalagem, quantidade]);
@@ -250,6 +286,96 @@ export default function RepackPanel({ user, empresa }: RepackPanelProps) {
     }
   };
 
+  const handleVRegister = async () => {
+    if (!vValidade || !vSelectedProd) {
+      alert('Por favor, selecione um produto e insira a data de validade.');
+      return;
+    }
+    if (vLocalizacao === 'outro' && !vNomeManual.trim()) {
+      alert('Por favor, digite o nome manual do local de repack.');
+      return;
+    }
+    setVRegistering(true);
+
+    const localizacaoValor = vLocalizacao === 'outro' ? vNomeManual.trim() : 'Repack';
+
+    const newRow = {
+      empresaId: empresa?.id || 'demo',
+      id: Date.now(),
+      codigo: String(vSelectedProd.codigo),
+      descricao: vSelectedProd.descricao,
+      quantidade: vQuantidade,
+      validade: vValidade,
+      localizacao: localizacaoValor,
+      cadastradoEm: new Date().toISOString(),
+      operador: user.nome || 'Sistema',
+    };
+
+    try {
+      if (db) {
+        await addDoc(collection(db, 'repack_validades'), newRow);
+      } else {
+        const current = [...repackValidades, { _docId: String(Date.now()), ...newRow }];
+        setRepackValidades(current);
+        localStorage.setItem(`repack_validades_${empresa?.id || 'demo'}`, JSON.stringify(current));
+      }
+
+      // Reset
+      setVProdutoBusca('');
+      setVSelectedProd(null);
+      setVQuantidade(1);
+      setVValidade('');
+      setVLocalizacao('repack');
+      setVNomeManual('');
+    } catch (e) {
+      alert('Erro ao registrar validade de repack: ' + e);
+    } finally {
+      setVRegistering(false);
+    }
+  };
+
+  const handleVDelete = async (docId?: string) => {
+    if (!docId || !confirm('Deseja excluir este registro de validade de repack?')) return;
+    try {
+      if (db) {
+        await deleteDoc(doc(db, 'repack_validades', docId));
+      } else {
+        const remaining = repackValidades.filter(r => r._docId !== docId);
+        setRepackValidades(remaining);
+        localStorage.setItem(`repack_validades_${empresa?.id || 'demo'}`, JSON.stringify(remaining));
+      }
+    } catch (e) {
+      alert('Erro ao deletar validade: ' + e);
+    }
+  };
+
+  const getDaysRemaining = (expDate: string) => {
+    if (!expDate) return 0;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const exp = new Date(expDate + 'T00:00:00');
+    return Math.round((exp.getTime() - today.getTime()) / 86400000);
+  };
+
+  const getStatusLabelAndStyles = (days: number) => {
+    if (days < 0) return { label: '⛔ VENCIDO', text: 'text-[#ef4444]', bg: 'bg-[#ef4444]/10 border-[#ef4444]/20' };
+    if (days <= 30) return { label: '🔴 CRÍTICO', text: 'text-[#ef4444]', bg: 'bg-[#ef4444]/10 border-[#ef4444]/20' };
+    if (days <= 45) return { label: '🟠 ATENÇÃO', text: 'text-[#f5a623]', bg: 'bg-[#f5a623]/10 border-[#f5a623]/20' };
+    if (days <= 60) return { label: '🟡 ALERTA', text: 'text-[#eab308]', bg: 'bg-[#eab308]/10 border-[#eab308]/20' };
+    return { label: '🟢 OK', text: 'text-[#22c55e]', bg: 'bg-[#22c55e]/10 border-[#22c55e]/20' };
+  };
+
+  const vFilteredProducts = PRODUCTS.filter(p => {
+    const q = vProdutoBusca.toLowerCase();
+    return String(p.codigo).includes(q) || p.descricao.toLowerCase().includes(q);
+  }).slice(0, 10);
+
+  const handleVSelectProd = (p: { codigo: number, descricao: string }) => {
+    setVSelectedProd(p);
+    setVProdutoBusca(p.descricao);
+    setVShowDropdown(false);
+  };
+
   return (
     <div className="flex flex-col gap-6">
       
@@ -279,6 +405,12 @@ export default function RepackPanel({ user, empresa }: RepackPanelProps) {
           className={`ptab py-2 px-6 font-sans font-bold text-xs uppercase cursor-pointer relative ${activeTab === 'hist' ? 'text-[#f5a623] border-b-2 border-b-[#f5a623]' : 'text-[#6a7d92] hover:text-[#e8eef5]'}`}
         >
           📋 Histórico <span className="ml-1.5 px-2 py-0.5 rounded-full bg-[#151b23] border border-[#222d3a] text-[10px] text-snow">{repackRows.length}</span>
+        </button>
+        <button 
+          onClick={() => setActiveTab('validade')}
+          className={`ptab py-2 px-6 font-sans font-bold text-xs uppercase cursor-pointer relative ${activeTab === 'validade' ? 'text-[#f5a623] border-b-2 border-b-[#f5a623]' : 'text-[#6a7d92] hover:text-[#e8eef5]'}`}
+        >
+          📅 Validade do Repack <span className="ml-1.5 px-2 py-0.5 rounded-full bg-[#151b23] border border-[#222d3a] text-[10px] text-snow">{repackValidades.length}</span>
         </button>
 
         {activeTab === 'raci' && (
@@ -627,6 +759,195 @@ export default function RepackPanel({ user, empresa }: RepackPanelProps) {
               );
             });
           })()}
+        </div>
+      )}
+
+      {activeTab === 'validade' && (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          {/* Form Side */}
+          <div className="lg:col-span-5 g-card p-6 flex flex-col gap-5 rounded-xl">
+            <div>
+              <h3 className="font-sans font-bold text-sm tracking-widest text-[#f5a623] uppercase flex items-center gap-2">
+                ⚙️ Registrar Validade de Lote
+              </h3>
+              <p className="text-[10px] text-[#6a7d92] font-semibold mt-1">
+                Garantia de FEFO: cadastre a validade do lote físico das garrafas repactadas.
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-4">
+              {/* Product autocomplete search */}
+              <div className="flex flex-col gap-1.5 relative">
+                <label className="text-[10px] font-bold tracking-widest text-[#6a7d92] uppercase">Produto (Código ou Descrição) *</label>
+                <input 
+                  type="text"
+                  placeholder="Busque pelo produto..."
+                  value={vProdutoBusca}
+                  onChange={e => {
+                    setVProdutoBusca(e.target.value);
+                    setVShowDropdown(true);
+                    if (vSelectedProd && e.target.value !== vSelectedProd.descricao) {
+                      setVSelectedProd(null);
+                    }
+                  }}
+                  onFocus={() => setVShowDropdown(true)}
+                  className="g-input"
+                />
+                {vShowDropdown && vProdutoBusca && vFilteredProducts.length > 0 && (
+                  <div className="absolute top-[103%] left-0 right-0 bg-[var(--surf)] border border-[var(--edge)] rounded-xl z-50 max-h-48 overflow-y-auto shadow-xl">
+                    {vFilteredProducts.map(p => (
+                      <div 
+                        key={p.codigo}
+                        onClick={() => handleVSelectProd(p)}
+                        className="p-3 border-b border-[var(--edge)] hover:bg-[var(--surf2)] cursor-pointer text-xs flex justify-between"
+                      >
+                        <span className="font-bold text-[#f5a623]">{p.codigo}</span>
+                        <span className="truncate flex-1 ml-4 text-snow text-left">{p.descricao}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* SKU code show */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-bold tracking-widest text-[#6a7d92] uppercase">Código SKU</label>
+                <input 
+                  type="text" 
+                  readOnly
+                  placeholder="Selecione um produto acima"
+                  value={vSelectedProd ? vSelectedProd.codigo : ''}
+                  className="g-input text-center text-[#f5a623] font-bold font-mono opacity-80"
+                />
+              </div>
+
+              {/* Unidades input (replaced Paletes, Lastros, Caixas as requested) */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-bold tracking-widest text-[#6a7d92] uppercase">Unidades (Un) *</label>
+                <input 
+                  type="number"
+                  min={1}
+                  value={vQuantidade}
+                  onChange={e => setVQuantidade(Math.max(1, parseInt(e.target.value) || 1))}
+                  className="g-input font-mono font-bold"
+                />
+              </div>
+
+              {/* Data de Vencimento / Validade */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-bold tracking-widest text-[#6a7d92] uppercase">Data de Validade *</label>
+                <input 
+                  type="date"
+                  value={vValidade}
+                  onChange={e => setVValidade(e.target.value)}
+                  className="g-input font-mono h-[42px]"
+                />
+              </div>
+
+              {/* Location selection: Repack or Outro */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-bold tracking-widest text-[#6a7d92] uppercase">Destino / Localização</label>
+                <select 
+                  value={vLocalizacao}
+                  onChange={e => setVLocalizacao(e.target.value)}
+                  className="g-input"
+                >
+                  <option value="repack">Repack</option>
+                  <option value="outro">Outro (especificar manual)</option>
+                </select>
+              </div>
+
+              {/* Manual name field: if 'outro' is chosen */}
+              {vLocalizacao === 'outro' && (
+                <div className="flex flex-col gap-1.5 animate-fadeIn">
+                  <label className="text-[10px] font-bold tracking-widest text-[#f5a623] uppercase">Especificar Localização Manual *</label>
+                  <input 
+                    type="text"
+                    value={vNomeManual}
+                    onChange={e => setVNomeManual(e.target.value)}
+                    placeholder="Digite o nome do local ou detalhe..."
+                    className="g-input border-[#f5a623]/40 focus:border-[#f5a623]"
+                  />
+                </div>
+              )}
+
+              <button 
+                type="button"
+                disabled={vRegistering || !vValidade || !vSelectedProd || (vLocalizacao === 'outro' && !vNomeManual.trim())}
+                onClick={handleVRegister}
+                className="w-full mt-2 py-3 text-xs font-sans font-bold uppercase tracking-widest text-[#07090d] bg-gradient-to-br from-[#f5a623] to-[#d4780a] hover:shadow-[0_4px_16px_rgba(245,166,35,0.25)] rounded-xl disabled:opacity-50 cursor-pointer transition-all font-sans font-black"
+              >
+                {vRegistering ? 'GRAVANDO...' : '💾 GRAVAR VALIDADE DE REPACK'}
+              </button>
+            </div>
+          </div>
+
+          {/* List Side */}
+          <div className="lg:col-span-7 flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-sans font-black text-[#6a7d92] uppercase tracking-wider">
+                Lotes de Repack Ativos ({repackValidades.length})
+              </span>
+            </div>
+
+            {repackValidades.length === 0 ? (
+              <div className="g-card p-8 text-center rounded-xl flex flex-col items-center justify-center gap-2">
+                <AlertCircle className="w-8 h-8 text-[#6a7d92]/60" />
+                <p className="text-xs text-[#6a7d92] font-semibold">Nenhum lote de repack cadastrado ainda.</p>
+                <p className="text-[10px] text-[#6a7d92]/70">Use o formulário ao lado para registrar o primeiro.</p>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-3">
+                {repackValidades.map((item, idx) => {
+                  const days = getDaysRemaining(item.validade);
+                  const statusInfo = getStatusLabelAndStyles(days);
+                  return (
+                    <div 
+                      key={item._docId || idx}
+                      className="g-card p-4 hover:border-[#6a7d92]/30 rounded-xl flex items-center justify-between gap-4 transition-all"
+                    >
+                      <div className="flex-1 flex flex-col gap-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-sans font-black text-xs text-snow uppercase tracking-wide">
+                            {item.descricao}
+                          </span>
+                          <span className="px-2 py-0.5 bg-[#1e56f0]/10 border border-[#1e56f0]/25 rounded-md font-mono text-[10px] text-snow font-bold uppercase">
+                            SKU: {item.codigo}
+                          </span>
+                          <span className="px-2 py-0.5 bg-[#f5a623]/10 border border-[#f5a623]/25 rounded-md font-sans text-[10px] text-snow font-bold uppercase">
+                            📍 {item.localizacao}
+                          </span>
+                          <span className={`px-2 py-0.5 border rounded-md font-sans font-black text-[9px] uppercase tracking-wider ${statusInfo.text} ${statusInfo.bg}`}>
+                            {statusInfo.label}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-4 text-[10px] text-[#6a7d92] font-semibold mt-1 flex-wrap">
+                          <span>📅 Validade: <strong className="text-snow font-mono">{item.validade ? new Date(item.validade + 'T00:00:00').toLocaleDateString('pt-BR') : '—'}</strong></span>
+                          <span>📦 Quantidade: <strong className="text-snow font-mono">{item.quantidade || 0} Un</strong></span>
+                          {days >= 0 ? (
+                            <span>⏳ <strong className="text-snow font-mono">{days}</strong> d restantes</span>
+                          ) : (
+                            <span className="text-[#ef4444]">⏳ Vencido há <strong className="font-mono">{Math.abs(days)}</strong> d</span>
+                          )}
+                        </div>
+                        <div className="text-[9px] text-[#6a7d92]/60 mt-0.5">
+                          Registrado em {item.cadastradoEm ? new Date(item.cadastradoEm).toLocaleString('pt-BR') : '—'} por {item.operador || 'Sistema'}
+                        </div>
+                      </div>
+
+                      <button 
+                        onClick={() => handleVDelete(item._docId)}
+                        className="p-2 bg-[#ef4444]/10 border border-[#ef4444]/20 hover:bg-[#ef4444] text-[#fca5a5] hover:text-white rounded-lg text-xs font-bold cursor-pointer transition-all shrink-0"
+                        title="Excluir"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
       )}
 

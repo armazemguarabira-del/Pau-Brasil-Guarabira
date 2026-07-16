@@ -44,6 +44,20 @@ export interface RepackRow {
   _criadoEm?: string;
 }
 
+export interface RepackValidadeRow {
+  _docId?: string;
+  empresaId?: string;
+  id: number;
+  codigo: string;
+  descricao: string;
+  quantidade: number;
+  validade: string;
+  localizacao: string; // 'repack' or manually typed value
+  nomeManual?: string;
+  cadastradoEm?: string;
+  operador?: string;
+}
+
 export interface DespejoRow {
   _docId?: string;
   empresaId?: string;
