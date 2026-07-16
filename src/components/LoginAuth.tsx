@@ -4,6 +4,7 @@ import { signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfi
 import { doc, setDoc, getDoc, collection, query, where, getDocs, updateDoc } from 'firebase/firestore';
 import { motion } from 'motion/react';
 import { BrandLogo } from './BrandLogo';
+import FirebasePanel from './FirebasePanel';
 
 interface LoginAuthProps {
   onAuthSuccess: (userProfile: any) => void;
@@ -12,6 +13,7 @@ interface LoginAuthProps {
 
 export default function LoginAuth({ onAuthSuccess, onBackToLanding }: LoginAuthProps) {
   const [activeTab, setActiveTab] = useState<'login' | 'controle'>('login');
+  const [showFirebaseConfig, setShowFirebaseConfig] = useState(false);
   
   // Login States
   const [lEmail, setLEmail] = useState('');
@@ -862,6 +864,25 @@ export default function LoginAuth({ onAuthSuccess, onBackToLanding }: LoginAuthP
 
         <div className="text-center mt-6 text-[10px] text-slate-400 tracking-widest uppercase font-semibold">
           Pau Brasil Distribuidora &copy; Implantação Corporativa
+        </div>
+
+        {/* Firebase Connection Panel directly below the corporate footer */}
+        <div className="mt-4 flex flex-col items-center">
+          <button
+            onClick={() => setShowFirebaseConfig(!showFirebaseConfig)}
+            className="px-4 py-2 bg-[#1e56f0]/10 hover:bg-[#1e56f0]/20 border border-[#1e56f0]/20 text-[#1e56f0] rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
+          >
+            <span>⚡ CONEXÃO AO FIREBASE</span>
+            <span className="text-[9px] text-slate-500 font-bold">({showFirebaseConfig ? 'OCULTAR' : 'CONFIGURAR'})</span>
+          </button>
+          
+          {showFirebaseConfig && (
+            <div className="w-full mt-4 p-1 bg-[#07090d] text-snow rounded-2xl border border-slate-800 shadow-2xl animate-fadeIn overflow-hidden text-left">
+              <div className="p-4 max-h-[450px] overflow-y-auto custom-scrollbar">
+                <FirebasePanel />
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
