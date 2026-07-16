@@ -45,7 +45,7 @@ export default function RepackPanel({ user, empresa }: RepackPanelProps) {
   };
 
   const [embalagem, setEmbalagem] = useState<string>(() => getDraftValue('embalagem', REPACK_EMBALAGENS[0].nome));
-  const [quantidade, setQuantidade] = useState<number>(() => getDraftValue('quantidade', 1));
+  const [quantidade, setQuantidade] = useState<number | ''>(() => getDraftValue('quantidade', ''));
   const [inicio, setInicio] = useState<string>(() => getDraftValue('inicio', ''));
   const [fim, setFim] = useState<string>(() => getDraftValue('fim', ''));
   const [duracao, setDuracao] = useState('00:00:00');
@@ -59,7 +59,7 @@ export default function RepackPanel({ user, empresa }: RepackPanelProps) {
   const [vSelectedProd, setVSelectedProd] = useState<{ codigo: number, descricao: string } | null>(null);
   const [vShowDropdown, setVShowDropdown] = useState(false);
 
-  const [vQuantidade, setVQuantidade] = useState<number>(1);
+  const [vQuantidade, setVQuantidade] = useState<number | ''>('');
   const [vValidade, setVValidade] = useState<string>('');
   const [vLocalizacao, setVLocalizacao] = useState<string>('repack'); // 'repack' or 'outro'
   const [vNomeManual, setVNomeManual] = useState<string>('');
@@ -72,7 +72,7 @@ export default function RepackPanel({ user, empresa }: RepackPanelProps) {
       const saved = localStorage.getItem(draftKey);
       if (saved) {
         const parsed = JSON.parse(saved);
-        return !!(parsed.inicio || parsed.fim || parsed.quantidade > 1 || parsed.embalagem !== REPACK_EMBALAGENS[0].nome);
+        return !!(parsed.inicio || parsed.fim || (parsed.quantidade !== undefined && parsed.quantidade !== '') || parsed.embalagem !== REPACK_EMBALAGENS[0].nome);
       }
     } catch (e) {}
     return false;
@@ -98,13 +98,13 @@ export default function RepackPanel({ user, empresa }: RepackPanelProps) {
       if (saved) {
         const parsed = JSON.parse(saved);
         setEmbalagem(parsed.embalagem || REPACK_EMBALAGENS[0].nome);
-        setQuantidade(parsed.quantidade || 1);
+        setQuantidade(parsed.quantidade !== undefined ? parsed.quantidade : '');
         setInicio(parsed.inicio || '');
         setFim(parsed.fim || '');
-        setDraftRestored(!!(parsed.inicio || parsed.fim || parsed.quantidade > 1 || parsed.embalagem !== REPACK_EMBALAGENS[0].nome));
+        setDraftRestored(!!(parsed.inicio || parsed.fim || (parsed.quantidade !== undefined && parsed.quantidade !== '') || parsed.embalagem !== REPACK_EMBALAGENS[0].nome));
       } else {
         setEmbalagem(REPACK_EMBALAGENS[0].nome);
-        setQuantidade(1);
+        setQuantidade('');
         setInicio('');
         setFim('');
         setDraftRestored(false);
@@ -223,7 +223,8 @@ export default function RepackPanel({ user, empresa }: RepackPanelProps) {
     const tot = toSec(fim) - toSec(inicio);
     setDuracao(toHMS(tot));
 
-    const metaSec = toSec(activeMeta) * quantidade;
+    const qty = quantidade === '' ? 1 : quantidade;
+    const metaSec = toSec(activeMeta) * qty;
     if (tot <= metaSec) {
       setStatusMeta('🟢 META BATIDA');
     } else {
@@ -239,12 +240,14 @@ export default function RepackPanel({ user, empresa }: RepackPanelProps) {
     const dataStr = today.toLocaleDateString('pt-BR');
     const dataISO = today.toISOString().split('T')[0];
 
+    const qtyNum = quantidade === '' ? 1 : quantidade;
+
     const newRow: Omit<RepackRow, '_docId'> & { empresaId: string } = {
       empresaId: empresa?.id || 'demo',
       data: dataStr,
       dataISO,
       embalagem,
-      quantidade,
+      quantidade: qtyNum,
       inicio,
       fim,
       duracao,
@@ -264,7 +267,7 @@ export default function RepackPanel({ user, empresa }: RepackPanelProps) {
       }
 
       // Reset fields
-      setQuantidade(1);
+      setQuantidade('');
       setInicio('');
       setFim('');
       setDuracao('00:00:00');
@@ -306,13 +309,14 @@ export default function RepackPanel({ user, empresa }: RepackPanelProps) {
     setVRegistering(true);
 
     const localizacaoValor = vLocalizacao === 'outro' ? vNomeManual.trim() : 'Repack';
+    const qtyVal = vQuantidade === '' ? 1 : vQuantidade;
 
     const newRow = {
       empresaId: empresa?.id || 'demo',
       id: Date.now(),
       codigo: String(vSelectedProd.codigo),
       descricao: vSelectedProd.descricao,
-      quantidade: vQuantidade,
+      quantidade: qtyVal,
       validade: vValidade,
       localizacao: localizacaoValor,
       cadastradoEm: new Date().toISOString(),
@@ -331,7 +335,7 @@ export default function RepackPanel({ user, empresa }: RepackPanelProps) {
       // Reset
       setVProdutoBusca('');
       setVSelectedProd(null);
-      setVQuantidade(1);
+      setVQuantidade('');
       setVValidade('');
       setVLocalizacao('repack');
       setVNomeManual('');
@@ -600,8 +604,12 @@ export default function RepackPanel({ user, empresa }: RepackPanelProps) {
               <input 
                 type="number"
                 min={1}
+                placeholder="Ex: 5"
                 value={quantidade}
-                onChange={e => setQuantidade(Math.max(1, parseInt(e.target.value) || 0))}
+                onChange={e => {
+                  const val = e.target.value;
+                  setQuantidade(val === '' ? '' : Math.max(1, parseInt(val) || 1));
+                }}
                 className="g-input"
               />
             </div>
@@ -663,7 +671,7 @@ export default function RepackPanel({ user, empresa }: RepackPanelProps) {
 
           <button 
             type="button"
-            disabled={registering || !inicio || !fim}
+            disabled={registering || !inicio || !fim || quantidade === '' || quantidade < 1}
             onClick={handleRegister}
             className="w-full py-4 text-sm font-sans font-bold uppercase tracking-widest text-[#07090d] bg-gradient-to-br from-[#f5a623] to-[#d4780a] hover:shadow-[0_4px_16px_rgba(245,166,35,0.25)] rounded-xl disabled:opacity-50 cursor-pointer"
           >
@@ -837,8 +845,12 @@ export default function RepackPanel({ user, empresa }: RepackPanelProps) {
                   <input 
                     type="number"
                     min={1}
+                    placeholder="Ex: 10"
                     value={vQuantidade}
-                    onChange={e => setVQuantidade(Math.max(1, parseInt(e.target.value) || 1))}
+                    onChange={e => {
+                      const val = e.target.value;
+                      setVQuantidade(val === '' ? '' : Math.max(1, parseInt(val) || 1));
+                    }}
                     className="g-input font-mono font-bold"
                   />
                 </div>
@@ -883,7 +895,7 @@ export default function RepackPanel({ user, empresa }: RepackPanelProps) {
 
                 <button 
                   type="button"
-                  disabled={vRegistering || !vValidade || !vSelectedProd || (vLocalizacao === 'outro' && !vNomeManual.trim())}
+                  disabled={vRegistering || !vValidade || !vSelectedProd || vQuantidade === '' || vQuantidade < 1 || (vLocalizacao === 'outro' && !vNomeManual.trim())}
                   onClick={handleVRegister}
                   className="w-full mt-2 py-3 text-xs font-sans font-bold uppercase tracking-widest text-[#07090d] bg-gradient-to-br from-[#f5a623] to-[#d4780a] hover:shadow-[0_4px_16px_rgba(245,166,35,0.25)] rounded-xl disabled:opacity-50 cursor-pointer transition-all font-sans font-black"
                 >
