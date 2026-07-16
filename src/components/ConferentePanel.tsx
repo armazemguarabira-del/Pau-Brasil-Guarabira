@@ -205,9 +205,13 @@ export default function ConferentePanel({ user, empresa }: ConferentePanelProps)
   const toast = (m: string) => {
     const el = document.getElementById('toast');
     if (el) {
+      el.style.background = '';
+      el.style.color = '';
       el.textContent = m;
-      el.className = 'show';
-      setTimeout(() => el.className = '', 3000);
+      el.className = 'toast show';
+      setTimeout(() => {
+        el.className = 'toast';
+      }, 3000);
     }
   };
 

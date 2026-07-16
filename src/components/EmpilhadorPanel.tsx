@@ -255,9 +255,13 @@ export default function EmpilhadorPanel({ user, empresa }: EmpilhadorPanelProps)
   const triggerToast = (m: string) => {
     const el = document.getElementById('toast');
     if (el) {
+      el.style.background = '';
+      el.style.color = '';
       el.textContent = m;
-      el.className = 'show';
-      setTimeout(() => el.className = '', 3000);
+      el.className = 'toast show';
+      setTimeout(() => {
+        el.className = 'toast';
+      }, 3000);
     }
   };
 
@@ -265,10 +269,14 @@ export default function EmpilhadorPanel({ user, empresa }: EmpilhadorPanelProps)
     const el = document.getElementById('toast');
     if (el) {
       el.style.background = err ? '#ef4444' : 'var(--green)';
-      el.style.color = '#0a0c10';
+      el.style.color = err ? '#ffffff' : '#0a0c10';
       el.textContent = m;
-      el.className = 'show';
-      setTimeout(() => el.className = '', 3000);
+      el.className = 'toast show';
+      setTimeout(() => {
+        el.className = 'toast';
+        el.style.background = '';
+        el.style.color = '';
+      }, 3000);
     }
   };
 
