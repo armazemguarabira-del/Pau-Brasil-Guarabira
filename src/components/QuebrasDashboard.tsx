@@ -980,6 +980,11 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
                         </td>
                         <td className="p-2 font-mono font-bold text-[#f5a623]" title={q.motivo}>
                           {q.codQuebra}
+                          {q.colaboradorQuebrou && (
+                            <div className="text-[9px] text-red-500 font-extrabold uppercase mt-1" title={`Quebrado por: ${q.colaboradorQuebrou}`}>
+                              👤 {q.colaboradorQuebrou}
+                            </div>
+                          )}
                         </td>
                       </tr>
                     ))

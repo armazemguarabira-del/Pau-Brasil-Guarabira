@@ -355,7 +355,8 @@ export default function ExportarPanel({ user, empresa }: ExportarPanelProps) {
         'Área Origem': q.area,
         'Turno': q.turno,
         'Cód Quebra': q.codQuebra,
-        'Motivo': q.motivo
+        'Motivo': q.motivo,
+        'Colaborador': q.colaboradorQuebrou || ''
       }));
 
       const ws = XLSX.utils.json_to_sheet(data);
@@ -550,7 +551,8 @@ export default function ExportarPanel({ user, empresa }: ExportarPanelProps) {
               area: String(cleanRow.area || cleanRow.origem || 'Picking'),
               turno: String(cleanRow.turno || '1º Turno'),
               codQuebra: String(cleanRow.codquebra || cleanRow['cod quebra'] || 'Q01'),
-              motivo: String(cleanRow.motivo || 'Avaria Movimentação')
+              motivo: String(cleanRow.motivo || 'Avaria Movimentação'),
+              colaboradorQuebrou: String(cleanRow.colaboradorquebrou || cleanRow['colaborador quebrou'] || cleanRow.colaborador || '')
             };
           } else if (importTarget === 'validades') {
             docData = {

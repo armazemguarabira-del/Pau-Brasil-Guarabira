@@ -111,10 +111,11 @@ export default function QuebrasPanel({ user, empresa }: QuebrasPanelProps) {
   const [produtoBusca, setProdutoBusca] = useState<string>(() => getDraftValue('produtoBusca', ''));
   const [selectedProd, setSelectedProd] = useState<{ codigo: number, descricao: string } | null>(() => getDraftValue('selectedProd', null));
   const [showDropdown, setShowProdDropdown] = useState(false);
-  const [quantidade, setQuantidade] = useState<number>(() => getDraftValue('quantidade', 1));
+  const [quantidade, setQuantidade] = useState<number | ''>(() => getDraftValue('quantidade', ''));
   const [area, setArea] = useState<string>(() => getDraftValue('area', 'ARMAZEM'));
   const [turno, setTurno] = useState<string>(() => getDraftValue('turno', 'MANHÃ'));
   const [motivoCod, setMotivoCod] = useState<number>(() => getDraftValue('motivoCod', 0));
+  const [colaboradorQuebrou, setColaboradorQuebrou] = useState<string>(() => getDraftValue('colaboradorQuebrou', ''));
   
   const [activeTab, setActiveTab] = useState<'form' | 'stats' | 'hist'>('form');
   const [quebras, setQuebras] = useState<QuebraRow[]>([]);
@@ -125,7 +126,7 @@ export default function QuebrasPanel({ user, empresa }: QuebrasPanelProps) {
       const saved = localStorage.getItem(draftKey);
       if (saved) {
         const parsed = JSON.parse(saved);
-        return !!(parsed.produtoBusca || parsed.selectedProd || parsed.quantidade > 1 || parsed.area !== 'ARMAZEM' || parsed.turno !== 'MANHÃ');
+        return !!(parsed.produtoBusca || parsed.selectedProd || (parsed.quantidade !== undefined && parsed.quantidade !== '') || parsed.area !== 'ARMAZEM' || parsed.turno !== 'MANHÃ' || parsed.colaboradorQuebrou);
       }
     } catch (e) {}
     return false;
@@ -136,6 +137,7 @@ export default function QuebrasPanel({ user, empresa }: QuebrasPanelProps) {
   };
 
   const motivosDisponiveis = QB_TIPOS[area] || [];
+  const isQuebraMovimentacao = motivoCod === 539 || motivoCod === 557 || motivoCod === 589;
 
   // Reset selected motive code on area update (only if we don't have a loaded motive yet or area changes)
   useEffect(() => {
@@ -159,10 +161,11 @@ export default function QuebrasPanel({ user, empresa }: QuebrasPanelProps) {
       quantidade,
       area,
       turno,
-      motivoCod
+      motivoCod,
+      colaboradorQuebrou
     };
     localStorage.setItem(draftKey, JSON.stringify(draftData));
-  }, [produtoBusca, selectedProd, quantidade, area, turno, motivoCod, draftKey]);
+  }, [produtoBusca, selectedProd, quantidade, area, turno, motivoCod, colaboradorQuebrou, draftKey]);
 
   // Sync with prop updates / user changing
   useEffect(() => {
@@ -172,18 +175,20 @@ export default function QuebrasPanel({ user, empresa }: QuebrasPanelProps) {
         const parsed = JSON.parse(saved);
         setProdutoBusca(parsed.produtoBusca || '');
         setSelectedProd(parsed.selectedProd || null);
-        setQuantidade(parsed.quantidade || 1);
+        setQuantidade(parsed.quantidade !== undefined ? parsed.quantidade : '');
         setArea(parsed.area || 'ARMAZEM');
         setTurno(parsed.turno || 'MANHÃ');
         setMotivoCod(parsed.motivoCod || 0);
-        setDraftRestored(!!(parsed.produtoBusca || parsed.selectedProd || parsed.quantidade > 1 || parsed.area !== 'ARMAZEM' || parsed.turno !== 'MANHÃ'));
+        setColaboradorQuebrou(parsed.colaboradorQuebrou || '');
+        setDraftRestored(!!(parsed.produtoBusca || parsed.selectedProd || (parsed.quantidade !== undefined && parsed.quantidade !== '') || parsed.area !== 'ARMAZEM' || parsed.turno !== 'MANHÃ' || parsed.colaboradorQuebrou));
       } else {
         setProdutoBusca('');
         setSelectedProd(null);
-        setQuantidade(1);
+        setQuantidade('');
         setArea('ARMAZEM');
         setTurno('MANHÃ');
         setMotivoCod(0);
+        setColaboradorQuebrou('');
         setDraftRestored(false);
       }
     } catch (e) {
@@ -219,8 +224,14 @@ export default function QuebrasPanel({ user, empresa }: QuebrasPanelProps) {
   };
 
   const handleRegister = async () => {
-    if (!selectedProd || !quantidade || !area || !turno || !motivoCod) {
-      alert('Selecione o produto, digite a quantidade correspondente e insira o motivo.');
+    if (!selectedProd || !quantidade || Number(quantidade) <= 0 || !area || !turno || !motivoCod) {
+      alert('Selecione o produto, digite uma quantidade válida e insira o motivo.');
+      return;
+    }
+
+    const isQuebraMovimentacao = motivoCod === 539 || motivoCod === 557 || motivoCod === 589;
+    if (isQuebraMovimentacao && !colaboradorQuebrou.trim()) {
+      alert('Por favor, informe o nome do colaborador que quebrou o produto por movimentação.');
       return;
     }
 
@@ -241,7 +252,8 @@ export default function QuebrasPanel({ user, empresa }: QuebrasPanelProps) {
       area,
       turno,
       codQuebra: String(motivoCod),
-      motivo: chosenMotive
+      motivo: chosenMotive,
+      ...(isQuebraMovimentacao ? { colaboradorQuebrou: colaboradorQuebrou.trim() } : {})
     };
 
     try {
@@ -255,7 +267,8 @@ export default function QuebrasPanel({ user, empresa }: QuebrasPanelProps) {
 
       setProdutoBusca('');
       setSelectedProd(null);
-      setQuantidade(1);
+      setQuantidade('');
+      setColaboradorQuebrou('');
       setDraftRestored(false);
       localStorage.removeItem(draftKey);
       setActiveTab('hist');
@@ -426,9 +439,10 @@ export default function QuebrasPanel({ user, empresa }: QuebrasPanelProps) {
                 onClick={() => {
                   setProdutoBusca('');
                   setSelectedProd(null);
-                  setQuantidade(1);
+                  setQuantidade('');
                   setArea('ARMAZEM');
                   setTurno('MANHÃ');
+                  setColaboradorQuebrou('');
                   setDraftRestored(false);
                   localStorage.removeItem(draftKey);
                 }}
@@ -490,9 +504,17 @@ export default function QuebrasPanel({ user, empresa }: QuebrasPanelProps) {
               <input 
                 type="number"
                 min={1}
-                value={quantidade}
-                onChange={e => setQuantidade(Math.max(1, parseInt(e.target.value) || 0))}
+                value={quantidade === 0 ? '' : quantidade}
+                onChange={e => {
+                  const val = e.target.value;
+                  if (val === '') {
+                    setQuantidade('');
+                  } else {
+                    setQuantidade(Math.max(1, parseInt(val) || 0));
+                  }
+                }}
                 className="g-input text-center"
+                placeholder="Ex: 10"
               />
             </div>
 
@@ -532,6 +554,21 @@ export default function QuebrasPanel({ user, empresa }: QuebrasPanelProps) {
             </div>
 
           </div>
+
+          {isQuebraMovimentacao && (
+            <div className="flex flex-col gap-1.5 bg-[#ef4444]/5 border border-[#ef4444]/15 rounded-xl p-4 animate-fadeIn">
+              <label className="text-[10px] font-bold tracking-[1.5px] uppercase text-[#ef4444]">Nome do Colaborador que Quebrou *</label>
+              <input 
+                type="text"
+                placeholder="Digite o nome completo do colaborador responsável..."
+                value={colaboradorQuebrou}
+                onChange={e => setColaboradorQuebrou(e.target.value)}
+                className="g-input border-[#ef4444]/30 focus:border-[#ef4444]"
+                required
+              />
+              <span className="text-[9px] text-[#ef4444]/60 font-semibold uppercase tracking-wider">Identificação obrigatória para quebras com movimentação.</span>
+            </div>
+          )}
 
           <button 
             type="button"
@@ -610,7 +647,14 @@ export default function QuebrasPanel({ user, empresa }: QuebrasPanelProps) {
                               <td className="p-3 font-bold text-snow">{q.area}</td>
                               <td className="p-3 uppercase text-[10px] font-bold text-[#6a7d92]">{q.turno}</td>
                               <td className="p-3 font-mono font-bold text-[#f5a623]">{q.codQuebra}</td>
-                              <td className="p-3 text-[#6a7d92]">{q.motivo}</td>
+                              <td className="p-3 text-[#6a7d92]">
+                                {q.motivo}
+                                {q.colaboradorQuebrou && (
+                                  <span className="block text-[10px] text-red-400 font-black uppercase tracking-wider mt-0.5">
+                                    👤 Colab: {q.colaboradorQuebrou}
+                                  </span>
+                                )}
+                              </td>
                               <td className="p-3 text-right">
                                 <button 
                                   onClick={() => handleDelete(q._docId)}

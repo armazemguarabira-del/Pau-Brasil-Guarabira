@@ -39,7 +39,7 @@ export default function DespejoPanel({ user, empresa }: DespejoPanelProps) {
   };
 
   const [embalagem, setEmbalagem] = useState<string>(() => getDraftValue('embalagem', DESPEJO_EMBALAGENS[0].nome));
-  const [quantidade, setQuantidade] = useState<number>(() => getDraftValue('quantidade', 1));
+  const [quantidade, setQuantidade] = useState<number | ''>(() => getDraftValue('quantidade', ''));
   const [inicio, setInicio] = useState<string>(() => getDraftValue('inicio', ''));
   const [fim, setFim] = useState<string>(() => getDraftValue('fim', ''));
   const [tempo, setTempo] = useState('00:00:00');
@@ -52,7 +52,7 @@ export default function DespejoPanel({ user, empresa }: DespejoPanelProps) {
       const saved = localStorage.getItem(draftKey);
       if (saved) {
         const parsed = JSON.parse(saved);
-        return !!(parsed.inicio || parsed.fim || parsed.quantidade > 1 || parsed.embalagem !== DESPEJO_EMBALAGENS[0].nome);
+        return !!(parsed.inicio || parsed.fim || (parsed.quantidade !== undefined && parsed.quantidade !== '') || parsed.embalagem !== DESPEJO_EMBALAGENS[0].nome);
       }
     } catch (e) {}
     return false;
@@ -77,13 +77,13 @@ export default function DespejoPanel({ user, empresa }: DespejoPanelProps) {
       if (saved) {
         const parsed = JSON.parse(saved);
         setEmbalagem(parsed.embalagem || DESPEJO_EMBALAGENS[0].nome);
-        setQuantidade(parsed.quantidade || 1);
+        setQuantidade(parsed.quantidade !== undefined ? parsed.quantidade : '');
         setInicio(parsed.inicio || '');
         setFim(parsed.fim || '');
-        setDraftRestored(!!(parsed.inicio || parsed.fim || parsed.quantidade > 1 || parsed.embalagem !== DESPEJO_EMBALAGENS[0].nome));
+        setDraftRestored(!!(parsed.inicio || parsed.fim || (parsed.quantidade !== undefined && parsed.quantidade !== '') || parsed.embalagem !== DESPEJO_EMBALAGENS[0].nome));
       } else {
         setEmbalagem(DESPEJO_EMBALAGENS[0].nome);
-        setQuantidade(1);
+        setQuantidade('');
         setInicio('');
         setFim('');
         setDraftRestored(false);
@@ -151,7 +151,7 @@ export default function DespejoPanel({ user, empresa }: DespejoPanelProps) {
     const tot = toSec(fim) - toSec(inicio);
     setTempo(toHMS(tot));
 
-    const metaSec = toSec(activeMeta) * quantidade;
+    const metaSec = toSec(activeMeta) * (Number(quantidade) || 0);
     if (tot <= metaSec) {
       setStatusMeta('🟢 META BATIDA');
     } else {
@@ -161,6 +161,10 @@ export default function DespejoPanel({ user, empresa }: DespejoPanelProps) {
 
   const handleRegister = async () => {
     if (!inicio || !fim) return;
+    if (quantidade === '' || isNaN(Number(quantidade)) || Number(quantidade) <= 0) {
+      alert('Por favor, informe uma quantidade válida de caixas despejadas.');
+      return;
+    }
     setRegistering(true);
 
     const today = new Date();
@@ -172,7 +176,7 @@ export default function DespejoPanel({ user, empresa }: DespejoPanelProps) {
       data: dataStr,
       dataISO,
       embalagem,
-      quantidade,
+      quantidade: Number(quantidade),
       inicio,
       fim,
       tempo,
@@ -192,7 +196,7 @@ export default function DespejoPanel({ user, empresa }: DespejoPanelProps) {
       }
 
       // Reset fields
-      setQuantidade(1);
+      setQuantidade('');
       setInicio('');
       setFim('');
       setTempo('00:00:00');
@@ -375,9 +379,9 @@ export default function DespejoPanel({ user, empresa }: DespejoPanelProps) {
               <button 
                 type="button"
                 onClick={() => {
-                  setQuantidade(1);
                   setInicio('');
                   setFim('');
+                  setQuantidade('');
                   setEmbalagem(DESPEJO_EMBALAGENS[0].nome);
                   setDraftRestored(false);
                   localStorage.removeItem(draftKey);
@@ -403,13 +407,21 @@ export default function DespejoPanel({ user, empresa }: DespejoPanelProps) {
               </select>
             </div>
             <div className="flex flex-col gap-1.5">
-              <label className="text-[10px] font-bold tracking-widest text-[#6a7d92] uppercase">Quantidade Despejada (Caixas)</label>
+              <label className="text-[10px] font-bold tracking-widest text-[#6a7d92] uppercase">Quantidade Despejada (Caixas) *</label>
               <input 
                 type="number"
                 min={1}
-                value={quantidade}
-                onChange={e => setQuantidade(Math.max(1, parseInt(e.target.value) || 0))}
+                value={quantidade === 0 ? '' : quantidade}
+                onChange={e => {
+                  const val = e.target.value;
+                  if (val === '') {
+                    setQuantidade('');
+                  } else {
+                    setQuantidade(Math.max(1, parseInt(val) || 0));
+                  }
+                }}
                 className="g-input"
+                placeholder="Digite a quantidade..."
               />
             </div>
           </div>

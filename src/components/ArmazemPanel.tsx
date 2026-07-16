@@ -39,7 +39,7 @@ export default function ArmazemPanel({ user, empresa }: ArmazemPanelProps) {
   const [placaSelection, setPlacaSelection] = useState<string>(() => getDraftValue('placaSelection', PLACAS[0]));
   const [placaOutro, setPlacaOutro] = useState<string>(() => getDraftValue('placaOutro', ''));
   const [tipo, setTipo] = useState<string>(() => getDraftValue('tipo', 'rota'));
-  const [palhete, setPalhete] = useState<number>(() => getDraftValue('palhete', 1));
+  const [palhete, setPalhete] = useState<number | ''>(() => getDraftValue('palhete', ''));
   const [inicio, setInicio] = useState<string>(() => getDraftValue('inicio', ''));
   const [fim, setFim] = useState<string>(() => getDraftValue('fim', ''));
   const [obs, setObs] = useState<string>(() => getDraftValue('obs', ''));
@@ -52,7 +52,7 @@ export default function ArmazemPanel({ user, empresa }: ArmazemPanelProps) {
       const saved = localStorage.getItem(draftKey);
       if (saved) {
         const parsed = JSON.parse(saved);
-        return !!(parsed.empilhador || parsed.placaOutro || parsed.inicio || parsed.fim || parsed.obs || parsed.palhete > 1 || parsed.operacao !== 'Carregamento');
+        return !!(parsed.empilhador || parsed.placaOutro || parsed.inicio || parsed.fim || parsed.obs || (parsed.palhete !== undefined && parsed.palhete !== '') || parsed.operacao !== 'Carregamento');
       }
     } catch (e) {}
     return false;
@@ -93,11 +93,11 @@ export default function ArmazemPanel({ user, empresa }: ArmazemPanelProps) {
         setPlacaSelection(parsed.placaSelection || PLACAS[0]);
         setPlacaOutro(parsed.placaOutro || '');
         setTipo(parsed.tipo || 'rota');
-        setPalhete(parsed.palhete || 1);
+        setPalhete(parsed.palhete !== undefined ? parsed.palhete : '');
         setInicio(parsed.inicio || '');
         setFim(parsed.fim || '');
         setObs(parsed.obs || '');
-        setDraftRestored(!!(parsed.empilhador || parsed.placaOutro || parsed.inicio || parsed.fim || parsed.obs || parsed.palhete > 1 || parsed.operacao !== 'Carregamento'));
+        setDraftRestored(!!(parsed.empilhador || parsed.placaOutro || parsed.inicio || parsed.fim || parsed.obs || (parsed.palhete !== undefined && parsed.palhete !== '') || parsed.operacao !== 'Carregamento'));
       } else {
         setOperacao('Carregamento');
         setEmpilhador('');
@@ -105,7 +105,7 @@ export default function ArmazemPanel({ user, empresa }: ArmazemPanelProps) {
         setPlacaSelection(PLACAS[0]);
         setPlacaOutro('');
         setTipo('rota');
-        setPalhete(1);
+        setPalhete('');
         setInicio('');
         setFim('');
         setObs('');
@@ -204,6 +204,11 @@ export default function ArmazemPanel({ user, empresa }: ArmazemPanelProps) {
       return;
     }
 
+    if (palhete === '' || isNaN(Number(palhete)) || Number(palhete) <= 0) {
+      setErrorMsg('Por favor, informe uma quantidade válida de palhetes.');
+      return;
+    }
+
     const isOk = inicio >= '07:00' && fim <= '21:00';
     if (!isOk && !obs.trim()) {
       setErrorMsg('Observação obrigatória ao lançar registros FORA da janela de faturamento (07:00 – 21:00).');
@@ -246,7 +251,7 @@ export default function ArmazemPanel({ user, empresa }: ArmazemPanelProps) {
       // Reset form
       setInicio('');
       setFim('');
-      setPalhete(1);
+      setPalhete('');
       setObs('');
       setPlacaOutro('');
       setStatusChip('—');
@@ -552,13 +557,21 @@ export default function ArmazemPanel({ user, empresa }: ArmazemPanelProps) {
               </select>
             </div>
             <div className="flex flex-col gap-1.5">
-              <label className="text-[10px] font-bold tracking-[1.5px] uppercase text-[#6a7d92]">Quantidade de Palhetes</label>
+              <label className="text-[10px] font-bold tracking-[1.5px] uppercase text-[#6a7d92]">Quantidade de Palhetes *</label>
               <input 
                 type="number"
                 min={1}
-                value={palhete}
-                onChange={e => setPalhete(Math.max(1, parseInt(e.target.value) || 0))}
+                value={palhete === 0 ? '' : palhete}
+                onChange={e => {
+                  const val = e.target.value;
+                  if (val === '') {
+                    setPalhete('');
+                  } else {
+                    setPalhete(Math.max(1, parseInt(val) || 0));
+                  }
+                }}
                 className="g-input"
+                placeholder="Digite a quantidade..."
               />
             </div>
           </div>
