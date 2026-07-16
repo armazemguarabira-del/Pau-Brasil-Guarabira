@@ -863,7 +863,7 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
     y += 10;
     
     filteredRows.slice(0, 30).forEach(r => {
-      doc.text(`${r.data} - ${r.operador || '—'} - ${r.embalagem} - ${r.quantidade}un - ${r.duracao} [${r.resultado}]`, 14, y);
+      doc.text(`${r.data} - ${r.operador || '—'} - ${r.embalagem} - ${r.quantidade}cx - ${r.duracao} [${r.resultado}]`, 14, y);
       y += 6;
     });
     doc.save('Relatorio_Repack.pdf');
@@ -1613,7 +1613,7 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
                           <td className={`${isCompact ? 'p-1.5' : 'p-2.5'} font-semibold text-gray-400`}>{row.data}</td>
                           <td className={`${isCompact ? 'p-1.5' : 'p-2.5'} font-bold text-slate-800`}>{row.operador || '—'}</td>
                           <td className={`${isCompact ? 'p-1.5' : 'p-2.5'} font-semibold text-gray-500`}>{row.embalagem}</td>
-                          <td className={`${isCompact ? 'p-1.5' : 'p-2.5'} font-bold text-amber-600`}>{row.quantidade} un</td>
+                          <td className={`${isCompact ? 'p-1.5' : 'p-2.5'} font-bold text-amber-600`}>{row.quantidade} cx</td>
                           <td className={`${isCompact ? 'p-1.5' : 'p-2.5'} text-gray-400`}>{row.inicio} - {row.fim}</td>
                           <td className={`${isCompact ? 'p-1.5' : 'p-2.5'} font-mono text-slate-700 font-semibold`}>{row.duracao}</td>
                           <td className={isCompact ? 'p-1.5' : 'p-2.5'}>
@@ -1698,7 +1698,7 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
                     </div>
                     <div className="flex justify-between text-xs py-1 border-b border-gray-100">
                       <span className="text-gray-400 font-bold uppercase text-[10px]">Caixas por Hora</span>
-                      <span className="font-bold text-amber-600">{selectedRowDetails.caixasHora} un/h</span>
+                      <span className="font-bold text-amber-600">{selectedRowDetails.caixasHora} cx/h</span>
                     </div>
                     <div className="flex justify-between text-xs py-1 border-b border-gray-100">
                       <span className="text-gray-400 font-bold uppercase text-[10px]">Tempo Médio Real</span>
@@ -2381,7 +2381,7 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="flex flex-col gap-1">
-                  <label className="text-gray-400 uppercase font-bold text-[9px] tracking-wider">Quantidade (un)</label>
+                  <label className="text-gray-400 uppercase font-bold text-[9px] tracking-wider">Quantidade (cx)</label>
                   <input
                     type="number"
                     value={formQuantidade}

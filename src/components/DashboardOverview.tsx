@@ -321,7 +321,7 @@ export default function DashboardOverview({
       const timestamp = r._criadoEm ? new Date(r._criadoEm).getTime() : (r.dataISO ? new Date(r.dataISO + 'T' + (r.inicio || '00:00') + ':00').getTime() : 0);
       if (timestamp) {
         allLogs.push({
-          text: `${r.operador || 'Operador'} iniciou a reembalagem de ${r.quantidade} un de ${r.embalagem}.`,
+          text: `${r.operador || 'Operador'} iniciou a reembalagem de ${r.quantidade} cx de ${r.embalagem}.`,
           time: getRelativeTimeString(timestamp),
           type: 'repack',
           timestamp
@@ -333,7 +333,7 @@ export default function DashboardOverview({
       const timestamp = d._criadoEm ? new Date(d._criadoEm).getTime() : (d.dataISO ? new Date(d.dataISO + 'T' + (d.inicio || '00:00') + ':00').getTime() : 0);
       if (timestamp) {
         allLogs.push({
-          text: `${d.operador || 'Operador'} finalizou despejo de ${d.quantidade} un de ${d.embalagem}.`,
+          text: `${d.operador || 'Operador'} finalizou despejo de ${d.quantidade} cx de ${d.embalagem}.`,
           time: getRelativeTimeString(timestamp),
           type: 'repack',
           timestamp

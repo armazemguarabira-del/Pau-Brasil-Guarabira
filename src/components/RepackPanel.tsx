@@ -839,9 +839,9 @@ export default function RepackPanel({ user, empresa }: RepackPanelProps) {
                   />
                 </div>
 
-                {/* Unidades input (replaced Paletes, Lastros, Caixas as requested) */}
+                {/* Quantidade em caixas input */}
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-[10px] font-bold tracking-widest text-[#6a7d92] uppercase">Unidades (Un) *</label>
+                  <label className="text-[10px] font-bold tracking-widest text-[#6a7d92] uppercase">Quantidade (cx) *</label>
                   <input 
                     type="number"
                     min={1}
@@ -954,7 +954,7 @@ export default function RepackPanel({ user, empresa }: RepackPanelProps) {
                           
                           <div className="flex items-center justify-between text-[10px] text-[#6a7d92] font-semibold">
                             <span>SKU: <strong className="text-slate-800 font-mono">{item.codigo}</strong></span>
-                            <span>Qtd: <strong className="text-slate-800 font-mono">{item.quantidade || 0} Un</strong></span>
+                            <span>Qtd: <strong className="text-slate-800 font-mono">{item.quantidade || 0} cx</strong></span>
                           </div>
 
                           <div className="flex items-center justify-between text-[10px] text-[#6a7d92] font-semibold mt-0.5">
@@ -1067,7 +1067,7 @@ export default function RepackPanel({ user, empresa }: RepackPanelProps) {
                                     </div>
                                     <div className="flex items-center gap-4 text-[10px] text-[#6a7d92] font-semibold mt-1 flex-wrap">
                                       <span>📅 Validade: <strong className="text-slate-800 font-mono">{item.validade ? new Date(item.validade + 'T00:00:00').toLocaleDateString('pt-BR') : '—'}</strong></span>
-                                      <span>📦 Quantidade: <strong className="text-slate-800 font-mono">{item.quantidade || 0} Un</strong></span>
+                                      <span>📦 Quantidade: <strong className="text-slate-800 font-mono">{item.quantidade || 0} cx</strong></span>
                                       {days >= 0 ? (
                                         <span>⏳ <strong className="text-slate-800 font-mono">{days}</strong> d restantes</span>
                                       ) : (

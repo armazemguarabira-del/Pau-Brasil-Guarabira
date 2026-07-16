@@ -1038,7 +1038,7 @@ export default function DespejoDashboard({ user, empresa, onBack }: DespejoDashb
                       <td className="py-3 font-semibold text-gray-400">{row.data}</td>
                       <td className="py-3 font-bold text-slate-800">{row.operador || '—'}</td>
                       <td className="py-3 font-semibold text-gray-400">{row.embalagem}</td>
-                      <td className="py-3 font-bold text-amber-600 text-center">{row.quantidade} un</td>
+                      <td className="py-3 font-bold text-amber-600 text-center">{row.quantidade} cx</td>
                       <td className="py-3 text-gray-400 font-mono">{row.inicio ? row.inicio.substring(0,5) : '—'}</td>
                       <td className="py-3 text-gray-400 font-mono">{row.fim ? row.fim.substring(0,5) : '—'}</td>
                       <td className="py-3 font-mono text-slate-700 font-semibold">{row.tempo}</td>
