@@ -1323,9 +1323,9 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
               {/* LINE 3: Eficiência Circular Gauge, Ranking Embalagens, Distribuição de Trabalho */}
               <section className="grid grid-cols-1 lg:grid-cols-12 gap-3">
                 {/* Eficiência Gauge */}
-                <div className="bg-white border border-gray-200 rounded-xl lg:col-span-4 p-2.5 h-[175px] flex flex-col justify-between items-center relative">
+                <div className="bg-white border border-gray-200 rounded-xl lg:col-span-4 p-2.5 h-[185px] flex flex-col justify-between items-center relative">
                   <h3 className="font-sans font-black text-[10px] uppercase text-[#032b5e] tracking-wider w-full mb-1">Eficiência Geral</h3>
-                  <div className="relative w-full h-[100px] flex items-center justify-center">
+                  <div className="relative w-full h-[110px] flex items-center justify-center">
                     <ResponsiveContainer width="100%" height="100%">
                       <PieChart>
                         <Pie
@@ -1333,10 +1333,12 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
                             { value: Math.min(eficienciaMedia, 150) },
                             { value: Math.max(0, 150 - eficienciaMedia) }
                           ]}
+                          cx="50%"
+                          cy="80%"
                           startAngle={180}
                           endAngle={0}
-                          innerRadius={36}
-                          outerRadius={48}
+                          innerRadius={45}
+                          outerRadius={58}
                           paddingAngle={0}
                           dataKey="value"
                         >
@@ -1345,9 +1347,9 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
                         </Pie>
                       </PieChart>
                     </ResponsiveContainer>
-                    <div className="absolute inset-0 flex flex-col items-center justify-center pt-4">
+                    <div className="absolute inset-x-0 bottom-1.5 flex flex-col items-center justify-end">
                       <span className="font-extrabold text-[#032b5e] text-lg leading-none">{eficienciaMedia}%</span>
-                      <span className="text-[7px] text-gray-400 font-bold uppercase tracking-wider mt-0.5">Eficiência Geral</span>
+                      <span className="text-[7px] text-gray-400 font-bold uppercase tracking-wider mt-1">Eficiência Geral</span>
                     </div>
                   </div>
                   <div className="flex justify-between w-full text-[8px] text-gray-400 font-bold uppercase px-1 border-t border-gray-100 pt-1">
@@ -1358,9 +1360,9 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
                 </div>
 
                 {/* Ranking Embalagens */}
-                <div className="bg-white border border-gray-200 rounded-xl lg:col-span-4 p-2.5 h-[175px] flex flex-col justify-between">
+                <div className="bg-white border border-gray-200 rounded-xl lg:col-span-4 p-2.5 h-[185px] flex flex-col justify-between">
                   <h3 className="font-sans font-black text-[10px] uppercase text-[#032b5e] tracking-wider mb-1">Ranking Embalagens</h3>
-                  <div className="w-full h-[130px]">
+                  <div className="w-full h-[140px]">
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart layout="vertical" data={chartRankingEmbalagens} margin={{ left: -30, right: 5, top: 0, bottom: 0 }}>
                         <CartesianGrid strokeDasharray="2 2" stroke="#f1f5f9" horizontal={false} />
@@ -1374,9 +1376,9 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
                 </div>
 
                 {/* Distribuição do Trabalho */}
-                <div className="bg-white border border-gray-200 rounded-xl lg:col-span-4 p-2.5 h-[175px] flex flex-col justify-between">
+                <div className="bg-white border border-gray-200 rounded-xl lg:col-span-4 p-2.5 h-[185px] flex flex-col justify-between">
                   <h3 className="font-sans font-black text-[10px] uppercase text-[#032b5e] tracking-wider mb-1">Distribuição do Trabalho</h3>
-                  <div className="flex items-center justify-between gap-2 h-[130px] w-full">
+                  <div className="flex items-center justify-between gap-2 h-[140px] w-full">
                     <div className="w-[85px] h-[85px] shrink-0">
                       <ResponsiveContainer width="100%" height="100%">
                         <PieChart>
@@ -1416,7 +1418,7 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
             <div className="space-y-3">
               {/* LINE 1: Heatmap & Evolução */}
               <section className="grid grid-cols-1 lg:grid-cols-12 gap-3">
-                <div className="bg-white border border-gray-200 rounded-xl lg:col-span-6 p-2.5 h-[180px] flex flex-col justify-between">
+                <div className="bg-white border border-gray-200 rounded-xl lg:col-span-6 p-2.5 h-[220px] flex flex-col justify-between">
                   <h3 className="font-sans font-black text-[10px] uppercase text-[#032b5e] tracking-wider mb-1">Heatmap de Produtividade <span className="text-[9px] text-gray-400 font-normal normal-case">(caixas por hora)</span></h3>
                   <div className="grid grid-cols-6 gap-1 text-center py-1">
                     <div />
@@ -1446,9 +1448,9 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
                   </div>
                 </div>
 
-                <div className="bg-white border border-gray-200 rounded-xl lg:col-span-6 p-2.5 h-[180px] flex flex-col justify-between">
+                <div className="bg-white border border-gray-200 rounded-xl lg:col-span-6 p-2.5 h-[220px] flex flex-col justify-between">
                   <h3 className="font-sans font-black text-[10px] uppercase text-[#032b5e] tracking-wider mb-1">Evolução Semanal da Eficiência</h3>
-                  <div className="w-full h-[140px]">
+                  <div className="w-full h-[175px]">
                     <ResponsiveContainer width="100%" height="100%">
                       <AreaChart data={chartEvolucaoSemanal} margin={{ top: 5, bottom: 0, left: -25, right: 0 }}>
                         <defs>
