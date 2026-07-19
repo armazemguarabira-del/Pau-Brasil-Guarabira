@@ -21,7 +21,7 @@ import {
   FileText
 } from 'lucide-react';
 import { db } from '../firebase';
-import { collection, query, onSnapshot } from 'firebase/firestore';
+import { collection, query, getDocs, limit } from 'firebase/firestore';
 
 interface LandingPageProps {
   onEnterApp: () => void;
@@ -34,18 +34,19 @@ export default function LandingPage({ onEnterApp }: LandingPageProps) {
     validadesAlertas: 12,
   });
 
-  // Real-time Firestore KPI calculation for active connection proof
+  // One-time Firestore KPI calculation for active connection proof
   useEffect(() => {
     if (!db) return;
 
-    try {
-      const qRepack = query(collection(db, 'repack'));
-      const unsubRepack = onSnapshot(qRepack, (snap) => {
-        const rows = snap.docs.map(doc => doc.data());
-        if (rows.length > 0) {
+    async function fetchKpis() {
+      try {
+        const qRepack = query(collection(db, 'repack'), limit(300));
+        const snapRepack = await getDocs(qRepack);
+        const rowsRepack = snapRepack.docs.map(doc => doc.data());
+        if (rowsRepack.length > 0) {
           let totalQty = 0;
           let totalMin = 0;
-          rows.forEach((r: any) => {
+          rowsRepack.forEach((r: any) => {
             totalQty += Number(r.quantidade) || 0;
             if (r.duracao) {
               const parts = r.duracao.split(':').map(Number);
@@ -60,26 +61,32 @@ export default function LandingPage({ onEnterApp }: LandingPageProps) {
           const avg = totalMin > 0 ? Math.round((totalQty / totalMin) * 60) : 780;
           setDbKpis(prev => ({ ...prev, repackAvg: avg > 0 ? avg : 780 }));
         }
-      }, err => console.warn("LandingPage repack listener error:", err));
+      } catch (err) {
+        console.warn("LandingPage repack fetch error:", err);
+      }
 
-      const qQuebras = query(collection(db, 'quebras'));
-      const unsubQuebras = onSnapshot(qQuebras, (snap) => {
-        const rows = snap.docs.map(doc => doc.data());
-        if (rows.length > 0) {
-          const totalQty = rows.reduce((sum: number, r: any) => sum + (Number(r.quantidade) || 0), 0);
+      try {
+        const qQuebras = query(collection(db, 'quebras'), limit(300));
+        const snapQuebras = await getDocs(qQuebras);
+        const rowsQuebras = snapQuebras.docs.map(doc => doc.data());
+        if (rowsQuebras.length > 0) {
+          const totalQty = rowsQuebras.reduce((sum: number, r: any) => sum + (Number(r.quantidade) || 0), 0);
           setDbKpis(prev => ({ ...prev, quebrasTotal: totalQty }));
         }
-      }, err => console.warn("LandingPage quebras listener error:", err));
+      } catch (err) {
+        console.warn("LandingPage quebras fetch error:", err);
+      }
 
-      const qValidades = query(collection(db, 'validades'));
-      const unsubValidades = onSnapshot(qValidades, (snap) => {
-        const rows = snap.docs.map(doc => doc.data());
-        if (rows.length > 0) {
+      try {
+        const qValidades = query(collection(db, 'validades'), limit(300));
+        const snapValidades = await getDocs(qValidades);
+        const rowsValidades = snapValidades.docs.map(doc => doc.data());
+        if (rowsValidades.length > 0) {
           let alertCount = 0;
           const today = new Date();
           today.setHours(0, 0, 0, 0);
 
-          rows.forEach((v: any) => {
+          rowsValidades.forEach((v: any) => {
             if (v.validade) {
               try {
                 let normDate = v.validade;
@@ -98,18 +105,14 @@ export default function LandingPage({ onEnterApp }: LandingPageProps) {
               }
             }
           });
-          setDbKpis(prev => ({ ...prev, validadesAlertas: alertCount > 0 ? alertCount : rows.length }));
+          setDbKpis(prev => ({ ...prev, validadesAlertas: alertCount > 0 ? alertCount : rowsValidades.length }));
         }
-      }, err => console.warn("LandingPage validades listener error:", err));
-
-      return () => {
-        unsubRepack();
-        unsubQuebras();
-        unsubValidades();
-      };
-    } catch (e) {
-      console.warn("Error setting up real-time KPIs on LandingPage:", e);
+      } catch (err) {
+        console.warn("LandingPage validades fetch error:", err);
+      }
     }
+
+    fetchKpis();
   }, []);
 
   const modulosOperacionais = [
@@ -167,6 +170,9 @@ export default function LandingPage({ onEnterApp }: LandingPageProps) {
         </div>
 
         <div className="hidden md:flex items-center gap-8">
+          <a href="#objetivos" className="text-[11px] font-bold tracking-wider text-blue-600 hover:text-blue-900 transition-colors uppercase">Objetivos</a>
+          <a href="#como-funciona" className="text-[11px] font-bold tracking-wider text-blue-600 hover:text-blue-900 transition-colors uppercase">Como Funciona</a>
+          <a href="#modulos" className="text-[11px] font-bold tracking-wider text-blue-600 hover:text-blue-900 transition-colors uppercase">Seu Papel</a>
           <button 
             onClick={onEnterApp}
             className="font-sans text-xs font-black tracking-[1.5px] uppercase bg-blue-600 text-white px-5 py-2.5 rounded-lg hover:bg-blue-700 hover:shadow-md hover:shadow-blue-200 transition-all cursor-pointer flex items-center gap-1.5 border-none"
@@ -440,7 +446,7 @@ export default function LandingPage({ onEnterApp }: LandingPageProps) {
           </div>
           <h2 className="font-sans font-black text-2xl md:text-3xl tracking-tight">Fazer o Certo da Maneira Certa, Sempre!</h2>
           <p className="text-xs text-blue-200/90 leading-relaxed max-w-2xl mx-auto font-medium">
-            O Armazém Fácil nos ajuda a trabalhar com inteligência, reduzindo erros de movimentação de estoque, acelerando as rotas de retorno e valorizando a dedicação diária da nossa equipe. Faça seus lançamentos com atenção e responsabilidade e ajude a manter nossa unidade como referência de eficiência operacional e excelência em DPO Ambev!
+            O Armazém Fácil nos ajuda a trabalhar com inteligência, reuniões rápidas e decisões ágeis, reduzindo erros de movimentação de estoque, acelerando as rotas de retorno e valorizando a dedicação diária da nossa equipe. Faça seus lançamentos com atenção e responsabilidade e ajude a manter nossa unidade como referência de eficiência operacional e excelência em DPO Ambev!
           </p>
           <div className="pt-4">
             <button 

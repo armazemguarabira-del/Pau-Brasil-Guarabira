@@ -79,7 +79,7 @@ export default function AcessosPanel({ user, empresa }: AcessosPanelProps) {
       'armazem': 'Operação EFC / EFD',
       'quebras': 'Operação Quebras',
       'validades': 'Operação Validade',
-      'refugo': 'Operação Blitz Refugo',
+      'refugo': 'Operação Retorno de Rota',
       'empilhador': 'Operação Picking',
       'conferente': 'Operação Conferênte',
       'registros': 'Registros de Setores',

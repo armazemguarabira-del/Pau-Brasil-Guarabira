@@ -362,7 +362,7 @@ export default function LogisticaDrilldown({ metric, rawRows, onBack }: Logistic
         break;
       case 'EFD (Descarga)':
       case 'Descarregamentos':
-        anomalias = `A performance EFD atual está em ${analysisStats.pctDentro}%, o que está fora da meta corporativa ideal de 90%. O gargalo está na devolução de paletes higienizados.`;
+        anomalias = `A performance EFD atual está em ${analysisStats.pctDentro}%, o que está fora da meta corporativa ideal de 85%. O gargalo está na devolução de paletes higienizados.`;
         possiveisCausas = 'Falta de paletes vazios higienizados na doca de descarregamento no final do turno diurno, gerando esperas acumuladas dos caminhões.';
         sugestoes = `1. Remanejar o estoque pulmão de paletes limpos na doca 2 e doca 7 antes do início do pico de descarga.\n2. Incentivar transportadoras parceiras que mantém o EFD acima de 92% com bônus de prioridade pátio.`;
         break;

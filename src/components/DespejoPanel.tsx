@@ -4,6 +4,7 @@ import { collection, addDoc, onSnapshot, query, where, deleteDoc, doc } from 'fi
 import { Usuario, Empresa, DespejoRow } from '../types';
 import DespejoDashboard from './DespejoDashboard';
 import { TrendingUp, CheckCircle, Clock, Award, BarChart2 } from 'lucide-react';
+import SugerirMelhoriaCard from './SugerirMelhoriaCard';
 
 interface DespejoPanelProps {
   user: Usuario;
@@ -126,13 +127,12 @@ export default function DespejoPanel({ user, empresa }: DespejoPanelProps) {
     }
 
     const companyId = empresa?.id || 'demo';
-    const q = query(collection(db, 'despejo'));
+    const q = query(collection(db, 'despejo'), where('empresaId', '==', companyId));
     const unsub = onSnapshot(q, (snap) => {
       const rows = snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as DespejoRow));
-      const filtered = isCustomFirebaseConnected() ? rows : rows.filter(r => r.empresaId === companyId);
-      filtered.sort((a, b) => (b.dataISO || '').localeCompare(a.dataISO || '') || (b.inicio || '').localeCompare(a.inicio || ''));
-      setDespejoRows(filtered);
-      localStorage.setItem(`despejo_rows_${companyId}`, JSON.stringify(filtered));
+      rows.sort((a, b) => (b.dataISO || '').localeCompare(a.dataISO || '') || (b.inicio || '').localeCompare(a.inicio || ''));
+      setDespejoRows(rows);
+      localStorage.setItem(`despejo_rows_${companyId}`, JSON.stringify(rows));
     });
 
     return () => unsub();
@@ -407,7 +407,7 @@ export default function DespejoPanel({ user, empresa }: DespejoPanelProps) {
               </select>
             </div>
             <div className="flex flex-col gap-1.5">
-              <label className="text-[10px] font-bold tracking-widest text-[#6a7d92] uppercase">Quantidade Despejada (Caixas) *</label>
+              <label className="text-[10px] font-bold tracking-widest text-[#6a7d92] uppercase">Quantidade Despejada (SKUs) *</label>
               <input 
                 type="number"
                 min={1}
@@ -539,7 +539,7 @@ export default function DespejoPanel({ user, empresa }: DespejoPanelProps) {
                         </span>
                       )}
                       <span className="text-[10px] text-[#6a7d92] font-semibold">
-                        📦 {totalBoxes} caixas despejadas
+                        📦 {totalBoxes} SKUs despejados
                       </span>
                     </div>
                     <span className="text-[#6a7d92] text-xs transition-transform" style={{ transform: isOpen ? 'rotate(180deg)' : 'rotate(0)' }}>▼</span>
@@ -551,7 +551,7 @@ export default function DespejoPanel({ user, empresa }: DespejoPanelProps) {
                         <thead>
                           <tr className="bg-[#07090d] border-b border-[#222d3a]">
                             <th className="p-3 text-[#6a7d92] uppercase font-bold tracking-wider">Embalagem</th>
-                            <th className="p-3 text-[#6a7d92] uppercase font-bold tracking-wider text-center">Caixas</th>
+                            <th className="p-3 text-[#6a7d92] uppercase font-bold tracking-wider text-center">SKUs</th>
                             <th className="p-3 text-[#6a7d92] uppercase font-bold tracking-wider">Início</th>
                             <th className="p-3 text-[#6a7d92] uppercase font-bold tracking-wider">Fim</th>
                             <th className="p-3 text-[#6a7d92] uppercase font-bold tracking-wider">Duração</th>
@@ -589,6 +589,8 @@ export default function DespejoPanel({ user, empresa }: DespejoPanelProps) {
         </div>
       )}
 
+      {/* Sugerir Melhoria / Plano de Ação para Supervisores */}
+      <SugerirMelhoriaCard user={user} empresa={empresa} setor="Despejo" />
     </div>
   );
 }

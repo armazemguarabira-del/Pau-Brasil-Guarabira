@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { db, isCustomFirebaseConnected } from '../firebase';
-import { collection, onSnapshot, query, where, addDoc } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, addDoc, deleteDoc, doc } from 'firebase/firestore';
 import { Usuario, Empresa, RepackRow, DespejoRow, QuebraRow, ValidadeRow, ArmazemRow, BlitzRefugoRow, Tarefa } from '../types';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
@@ -65,6 +65,11 @@ export default function ExportarPanel({ user, empresa }: ExportarPanelProps) {
   const [importing, setImporting] = useState(false);
   const [importPreview, setImportPreview] = useState<any[]>([]);
   const [importHeaders, setImportHeaders] = useState<string[]>([]);
+
+  // JSON Import States
+  const [jsonFile, setJsonFile] = useState<File | null>(null);
+  const [jsonImporting, setJsonImporting] = useState(false);
+  const [jsonFileContent, setJsonFileContent] = useState<any>(null);
 
   const empresaId = empresa?.id || 'demo';
 
@@ -144,46 +149,52 @@ export default function ExportarPanel({ user, empresa }: ExportarPanelProps) {
       return;
     }
 
-    const qRepack = query(collection(db, 'repack'));
+    // Não assina nenhum listener sem empresaId definido: evita cair num
+    // fallback que buscaria as coleções inteiras sem filtro.
+    if (!empresaId) {
+      return;
+    }
+
+    const qRepack = query(collection(db, 'repack'), where('empresaId', '==', empresaId));
     const unsubRepack = onSnapshot(qRepack, s => {
       const rows = s.docs.map(d => ({ _docId: d.id, ...d.data() } as RepackRow));
-      setRepack(isCustomFirebaseConnected() ? rows : rows.filter(r => r.empresaId === empresaId));
+      setRepack(rows);
     });
 
-    const qDespejo = query(collection(db, 'despejo'));
+    const qDespejo = query(collection(db, 'despejo'), where('empresaId', '==', empresaId));
     const unsubDespejo = onSnapshot(qDespejo, s => {
       const rows = s.docs.map(d => ({ _docId: d.id, ...d.data() } as DespejoRow));
-      setDespejo(isCustomFirebaseConnected() ? rows : rows.filter(r => r.empresaId === empresaId));
+      setDespejo(rows);
     });
 
-    const qQuebras = query(collection(db, 'quebras'));
+    const qQuebras = query(collection(db, 'quebras'), where('empresaId', '==', empresaId));
     const unsubQuebras = onSnapshot(qQuebras, s => {
       const rows = s.docs.map(d => ({ _docId: d.id, ...d.data() } as QuebraRow));
-      setQuebras(isCustomFirebaseConnected() ? rows : rows.filter(r => r.empresaId === empresaId));
+      setQuebras(rows);
     });
 
-    const qValidades = query(collection(db, 'validades'));
+    const qValidades = query(collection(db, 'validades'), where('empresaId', '==', empresaId));
     const unsubValidades = onSnapshot(qValidades, s => {
       const rows = s.docs.map(d => ({ _docId: d.id, ...d.data() } as ValidadeRow));
-      setValidades(isCustomFirebaseConnected() ? rows : rows.filter(r => r.empresaId === empresaId));
+      setValidades(rows);
     });
 
-    const qArmazem = query(collection(db, 'armazem'));
+    const qArmazem = query(collection(db, 'armazem'), where('empresaId', '==', empresaId));
     const unsubArmazem = onSnapshot(qArmazem, s => {
       const rows = s.docs.map(d => ({ _docId: d.id, ...d.data() } as ArmazemRow));
-      setArmazem(isCustomFirebaseConnected() ? rows : rows.filter(r => r.empresaId === empresaId));
+      setArmazem(rows);
     });
 
-    const qBlitz = query(collection(db, 'blitz_refugo'));
+    const qBlitz = query(collection(db, 'blitz_refugo'), where('empresaId', '==', empresaId));
     const unsubBlitz = onSnapshot(qBlitz, s => {
       const rows = s.docs.map(d => ({ _docId: d.id, ...d.data() } as BlitzRefugoRow));
-      setBlitz(isCustomFirebaseConnected() ? rows : rows.filter(r => r.empresaId === empresaId));
+      setBlitz(rows);
     });
 
-    const qTasks = query(collection(db, 'tarefas'));
+    const qTasks = query(collection(db, 'tarefas'), where('empresaId', '==', empresaId));
     const unsubTasks = onSnapshot(qTasks, s => {
       const rows = s.docs.map(d => ({ _docId: d.id, ...d.data() } as Tarefa));
-      setTasks(isCustomFirebaseConnected() ? rows : rows.filter(t => t.empresaId === empresaId));
+      setTasks(rows);
     });
 
     return () => {
@@ -404,11 +415,11 @@ export default function ExportarPanel({ user, empresa }: ExportarPanelProps) {
       });
 
       const ws = XLSX.utils.json_to_sheet(data);
-      XLSX.utils.book_append_sheet(wb, ws, 'Blitz Refugo');
-      XLSX.writeFile(wb, `Relatorio_Refugo_${startDate}_ate_${endDate}.xlsx`);
-      toast('Relatório Refugo baixado com sucesso!');
+      XLSX.utils.book_append_sheet(wb, ws, 'Retorno de Rota');
+      XLSX.writeFile(wb, `Relatorio_Retorno_Rota_${startDate}_ate_${endDate}.xlsx`);
+      toast('Relatório Retorno de Rota baixado com sucesso!');
     } catch (err) {
-      alert('Erro ao exportar Refugo: ' + err);
+      alert('Erro ao exportar Retorno de Rota: ' + err);
     }
   };
 
@@ -452,6 +463,268 @@ export default function ExportarPanel({ user, empresa }: ExportarPanelProps) {
       setBackingUp(false);
       toast(`Backup ${code} criado com sucesso!`);
     }, 1500);
+  };
+
+  // Zerar todos os dados dos dashboards
+  const handleClearAllDashboardData = async () => {
+    const confirmFirst = window.confirm(
+      "⚠️ ATENÇÃO: Você tem certeza que deseja apagar DEFINITIVAMENTE todos os dados operacionais de todos os dashboards? Esta ação é irreversível e apagará Repack, Despejo, Quebras, Validades, Armazém, Retorno de Rota e Tarefas."
+    );
+    if (!confirmFirst) return;
+
+    const confirmSecond = window.confirm(
+      "🔥 CONFIRMAÇÃO CRÍTICA FINAL: Esta é sua última chance. Deseja mesmo zerar tudo agora?"
+    );
+    if (!confirmSecond) return;
+
+    setBackingUp(true); // Usamos o loader de backup existente
+    toast("Iniciando limpeza de dados...");
+
+    try {
+      if (!db) {
+        localStorage.removeItem(`repack_${empresaId}`);
+        localStorage.removeItem(`despejo_${empresaId}`);
+        localStorage.removeItem(`quebras_${empresaId}`);
+        localStorage.removeItem(`validades_${empresaId}`);
+        localStorage.removeItem(`armazem_rows_${empresaId}`);
+        localStorage.removeItem(`blitz_${empresaId}`);
+        localStorage.removeItem(`tasks_${empresaId}`);
+        
+        setRepack([]);
+        setDespejo([]);
+        setQuebras([]);
+        setValidades([]);
+        setArmazem([]);
+        setBlitz([]);
+        setTasks([]);
+        
+        toast("Todos os dados locais foram zerados com sucesso!");
+        setBackingUp(false);
+        return;
+      }
+
+      const collectionsToDelete = [
+        { list: repack, name: 'repack' },
+        { list: despejo, name: 'despejo' },
+        { list: quebras, name: 'quebras' },
+        { list: validades, name: 'validades' },
+        { list: armazem, name: 'armazem' },
+        { list: blitz, name: 'blitz_refugo' },
+        { list: tasks, name: 'tarefas' }
+      ];
+
+      let totalDeleted = 0;
+      for (const item of collectionsToDelete) {
+        const itemsToDelete = isCustomFirebaseConnected() 
+          ? item.list 
+          : item.list.filter((r: any) => r.empresaId === empresaId);
+
+        for (const docObj of itemsToDelete) {
+          if (docObj._docId) {
+            await deleteDoc(doc(db, item.name, docObj._docId));
+            totalDeleted++;
+          }
+        }
+      }
+
+      toast(`Limpeza concluída! ${totalDeleted} registros excluídos no Firebase.`);
+    } catch (err: any) {
+      alert("Erro ao limpar dados no Firebase: " + (err?.message || err));
+    } finally {
+      setBackingUp(false);
+    }
+  };
+
+  // Handle incoming JSON backup files
+  const handleJsonFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setJsonFile(file);
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const text = evt.target?.result as string;
+        const parsed = JSON.parse(text);
+        setJsonFileContent(parsed);
+      } catch (err) {
+        alert('Erro ao decodificar arquivo JSON. Verifique se o formato está correto: ' + err);
+        setJsonFile(null);
+        setJsonFileContent(null);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleJsonImportSubmit = async () => {
+    if (!jsonFileContent) return;
+    setJsonImporting(true);
+    toast('Iniciando importação de backup JSON...');
+
+    try {
+      let totalImported = 0;
+      const isMultiCollection = typeof jsonFileContent === 'object' && !Array.isArray(jsonFileContent);
+
+      const toSec = (hms: string) => {
+        const parts = String(hms).split(':').map(Number);
+        const h = parts[0] || 0;
+        const m = parts[1] || 0;
+        const s = parts[2] || 0;
+        return h * 3600 + m * 60 + s;
+      };
+
+      const toHMS = (sec: number) => {
+        sec = Math.max(0, Math.floor(sec));
+        const h = Math.floor(sec / 3600);
+        const m = Math.floor((sec % 3600) / 60);
+        const s = sec % 60;
+        const pad = (num: number) => String(num).padStart(2, '0');
+        return `${pad(h)}:${pad(m)}:${pad(s)}`;
+      };
+
+      const formatHMSTime = (timeStr: any) => {
+        if (!timeStr) return '00:00:00';
+        const str = String(timeStr).trim();
+        const parts = str.split(':');
+        if (parts.length === 2) {
+          return `${parts[0].padStart(2, '0')}:${parts[1].padStart(2, '0')}:00`;
+        }
+        if (parts.length === 1) {
+          return `${parts[0].padStart(2, '0')}:00:00`;
+        }
+        return `${parts[0].padStart(2, '0')}:${parts[1].padStart(2, '0')}:${parts[2].padStart(2, '0')}`;
+      };
+
+      const formatPtBrDate = (dateStr: any) => {
+        if (!dateStr) return '';
+        const str = String(dateStr).trim();
+        const parts = str.split('-');
+        if (parts.length === 3) {
+          return `${parts[2]}/${parts[1]}/${parts[0]}`;
+        }
+        return str;
+      };
+
+      const REPACK_METAS: Record<string, string> = {
+        'LATA 250': '00:04:30',
+        'LATA 269': '00:04:30',
+        'LATA 350': '00:05:30',
+        'LATA 473': '00:05:30',
+        'LONG NECK': '00:06:00',
+        'PET 1L': '00:05:30',
+        'PET 2L': '00:05:00',
+        'PET 500ml': '00:05:00',
+        'PET 200ml': '00:04:30',
+        'PET 2,5L': '00:04:30',
+        'PET 3,3L': '00:04:00',
+        '600 OW': '00:05:00',
+        '300 OW': '00:04:00',
+      };
+
+      if (isMultiCollection) {
+        // Multi-collection backup format (e.g. { repack: [...], despejo: [...] })
+        const collectionsToImport = ['repack', 'despejo', 'quebras', 'validades', 'armazem', 'blitz_refugo', 'tarefas'];
+        
+        for (const col of collectionsToImport) {
+          // Normalize names
+          let sourceKey = col;
+          if (col === 'blitz_refugo' && !jsonFileContent[col] && jsonFileContent['blitz']) sourceKey = 'blitz';
+          if (col === 'tarefas' && !jsonFileContent[col] && jsonFileContent['tasks']) sourceKey = 'tasks';
+          if (col === 'armazem' && !jsonFileContent[col] && jsonFileContent['armazem_rows']) sourceKey = 'armazem_rows';
+          
+          const items = jsonFileContent[sourceKey];
+          if (Array.isArray(items) && items.length > 0) {
+            toast(`Importando ${items.length} itens da coleção '${col}'...`);
+            for (const item of items) {
+              const { _docId, id, ...docData } = item;
+              // Ensure company matches current company
+              docData.empresaId = empresaId;
+
+              if (db) {
+                await addDoc(collection(db, col), docData);
+              } else {
+                const lsKey = col === 'armazem' ? `armazem_rows_${empresaId}` : `${col}_${empresaId}`;
+                const current = JSON.parse(localStorage.getItem(lsKey) || '[]');
+                current.push({ _docId: String(Date.now() + Math.random()), ...docData });
+                localStorage.setItem(lsKey, JSON.stringify(current));
+              }
+              totalImported++;
+            }
+          }
+        }
+      } else if (Array.isArray(jsonFileContent)) {
+        // Single list of items format
+        const targetColName = importTarget === 'armazem' ? 'armazem' : importTarget;
+        toast(`Importando ${jsonFileContent.length} itens para o módulo '${targetColName}'...`);
+        
+        for (const item of jsonFileContent) {
+          let docData: any = {};
+          
+          // Check if it is a custom Excel/JSON repack record with fields like "DATA", "COLABORADOR", "EMBALAGEM"
+          if (item && ('DATA' in item || 'Colaborador' in item || 'EMBALAGEM' in item)) {
+            // Map keys
+            const rowData = item as any;
+            const itemData = rowData.DATA || '';
+            const dataISO = itemData; // "2025-12-01"
+            const dataStr = formatPtBrDate(itemData);
+            const embalagemVal = String(rowData.EMBALAGEM || rowData.embalagem || 'LATA 350').trim().toUpperCase();
+            const quantity = Number(rowData.QTDE || rowData.qtde || rowData.quantidade || 1);
+            const ini = formatHMSTime(rowData.INICIO || rowData.inicio || '00:00:00');
+            const fim = formatHMSTime(rowData.FIM || rowData.fim || '00:00:00');
+            
+            // Calculate duration and meta
+            const totSec = toSec(fim) - toSec(ini);
+            const durationStr = toHMS(totSec);
+            const activeMeta = REPACK_METAS[embalagemVal] || '00:05:00';
+            const metaSecs = toSec(activeMeta) * quantity;
+            const resStatus = totSec <= metaSecs ? '🟢 META BATIDA' : '🔴 ACIMA DA META';
+            const oper = String(rowData.COLABORADOR || rowData.colaborador || 'Operador').trim();
+            const operatorCode = rowData.COD ? ` (${rowData.COD})` : '';
+            
+            docData = {
+              empresaId,
+              data: dataStr,
+              dataISO,
+              embalagem: embalagemVal,
+              quantidade: quantity,
+              inicio: ini,
+              fim: fim,
+              duracao: durationStr,
+              meta: activeMeta,
+              resultado: resStatus,
+              operador: `${oper}${operatorCode}`,
+              _criadoEm: new Date().toISOString()
+            };
+          } else {
+            // Standard JSON schema item
+            const { _docId, id, ...rest } = item;
+            docData = { ...rest, empresaId };
+          }
+
+          // Save item
+          if (db) {
+            await addDoc(collection(db, targetColName), docData);
+          } else {
+            const lsKey = targetColName === 'armazem' ? `armazem_rows_${empresaId}` : `${targetColName}_${empresaId}`;
+            const current = JSON.parse(localStorage.getItem(lsKey) || '[]');
+            current.push({ _docId: String(Date.now() + Math.random()), ...docData });
+            localStorage.setItem(lsKey, JSON.stringify(current));
+          }
+          totalImported++;
+        }
+      } else {
+        throw new Error('O arquivo JSON deve conter um objeto de coleções ou uma lista (Array) de registros.');
+      }
+
+      toast(`Sucesso! ${totalImported} registros restaurados.`);
+      alert(`Parabéns! O backup foi restaurado com sucesso. Foram carregados ${totalImported} registros no banco de dados correspondente à sua empresa (${empresa?.razaoSocial || 'Demonstração'}).`);
+      setJsonFile(null);
+      setJsonFileContent(null);
+    } catch (err: any) {
+      alert('Erro ao restaurar backup JSON: ' + (err?.message || err));
+    } finally {
+      setJsonImporting(false);
+    }
   };
 
   // Handle incoming bulk file uploads
@@ -947,6 +1220,96 @@ export default function ExportarPanel({ user, empresa }: ExportarPanelProps) {
               )}
             </div>
 
+            {/* 📤 Importador e Restaurador de Backup JSON */}
+            <div className="g-card p-6 flex flex-col gap-5 border-l-4 border-l-[#f5a623] bg-white rounded-2xl shadow-sm">
+              <div>
+                <span className="text-[10px] text-[#f5a623] font-black tracking-widest uppercase">MÓDULO DE RESTAURAÇÃO JSON</span>
+                <h3 className="font-sans font-black text-sm tracking-wider uppercase text-slate-800 mt-1">📤 Importador / Restaurador de Backup JSON</h3>
+                <p className="text-xs text-[#6b7280] leading-relaxed mt-1">
+                  Se você possui um arquivo de backup no formato <code className="font-mono bg-slate-100 px-1 py-0.5 rounded text-orange-600">.json</code>, selecione-o abaixo para restaurar todos os registros de uma só vez. O sistema identificará se é um arquivo completo com múltiplas coleções (como Repack, Despejo, Quebras, etc.) ou uma lista de registros para o módulo selecionado acima.
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-2 mt-1">
+                <label className="text-[10px] font-bold text-[#6b7280] uppercase tracking-wider">
+                  Selecione o Arquivo de Backup JSON (.json)
+                </label>
+                <div className="relative border border-dashed border-slate-300 rounded-xl hover:border-[#f5a623] transition-colors p-3 flex items-center justify-between bg-slate-50/50">
+                  <input
+                    type="file"
+                    accept=".json"
+                    onChange={handleJsonFileChange}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                  />
+                  <div className="flex items-center gap-3">
+                    <Database className="w-8 h-8 text-slate-400" />
+                    <div className="text-left">
+                      <span className="text-xs font-bold text-slate-700 block truncate max-w-[240px]">
+                        {jsonFile ? jsonFile.name : 'Nenhum arquivo JSON selecionado'}
+                      </span>
+                      <span className="text-[10px] text-[#6b7280] block">
+                        {jsonFile ? `${(jsonFile.size / 1024).toFixed(1)} KB` : 'Arraste ou clique para selecionar'}
+                      </span>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-bold uppercase text-[#f5a623] bg-[#f5a623]/10 px-2.5 py-1 rounded-lg border border-[#f5a623]/20">
+                    SELECIONAR JSON
+                  </span>
+                </div>
+              </div>
+
+              {jsonFile && jsonFileContent && (
+                <div className="border border-amber-200 rounded-xl bg-amber-500/[0.02] p-4 flex flex-col gap-3">
+                  <div className="flex items-center justify-between border-b border-amber-200/50 pb-2">
+                    <span className="text-[10px] font-bold text-[#f5a623] uppercase tracking-wider">
+                      Resumo da Estrutura do Backup
+                    </span>
+                    <span className="text-[10px] text-[#6b7280] font-mono">
+                      Formato Válido Detectado
+                    </span>
+                  </div>
+
+                  <div className="text-xs text-slate-700 leading-relaxed">
+                    {Array.isArray(jsonFileContent) ? (
+                      <p>
+                        ✓ <strong>Lista Simples Detectada:</strong> Contém <strong className="text-amber-600">{jsonFileContent.length} registros</strong> que serão importados para o módulo <strong>{importTarget.toUpperCase()}</strong>.
+                      </p>
+                    ) : (
+                      <div>
+                        <p className="font-bold text-amber-800">✓ Backup de Múltiplas Coleções Detectado:</p>
+                        <ul className="list-disc pl-5 mt-1 space-y-0.5 text-[#6b7280]">
+                          {Object.entries(jsonFileContent).map(([col, items]: [string, any]) => {
+                            if (Array.isArray(items)) {
+                              return (
+                                <li key={col}>
+                                  Coleção <strong className="text-slate-800">'{col}'</strong>: <strong className="text-slate-800">{items.length} itens</strong> encontrados.
+                                </li>
+                              );
+                            }
+                            return null;
+                          })}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Submit JSON Action */}
+                  <div className="flex items-center justify-between border-t border-amber-200/50 pt-3 mt-1">
+                    <p className="text-[10px] text-[#6b7280] leading-normal max-w-[70%]">
+                      Certifique-se de que o arquivo é de uma fonte confiável. A importação irá gravar esses dados diretamente no banco ativo da sua empresa.
+                    </p>
+                    <button
+                      onClick={handleJsonImportSubmit}
+                      disabled={jsonImporting}
+                      className="py-2 px-5 bg-[#f5a623] hover:bg-[#e09110] text-white font-extrabold text-xs uppercase rounded-lg cursor-pointer transition-colors shadow-sm"
+                    >
+                      {jsonImporting ? 'IMPORTANDO BACKUP...' : '⚡ RESTAURAR BACKUP JSON'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Cloud Backups panel */}
             <div className="g-card p-6 flex flex-col gap-5 border-l-4 border-l-[#a855f7] bg-white rounded-2xl shadow-sm">
               <div className="flex items-center justify-between gap-4 flex-wrap border-b border-slate-100 pb-3">
@@ -1000,6 +1363,27 @@ export default function ExportarPanel({ user, empresa }: ExportarPanelProps) {
                   </tbody>
                 </table>
               </div>
+            </div>
+
+            {/* Critical Data Reset Panel */}
+            <div className="g-card p-6 flex flex-col gap-5 border-l-4 border-l-[#ef4444] bg-[#ef4444]/5 rounded-2xl border border-[#ef4444]/15 shadow-sm">
+              <div className="flex items-center justify-between gap-4 flex-wrap border-b border-[#ef4444]/10 pb-3">
+                <div>
+                  <span className="text-[10px] text-[#ef4444] font-black tracking-widest uppercase">ÁREA DE ADMINISTRAÇÃO AVANÇADA</span>
+                  <h4 className="font-sans font-black text-md text-slate-800 mt-0.5 uppercase">Zerar Dados de Todos os Dashboards</h4>
+                </div>
+                <button 
+                  onClick={handleClearAllDashboardData}
+                  disabled={backingUp}
+                  className="py-2.5 px-5 bg-[#ef4444] hover:bg-[#dc2626] font-extrabold text-xs uppercase tracking-wider text-white border-none rounded-xl cursor-pointer transition-colors shadow-md hover:shadow-lg flex items-center gap-2"
+                >
+                  <span>🗑️ ZERAR DADOS DOS DASHBOARDS</span>
+                </button>
+              </div>
+
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Esta ação apagará <strong>permanentemente</strong> todos os registros cadastrados nos módulos operacionais (Repack, Despejo, Quebras, Validades, Armazém, Retorno de Rota e Tarefas) do banco de dados correspondente à sua empresa. Contas de usuários e cadastros de colaboradores não serão afetados.
+              </p>
             </div>
           </div>
         )}

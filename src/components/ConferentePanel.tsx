@@ -3,6 +3,7 @@ import { db, isCustomFirebaseConnected } from '../firebase';
 import { collection, addDoc, onSnapshot, query, where, deleteDoc, doc } from 'firebase/firestore';
 import { Usuario, Empresa, Tarefa } from '../types';
 import { PRODUCTS } from '../planosData';
+import SugerirMelhoriaCard from './SugerirMelhoriaCard';
 
 interface ConferentePanelProps {
   user: Usuario;
@@ -110,7 +111,7 @@ export default function ConferentePanel({ user, empresa }: ConferentePanelProps)
       return;
     }
 
-    const q = query(collection(db, 'tarefas'));
+    const q = query(collection(db, 'tarefas'), where('empresaId', '==', empresaId));
     const unsub = onSnapshot(q, (snap) => {
       const rows = snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as Tarefa));
       rows.sort((a, b) => (b.criadoEm || '').localeCompare(a.criadoEm || ''));
@@ -462,6 +463,8 @@ export default function ConferentePanel({ user, empresa }: ConferentePanelProps)
 
       </div>
 
+      {/* Sugerir Melhoria / Plano de Ação para Supervisores */}
+      <SugerirMelhoriaCard user={user} empresa={empresa} setor="Conferente" />
     </div>
   );
 }

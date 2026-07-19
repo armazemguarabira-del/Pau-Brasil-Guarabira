@@ -20,14 +20,13 @@ import DespejoDashboard from './components/DespejoDashboard';
 import LogisticaDashboard from './components/LogisticaDashboard';
 import QuebrasDashboard from './components/QuebrasDashboard';
 import FefoDashboard from './components/FefoDashboard';
-import BlitzDashboard from './components/BlitzDashboard';
 import PickingDashboard from './components/PickingDashboard';
 import RegistrosPanel from './components/RegistrosPanel';
 import AcessosPanel from './components/AcessosPanel';
 
 import { auth, db, isCustomFirebaseConnected } from './firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, onSnapshot } from 'firebase/firestore';
 import { Usuario, Empresa } from './types';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -39,6 +38,49 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [theme, setTheme] = useState<'dark' | 'light'>('light');
   const [currentTime, setCurrentTime] = useState('');
+  const [activeActions, setActiveActions] = useState<any[]>([]);
+
+  // Listen to pending action plans for the current logged in collaborator
+  useEffect(() => {
+    if (!user || !db) {
+      setActiveActions([]);
+      return;
+    }
+    const companyId = user.empresaId || 'demo';
+    
+    // Listen to pending actions for this specific collaborator
+    const q = query(
+      collection(db, 'acoes'),
+      where('empresaId', '==', companyId),
+      where('colaboradorId', '==', user.uid),
+      where('status', '==', 'pendente'),
+      where('tipo', '==', 'colaborador')
+    );
+
+    const unsub = onSnapshot(q, (snapshot) => {
+      const docs = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setActiveActions(docs);
+    }, (err) => {
+      console.error("Erro ao escutar ações ativas", err);
+    });
+
+    return () => unsub();
+  }, [user?.uid, user?.empresaId]);
+
+  const isBlockedByActionPlan = () => {
+    // Admin, supervisors and master bypasses are never blocked!
+    const isNixon = user?.email?.toLowerCase().trim() === 'nixon.a.a100.nh@gmail.com';
+    const isSuperOrAdmin = user?.isControle || user?.papel === 'admin' || user?.papel === 'controle' || user?.uid === 'bypass_g1009';
+    if (isNixon || isSuperOrAdmin) return false;
+
+    return activeActions.some(action => {
+      const limitTime = new Date(action.limiteEm || (new Date(action.criadoEm).getTime() + 7 * 24 * 60 * 60 * 1000)).getTime();
+      return Date.now() > limitTime;
+    });
+  };
 
   useEffect(() => {
     const tick = () => {
@@ -329,6 +371,99 @@ export default function App() {
       return null;
     }
 
+    const isNixon = user?.email?.toLowerCase()?.trim() === 'nixon.a.a100.nh@gmail.com';
+    const userRoles = (user?.papel || '').split(',').map((s: string) => s.trim());
+    const isSupervisorOrAdmin = user?.isControle || userRoles.includes('admin') || userRoles.includes('controle') || isNixon || user?.uid === 'bypass_g1009';
+
+    const adminPanels = [
+      'acessos', 'controle', 'exportar', 'firebase', 'registros',
+      'repack-dashboard', 'despejo-dashboard', 'logistica-dashboard',
+      'quebras-dashboard', 'fefo-dashboard', 'picking-dashboard'
+    ];
+
+    if (adminPanels.includes(activePanel) && !isSupervisorOrAdmin) {
+      return (
+        <div className="flex flex-col items-center justify-center p-8 bg-white rounded-2xl shadow-sm border border-gray-100 max-w-md mx-auto my-12 text-center" id="acesso-restrito-container">
+          <div className="w-16 h-16 bg-rose-50 text-rose-500 rounded-full flex items-center justify-center mb-4" id="acesso-restrito-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m0 0v2m0-2h2m-2 0H10m3-9a1 1 0 11-2 0 1 1 0 012 0zM3.172 7.828c.39-.39.902-.586 1.414-.586h14.828c.512 0 1.024.195 1.414.586a2 2 0 010 2.828l-1.414 1.414a2 2 0 01-2.828 0l-1.414-1.414a2 2 0 010-2.828L15 6.414a2 2 0 01-2.828 0l-1.414 1.414a2 2 0 010 2.828L9.343 12.07a2 2 0 01-2.828 0l-1.414-1.414a2 2 0 010-2.828l1.414-1.414z" />
+            </svg>
+          </div>
+          <h2 className="text-xl font-bold text-gray-900 mb-2" id="acesso-restrito-title">Acesso Restrito</h2>
+          <p className="text-sm text-gray-500 mb-6" id="acesso-restrito-desc">Sua conta não possui privilégios de supervisor ou administrador para acessar esta tela.</p>
+          <button 
+            id="acesso-restrito-btn-voltar"
+            onClick={() => setActivePanel('visao-geral')} 
+            className="px-6 py-2 bg-[#1e56f0] text-white rounded-lg hover:bg-[#1a4cd8] font-medium transition-colors cursor-pointer"
+          >
+            Voltar para Visão Geral
+          </button>
+        </div>
+      );
+    }
+
+    const operationalPanels = [
+      'repack', 'despejo', 'armazem', 'quebras', 'validades', 'refugo', 'empilhador', 'conferente'
+    ];
+
+    if (operationalPanels.includes(activePanel) && isBlockedByActionPlan()) {
+      const blockedActions = activeActions.filter(action => {
+        const limitTime = new Date(action.limiteEm || (new Date(action.criadoEm).getTime() + 7 * 24 * 60 * 60 * 1000)).getTime();
+        return Date.now() > limitTime;
+      });
+
+      return (
+        <div className="flex flex-col items-center justify-center p-8 bg-white rounded-2xl shadow-md border-2 border-red-200 max-w-lg mx-auto my-12 text-center" id="trabalho-bloqueado-container">
+          <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mb-4" id="trabalho-bloqueado-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 animate-bounce text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+          <h2 className="text-xl font-black text-slate-800 mb-2 uppercase tracking-wide" id="trabalho-bloqueado-title">⚠️ Trabalho Bloqueado</h2>
+          <p className="text-xs text-slate-500 mb-6 leading-relaxed" id="trabalho-bloqueado-desc">
+            De acordo com as regras operacionais, você possui um plano de ação criado para você que ultrapassou o <strong>limite máximo de 7 dias</strong> para conclusão. Você só poderá registrar produtividade após concluir esta ação.
+          </p>
+
+          <div className="w-full text-left bg-slate-50 border border-slate-100 rounded-xl p-4.5 mb-6 flex flex-col gap-3">
+            <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Ação(ões) Pendente(s) Excedida(s):</span>
+            {blockedActions.map(action => (
+              <div key={action.id} className="p-3 bg-white rounded-lg border border-red-100 flex flex-col gap-1 shadow-xs">
+                <span className="font-bold text-slate-850 text-xs">{action.titulo}</span>
+                <p className="text-[11px] text-slate-500 mt-1">{action.descricao}</p>
+                <div className="flex justify-between items-center mt-2.5 pt-2.5 border-t border-slate-100 text-[10px] text-slate-400 font-medium">
+                  <span>Criado em: {new Date(action.criadoEm).toLocaleDateString('pt-BR')}</span>
+                  <button
+                    onClick={async () => {
+                      try {
+                        const { doc, updateDoc } = await import('firebase/firestore');
+                        await updateDoc(doc(db, 'acoes', action.id), {
+                          status: 'concluido',
+                          resolvidaEm: new Date().toISOString()
+                        });
+                      } catch (err) {
+                        console.error(err);
+                      }
+                    }}
+                    className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded-md font-bold text-[9px] uppercase tracking-wider cursor-pointer transition-all flex items-center gap-1"
+                  >
+                    ✓ Concluir Ação
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <button 
+            id="trabalho-bloqueado-btn-voltar"
+            onClick={() => setActivePanel('visao-geral')} 
+            className="w-full py-3 bg-slate-800 text-white rounded-lg hover:bg-slate-700 font-bold text-xs uppercase tracking-widest transition-colors cursor-pointer"
+          >
+            Ir para a Visão Geral
+          </button>
+        </div>
+      );
+    }
+
     switch (activePanel) {
       case 'dashboard':
       case 'visao-geral':
@@ -357,8 +492,6 @@ export default function App() {
         return <QuebrasDashboard user={user} empresa={empresa} onBack={() => setActivePanel('visao-geral')} />;
       case 'fefo-dashboard':
         return <FefoDashboard user={user} empresa={empresa} onBack={() => setActivePanel('visao-geral')} />;
-      case 'blitz-dashboard':
-        return <BlitzDashboard user={user} empresa={empresa} onBack={() => setActivePanel('visao-geral')} />;
       case 'picking-dashboard':
         return <PickingDashboard user={user} empresa={empresa} onBack={() => setActivePanel('visao-geral')} />;
       case 'despejo':
@@ -453,13 +586,6 @@ export default function App() {
           subtitle: 'Indicadores de produtos próximos ao vencimento, lotes em risco e perdas evitadas.',
           color: 'from-emerald-500/10 to-transparent'
         };
-      case 'blitz-dashboard':
-        return {
-          breadcrumbs: ['Dashboard', 'Dashboard Blitz'],
-          title: 'Dashboard Blitz (Refugo)',
-          subtitle: 'Monitoramento de blitz preventivas e refugo de embalagens recuperáveis.',
-          color: 'from-indigo-500/10 to-transparent'
-        };
       case 'picking-dashboard':
         return {
           breadcrumbs: ['Dashboard', 'Dashboard Picking'],
@@ -478,7 +604,7 @@ export default function App() {
         return {
           breadcrumbs: ['Setores de Operação', 'Operação Despejo'],
           title: 'Operação Despejo',
-          subtitle: 'Lançamento de caixas de garrafas e líquidos destinados a descarte.',
+          subtitle: 'Lançamento de SKUs de garrafas e líquidos destinados a descarte.',
           color: 'from-rose-500/10 to-transparent'
         };
       case 'armazem':
@@ -504,9 +630,9 @@ export default function App() {
         };
       case 'refugo':
         return {
-          breadcrumbs: ['Setores de Operação', 'Operação Blitz Refugo'],
-          title: 'Operação Blitz Refugo',
-          subtitle: 'Auditoria de caixas descartadas para detecção de itens aproveitáveis.',
+          breadcrumbs: ['Setores de Operação', 'Operação Retorno de Rota'],
+          title: 'Operação Retorno de Rota',
+          subtitle: 'Acompanhamento e aferimento de retorno de rotas de entrega e devoluções.',
           color: 'from-indigo-500/10 to-transparent'
         };
       case 'empilhador':
@@ -629,7 +755,9 @@ export default function App() {
   const headerInfo = getHeaderInfo(activePanel);
 
   return (
-    <div className="min-h-screen bg-[#07090d] text-[#e8eef5] flex flex-col md:flex-row font-sans overflow-x-hidden">
+    <div className={`min-h-screen flex flex-col md:flex-row font-sans overflow-x-hidden ${
+      theme === 'dark' ? 'bg-[#07090d] text-[#e8eef5]' : 'bg-white text-slate-800'
+    }`}>
       
       {/* Sidebar navigation */}
       <Sidebar 
@@ -644,25 +772,41 @@ export default function App() {
       />
 
       {/* Main workspace arena with smooth tab switching */}
-      <div className="flex-1 flex flex-col min-h-screen max-h-screen overflow-y-auto overflow-x-hidden w-full max-w-full">
+      <div className={`flex-1 flex flex-col min-h-screen max-h-screen overflow-y-auto overflow-x-hidden w-full max-w-full ${
+        theme === 'dark' ? 'bg-[#07090d]' : 'bg-slate-50/50'
+      }`}>
         
         {/* Workspace Top Header (Glassmorphic & Premium) */}
-        <header className="sticky top-0 z-30 bg-[#07090d]/85 backdrop-blur-md border-b border-[#1c2530] pl-14 pr-4 md:px-5 py-1 h-11 md:h-12 flex items-center justify-between gap-4">
+        <header className={`sticky top-0 z-30 backdrop-blur-md pl-14 pr-4 md:px-5 py-1 h-11 md:h-12 flex items-center justify-between gap-4 border-b ${
+          theme === 'dark' 
+            ? 'bg-[#07090d]/85 border-[#1c2530]' 
+            : 'bg-white/95 border-slate-200 shadow-sm'
+        }`}>
           <div className="flex items-center gap-3 min-w-0">
+            {/* Brand Logo icon on mobile */}
+            <div className="md:hidden flex items-center flex-shrink-0">
+              <BrandLogo variant="icon-only" size="sm" iconSize="sm" />
+            </div>
             {/* Page title */}
-            <h1 className="font-sans font-black text-xs md:text-[13px] tracking-tight text-white uppercase truncate flex-shrink-0">
+            <h1 className={`font-sans font-black text-xs md:text-[13px] tracking-tight uppercase truncate flex-shrink-0 ${
+              theme === 'dark' ? 'text-white' : 'text-slate-800'
+            }`}>
               {headerInfo.title}
             </h1>
-            <span className="hidden xl:inline text-[8px] px-1.5 py-0.5 rounded bg-[#11151c] border border-[#1c2530] text-[#6a7d92] uppercase font-bold tracking-wider">
+            <span className={`hidden xl:inline text-[8px] px-1.5 py-0.5 rounded uppercase font-bold tracking-wider border ${
+              theme === 'dark' 
+                ? 'bg-[#11151c] border-[#1c2530] text-[#6a7d92]' 
+                : 'bg-slate-100 border-slate-200 text-slate-500'
+            }`}>
               {activePanel}
             </span>
-            <div className="hidden sm:block w-[1px] h-3 bg-[#1c2530]" />
+            <div className={`hidden sm:block w-[1px] h-3 ${theme === 'dark' ? 'bg-[#1c2530]' : 'bg-slate-200'}`} />
             {/* Breadcrumbs */}
             <div className="hidden sm:flex items-center gap-1.5 text-[8.5px] uppercase font-black tracking-widest text-[#6a7d92] truncate">
               <span>{headerInfo.breadcrumbs[0]}</span>
               {headerInfo.breadcrumbs[1] && (
                 <>
-                  <span className="text-[#1c2530] font-bold">/</span>
+                  <span className={`font-bold ${theme === 'dark' ? 'text-[#1c2530]' : 'text-slate-300'}`}>/</span>
                   <span className="text-[#1e56f0]">{headerInfo.breadcrumbs[1]}</span>
                 </>
               )}
@@ -671,22 +815,28 @@ export default function App() {
 
           {/* Quick Stats / System Health widget aligned horizontally */}
           <div className="flex items-center gap-3 flex-shrink-0">
-            <div className="text-[9px] md:text-[10px] text-white font-bold uppercase tracking-wider hidden md:block">
+            <div className={`text-[9px] md:text-[10px] font-bold uppercase tracking-wider hidden md:block ${
+              theme === 'dark' ? 'text-white' : 'text-slate-700'
+            }`}>
               Operador: <span className="text-[#1e56f0]">{user.nome?.split(' ')[0]}</span>
             </div>
             {currentTime && (
               <>
-                <div className="w-[1px] h-3.5 bg-[#1c2530] hidden md:block" />
+                <div className={`w-[1px] h-3.5 hidden md:block ${theme === 'dark' ? 'bg-[#1c2530]' : 'bg-slate-200'}`} />
                 <div className="text-[9px] text-slate-400 font-mono font-bold uppercase tracking-wider hidden md:block">
                   {currentTime}
                 </div>
               </>
             )}
-            <div className="w-[1px] h-3.5 bg-[#1c2530] hidden sm:block" />
+            <div className={`w-[1px] h-3.5 hidden sm:block ${theme === 'dark' ? 'bg-[#1c2530]' : 'bg-slate-200'}`} />
             {/* Live Indicator Widget */}
-            <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-[#11151c] border border-[#1c2530] text-[8.5px] font-sans font-black tracking-widest text-[#6a7d92]">
+            <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[8.5px] font-sans font-black tracking-widest border ${
+              theme === 'dark' 
+                ? 'bg-[#11151c] border-[#1c2530] text-[#6a7d92]' 
+                : 'bg-slate-100 border-slate-200 text-slate-600'
+            }`}>
               <span className="w-1.5 h-1.5 rounded-full bg-[#1e56f0] animate-pulse" />
-              <span className="uppercase text-gray-300">SISTEMA ATIVO</span>
+              <span className={`uppercase ${theme === 'dark' ? 'text-gray-300' : 'text-slate-700'}`}>SISTEMA ATIVO</span>
             </div>
           </div>
         </header>

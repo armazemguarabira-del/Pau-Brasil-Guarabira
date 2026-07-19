@@ -3,6 +3,7 @@ import { db, isCustomFirebaseConnected } from '../firebase';
 import { collection, addDoc, onSnapshot, query, where, deleteDoc, doc, updateDoc } from 'firebase/firestore';
 import { Usuario, Empresa, ValidadeRow } from '../types';
 import { PRODUCTS } from '../planosData';
+import SugerirMelhoriaCard from './SugerirMelhoriaCard';
 
 interface ValidadesPanelProps {
   user: Usuario;
@@ -27,6 +28,34 @@ export default function ValidadesPanel({ user, empresa }: ValidadesPanelProps) {
     return defaultValue;
   };
 
+  const formatISODateToInput = (isoStr: string): string => {
+    if (!isoStr) return '';
+    const parts = isoStr.split('-');
+    if (parts.length === 3) {
+      return `${parts[2]}/${parts[1]}/${parts[0]}`;
+    }
+    return isoStr;
+  };
+
+  const parseInputDateToISO = (dateStr: string): string | null => {
+    if (!dateStr) return null;
+    const parts = dateStr.split('/');
+    if (parts.length !== 3) return null;
+    let [dayStr, monthStr, yearStr] = parts;
+    if (!dayStr || !monthStr || !yearStr) return null;
+    const d = dayStr.padStart(2, '0');
+    const m = monthStr.padStart(2, '0');
+    let y = yearStr;
+    if (y.length === 2) {
+      y = '20' + y;
+    }
+    if (y.length !== 4) return null;
+    const isoDate = `${y}-${m}-${d}`;
+    const timestamp = Date.parse(isoDate + 'T00:00:00');
+    if (isNaN(timestamp)) return null;
+    return isoDate;
+  };
+
   const [produtoBusca, setProdutoBusca] = useState<string>(() => getDraftValue('produtoBusca', ''));
   const [selectedProd, setSelectedProd] = useState<{ codigo: number, descricao: string } | null>(() => getDraftValue('selectedProd', null));
   const [showDropdown, setShowProdDropdown] = useState(false);
@@ -35,7 +64,12 @@ export default function ValidadesPanel({ user, empresa }: ValidadesPanelProps) {
   const [lastro, setLastro] = useState<number>(() => getDraftValue('lastro', 0));
   const [caixa, setCaixa] = useState<number>(() => getDraftValue('caixa', 0));
   const [validade, setValidade] = useState<string>(() => getDraftValue('validade', ''));
-  const [localizacao, setLocalizacao] = useState<'picking' | 'central'>(() => getDraftValue('localizacao', 'picking'));
+  const [validadeInput, setValidadeInput] = useState<string>(() => {
+    const val = getDraftValue('validade', '');
+    return formatISODateToInput(val);
+  });
+  const [localizacao, setLocalizacao] = useState<'picking' | 'central' | 'marketplace'>(() => getDraftValue('localizacao', 'picking'));
+  const [bloco, setBloco] = useState<string>(() => getDraftValue('bloco', ''));
 
   const [activeTab, setActiveTab] = useState<'form' | 'lista'>('form');
   const [validadesList, setValidadesList] = useState<ValidadeRow[]>([]);
@@ -47,7 +81,7 @@ export default function ValidadesPanel({ user, empresa }: ValidadesPanelProps) {
       const saved = localStorage.getItem(draftKey);
       if (saved) {
         const parsed = JSON.parse(saved);
-        return !!(parsed.produtoBusca || parsed.selectedProd || parsed.palhete > 0 || parsed.lastro > 0 || parsed.caixa > 0 || parsed.validade || parsed.localizacao !== 'picking');
+        return !!(parsed.produtoBusca || parsed.selectedProd || parsed.palhete > 0 || parsed.lastro > 0 || parsed.caixa > 0 || parsed.validade || parsed.localizacao !== 'picking' || parsed.bloco);
       }
     } catch (e) {}
     return false;
@@ -59,6 +93,7 @@ export default function ValidadesPanel({ user, empresa }: ValidadesPanelProps) {
 
   // Filters
   const [filterLoc, setFilterLoc] = useState<string>('todos');
+  const [filterBloco, setFilterBloco] = useState<string>('todos');
   const [filterStatus, setFilterStatus] = useState<string>('todos');
   const [sortOrder, setSortSort] = useState<'asc' | 'desc'>('asc');
 
@@ -72,10 +107,11 @@ export default function ValidadesPanel({ user, empresa }: ValidadesPanelProps) {
       lastro,
       caixa,
       validade,
-      localizacao
+      localizacao,
+      bloco
     };
     localStorage.setItem(draftKey, JSON.stringify(draftData));
-  }, [produtoBusca, selectedProd, palhete, lastro, caixa, validade, localizacao, draftKey, editingRow]);
+  }, [produtoBusca, selectedProd, palhete, lastro, caixa, validade, localizacao, bloco, draftKey, editingRow]);
 
   // Sync with prop updates / user changing
   useEffect(() => {
@@ -88,9 +124,12 @@ export default function ValidadesPanel({ user, empresa }: ValidadesPanelProps) {
         setPalhete(parsed.palhete || 0);
         setLastro(parsed.lastro || 0);
         setCaixa(parsed.caixa || 0);
-        setValidade(parsed.validade || '');
+        const val = parsed.validade || '';
+        setValidade(val);
+        setValidadeInput(formatISODateToInput(val));
         setLocalizacao(parsed.localizacao || 'picking');
-        setDraftRestored(!!(parsed.produtoBusca || parsed.selectedProd || parsed.palhete > 0 || parsed.lastro > 0 || parsed.caixa > 0 || parsed.validade || parsed.localizacao !== 'picking'));
+        setBloco(parsed.bloco || '');
+        setDraftRestored(!!(parsed.produtoBusca || parsed.selectedProd || parsed.palhete > 0 || parsed.lastro > 0 || parsed.caixa > 0 || val || parsed.localizacao !== 'picking' || parsed.bloco));
       } else {
         setProdutoBusca('');
         setSelectedProd(null);
@@ -98,7 +137,9 @@ export default function ValidadesPanel({ user, empresa }: ValidadesPanelProps) {
         setLastro(0);
         setCaixa(0);
         setValidade('');
+        setValidadeInput('');
         setLocalizacao('picking');
+        setBloco('');
         setDraftRestored(false);
       }
     } catch (e) {
@@ -114,12 +155,11 @@ export default function ValidadesPanel({ user, empresa }: ValidadesPanelProps) {
       return;
     }
 
-    const q = query(collection(db, 'validades'));
+    const q = query(collection(db, 'validades'), where('empresaId', '==', empresaId));
     const unsub = onSnapshot(q, (snap) => {
       const rows = snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as ValidadeRow));
-      const filtered = isCustomFirebaseConnected() ? rows : rows.filter(r => r.empresaId === empresaId);
-      setValidadesList(filtered);
-      localStorage.setItem(`validades_${empresaId}`, JSON.stringify(filtered));
+      setValidadesList(rows);
+      localStorage.setItem(`validades_${empresaId}`, JSON.stringify(rows));
     });
 
     return () => unsub();
@@ -168,6 +208,34 @@ export default function ValidadesPanel({ user, empresa }: ValidadesPanelProps) {
     setShowProdDropdown(false);
   };
 
+  const handleValidadeChange = (val: string) => {
+    // Permite apenas dígitos e barras
+    let cleaned = val.replace(/[^0-9/]/g, '');
+
+    // Formatação automática (máscara) DD/MM/AAAA
+    const digits = cleaned.replace(/\//g, '');
+    let formatted = '';
+    if (digits.length > 0) {
+      formatted += digits.slice(0, 2);
+    }
+    if (digits.length > 2) {
+      formatted += '/' + digits.slice(2, 4);
+    }
+    if (digits.length > 4) {
+      formatted += '/' + digits.slice(4, 8);
+    }
+
+    const finalVal = formatted || cleaned;
+    setValidadeInput(finalVal);
+
+    const iso = parseInputDateToISO(finalVal);
+    if (iso) {
+      setValidade(iso);
+    } else {
+      setValidade('');
+    }
+  };
+
   const cleanForm = () => {
     setProdutoBusca('');
     setSelectedProd(null);
@@ -175,15 +243,28 @@ export default function ValidadesPanel({ user, empresa }: ValidadesPanelProps) {
     setLastro(0);
     setCaixa(0);
     setValidade('');
+    setValidadeInput('');
     setLocalizacao('picking');
+    setBloco('');
     setEditingRow(null);
     setDraftRestored(false);
     localStorage.removeItem(draftKey);
   };
 
   const handleSave = async () => {
-    if (!validade || (!selectedProd && !editingRow)) {
-      alert('Selecione um produto e a data de validade.');
+    if (!validadeInput) {
+      alert('Por favor, informe a data de vencimento.');
+      return;
+    }
+
+    const isoDate = parseInputDateToISO(validadeInput);
+    if (!isoDate) {
+      alert('Data de vencimento inválida. Por favor, use o formato DD/MM/AAAA (ex: 25/07/2026).');
+      return;
+    }
+
+    if (!selectedProd && !editingRow) {
+      alert('Por favor, selecione um produto.');
       return;
     }
 
@@ -195,8 +276,9 @@ export default function ValidadesPanel({ user, empresa }: ValidadesPanelProps) {
       palhete,
       lastro,
       caixa,
-      validade,
+      validade: isoDate,
       localizacao,
+      bloco,
     };
 
     try {
@@ -246,7 +328,9 @@ export default function ValidadesPanel({ user, empresa }: ValidadesPanelProps) {
     setLastro(r.lastro);
     setCaixa(r.caixa);
     setValidade(r.validade);
+    setValidadeInput(formatISODateToInput(r.validade));
     setLocalizacao(r.localizacao);
+    setBloco(r.bloco || '');
     setActiveTab('form');
   };
 
@@ -307,6 +391,9 @@ export default function ValidadesPanel({ user, empresa }: ValidadesPanelProps) {
     let rows = [...validadesList];
     if (filterLoc !== 'todos') {
       rows = rows.filter(r => r.localizacao === filterLoc);
+    }
+    if (filterBloco !== 'todos') {
+      rows = rows.filter(r => (r.bloco || '') === filterBloco);
     }
     if (filterStatus !== 'todos') {
       rows = rows.filter(r => {
@@ -484,7 +571,7 @@ export default function ValidadesPanel({ user, empresa }: ValidadesPanelProps) {
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <label className="text-[10px] font-bold tracking-[1px] uppercase text-[#6a7d92] text-center">Quant. Caixas</label>
+              <label className="text-[10px] font-bold tracking-[1px] uppercase text-[#6a7d92] text-center">Quant. SKUs</label>
               <input 
                 type="number"
                 min={0}
@@ -495,16 +582,16 @@ export default function ValidadesPanel({ user, empresa }: ValidadesPanelProps) {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="flex flex-col gap-1.5">
               <label className="text-[10px] font-bold tracking-[1.5px] uppercase text-[#6a7d92]">Data de Vencimento *</label>
               <input 
-                type="date"
+                type="text"
                 required
-                value={validade}
-                onChange={e => setValidade(e.target.value)}
-                className="g-input text-snow select-none h-[42px]"
-                style={{ colorScheme: 'dark' }}
+                placeholder="DD/MM/AAAA"
+                value={validadeInput}
+                onChange={e => handleValidadeChange(e.target.value)}
+                className="g-input text-snow h-[42px]"
               />
             </div>
             <div className="flex flex-col gap-1.5">
@@ -514,8 +601,31 @@ export default function ValidadesPanel({ user, empresa }: ValidadesPanelProps) {
                 onChange={e => setLocalizacao(e.target.value as any)} 
                 className="g-input bg-[#151b23] border-[#1c2530]"
               >
-                <option value="picking">Picking de Separação (Baixo / Fácil acesso)</option>
-                <option value="central">Pulmão Central (Aéreo / Paletizado)</option>
+                <option value="central">Estoque central</option>
+                <option value="picking">Picking</option>
+                <option value="marketplace">Marketplace</option>
+              </select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-bold tracking-[1.5px] uppercase text-[#6a7d92]">Bloco</label>
+              <select 
+                value={bloco} 
+                onChange={e => setBloco(e.target.value)} 
+                className="g-input bg-[#151b23] border-[#1c2530]"
+              >
+                <option value="">Nenhum bloco</option>
+                <option value="A1">A1</option>
+                <option value="A2">A2</option>
+                <option value="A3">A3</option>
+                <option value="A4">A4</option>
+                <option value="B1">B1</option>
+                <option value="B2">B2</option>
+                <option value="B3">B3</option>
+                <option value="B4">B4</option>
+                <option value="C1">C1</option>
+                <option value="C2">C2</option>
+                <option value="C3">C3</option>
+                <option value="C4">C4</option>
               </select>
             </div>
           </div>
@@ -548,8 +658,24 @@ export default function ValidadesPanel({ user, empresa }: ValidadesPanelProps) {
             <div className="flex flex-wrap gap-2.5 w-full sm:w-auto">
               <select value={filterLoc} onChange={e => setFilterLoc(e.target.value)} className="g-input text-xs py-2 px-3 bg-[#151b23]/80 border-[#222d3a]">
                 <option value="todos">📍 Todos os Locais</option>
+                <option value="central">Estoque central</option>
                 <option value="picking">Picking</option>
-                <option value="central">Pulmão Central</option>
+                <option value="marketplace">Marketplace</option>
+              </select>
+              <select value={filterBloco} onChange={e => setFilterBloco(e.target.value)} className="g-input text-xs py-2 px-3 bg-[#151b23]/80 border-[#222d3a]">
+                <option value="todos">📦 Todos os Blocos</option>
+                <option value="A1">Bloco A1</option>
+                <option value="A2">Bloco A2</option>
+                <option value="A3">Bloco A3</option>
+                <option value="A4">Bloco A4</option>
+                <option value="B1">Bloco B1</option>
+                <option value="B2">Bloco B2</option>
+                <option value="B3">Bloco B3</option>
+                <option value="B4">Bloco B4</option>
+                <option value="C1">Bloco C1</option>
+                <option value="C2">Bloco C2</option>
+                <option value="C3">Bloco C3</option>
+                <option value="C4">Bloco C4</option>
               </select>
               <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="g-input text-xs py-2 px-3 bg-[#151b23]/80 border-[#222d3a]">
                 <option value="todos">🚦 Todos os Riscos</option>
@@ -627,13 +753,16 @@ export default function ValidadesPanel({ user, empresa }: ValidadesPanelProps) {
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 flex-wrap mb-1.5">
                                 <span className="text-[9px] bg-[#151b23] border border-[#222d3a] px-2 py-0.5 rounded font-black text-[#f5a623] font-mono">{r.codigo}</span>
-                                <span className="text-[9px] bg-[#151b23] px-2 py-0.5 rounded uppercase font-bold text-[#6a7d92]">{r.localizacao}</span>
+                                <span className="text-[9px] bg-[#151b23] px-2 py-0.5 rounded uppercase font-bold text-[#6a7d92]">
+                                  {r.localizacao === 'central' ? 'Estoque central' : r.localizacao === 'picking' ? 'Picking' : 'Marketplace'}
+                                  {r.bloco ? ` — Bloco ${r.bloco}` : ''}
+                                </span>
                               </div>
                               <h4 className="text-sm font-bold text-snow truncate">{r.descricao}</h4>
                               <div className="flex gap-4 flex-wrap text-xs text-[#6a7d92] mt-2">
                                 {r.palhete > 0 && <span>🪵 {r.palhete} paletes</span>}
                                 {r.lastro > 0 && <span>🗃 {r.lastro} lastros</span>}
-                                {r.caixa > 0 && <span>📦 {r.caixa} caixas</span>}
+                                {r.caixa > 0 && <span>📦 {r.caixa} SKUs</span>}
                               </div>
                             </div>
                             
@@ -664,6 +793,8 @@ export default function ValidadesPanel({ user, empresa }: ValidadesPanelProps) {
         </div>
       )}
 
+      {/* Sugerir Melhoria / Plano de Ação para Supervisores */}
+      <SugerirMelhoriaCard user={user} empresa={empresa} setor="Validade" />
     </div>
   );
 }

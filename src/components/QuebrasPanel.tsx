@@ -4,6 +4,7 @@ import { collection, addDoc, onSnapshot, query, where, deleteDoc, doc } from 'fi
 import { Usuario, Empresa, QuebraRow } from '../types';
 import { PRODUCTS } from '../planosData';
 import { TrendingUp, CheckCircle, Clock, Award, BarChart2, AlertTriangle } from 'lucide-react';
+import SugerirMelhoriaCard from './SugerirMelhoriaCard';
 
 interface QuebrasPanelProps {
   user: Usuario;
@@ -205,13 +206,12 @@ export default function QuebrasPanel({ user, empresa }: QuebrasPanelProps) {
     }
 
     const companyId = empresa?.id || 'demo';
-    const q = query(collection(db, 'quebras'));
+    const q = query(collection(db, 'quebras'), where('empresaId', '==', companyId));
     const unsub = onSnapshot(q, (snap) => {
       const rows = snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as QuebraRow));
-      const filtered = isCustomFirebaseConnected() ? rows : rows.filter(r => r.empresaId === companyId);
-      filtered.sort((a, b) => (b.dataISO || '').localeCompare(a.dataISO || ''));
-      setQuebras(filtered);
-      localStorage.setItem(`quebras_${companyId}`, JSON.stringify(filtered));
+      rows.sort((a, b) => (b.dataISO || '').localeCompare(a.dataISO || ''));
+      setQuebras(rows);
+      localStorage.setItem(`quebras_${companyId}`, JSON.stringify(rows));
     });
 
     return () => unsub();
@@ -676,6 +676,8 @@ export default function QuebrasPanel({ user, empresa }: QuebrasPanelProps) {
         </div>
       )}
 
+      {/* Sugerir Melhoria / Plano de Ação para Supervisores */}
+      <SugerirMelhoriaCard user={user} empresa={empresa} setor="Quebras" />
     </div>
   );
 }

@@ -3,6 +3,7 @@ import { db, isCustomFirebaseConnected } from '../firebase';
 import { collection, addDoc, onSnapshot, query, where, deleteDoc, doc } from 'firebase/firestore';
 import { Usuario, Empresa, ArmazemRow } from '../types';
 import { TrendingUp, CheckCircle, Clock, Award, BarChart2 } from 'lucide-react';
+import SugerirMelhoriaCard from './SugerirMelhoriaCard';
 
 interface ArmazemPanelProps {
   user: Usuario;
@@ -34,7 +35,20 @@ export default function ArmazemPanel({ user, empresa }: ArmazemPanelProps) {
   };
 
   const [operacao, setOperacao] = useState<'Carregamento' | 'Descarregamento'>(() => getDraftValue('operacao', 'Carregamento'));
-  const [empilhador, setEmpilhador] = useState<string>(() => getDraftValue('empilhador', ''));
+  const [empilhadorSelection, setEmpilhadorSelection] = useState<string>(() => {
+    const val = getDraftValue('empilhador', '');
+    if (!val) return '';
+    if (['VICTOR RAMOS', 'ALEXANDRE SILVA', 'OZENILDO SILVA', 'MARCELO SOUZA', 'GABRIEL JOSÉ'].includes(val)) return val;
+    return 'Outro';
+  });
+  const [empilhadorOutro, setEmpilhadorOutro] = useState<string>(() => {
+    const val = getDraftValue('empilhador', '');
+    if (['VICTOR RAMOS', 'ALEXANDRE SILVA', 'OZENILDO SILVA', 'MARCELO SOUZA', 'GABRIEL JOSÉ'].includes(val)) return '';
+    return val;
+  });
+
+  const empilhador = empilhadorSelection === 'Outro' ? empilhadorOutro : empilhadorSelection;
+
   const [turno, setTurno] = useState<string>(() => getDraftValue('turno', 'Diurno'));
   const [placaSelection, setPlacaSelection] = useState<string>(() => getDraftValue('placaSelection', PLACAS[0]));
   const [placaOutro, setPlacaOutro] = useState<string>(() => getDraftValue('placaOutro', ''));
@@ -43,6 +57,7 @@ export default function ArmazemPanel({ user, empresa }: ArmazemPanelProps) {
   const [inicio, setInicio] = useState<string>(() => getDraftValue('inicio', ''));
   const [fim, setFim] = useState<string>(() => getDraftValue('fim', ''));
   const [obs, setObs] = useState<string>(() => getDraftValue('obs', ''));
+  const [pernoiteSelection, setPernoiteSelection] = useState<'D0' | 'D1' | 'D2' | 'D3' | 'D4'>('D0');
   const [statusChip, setStatusChip] = useState('—');
   const [activeTab, setActiveTab] = useState<'form' | 'stats' | 'hist'>('form');
   const [armazemRows, setArmazemRows] = useState<ArmazemRow[]>([]);
@@ -88,7 +103,19 @@ export default function ArmazemPanel({ user, empresa }: ArmazemPanelProps) {
       if (saved) {
         const parsed = JSON.parse(saved);
         setOperacao(parsed.operacao || 'Carregamento');
-        setEmpilhador(parsed.empilhador || '');
+        
+        const empVal = parsed.empilhador || '';
+        if (['VICTOR RAMOS', 'ALEXANDRE SILVA', 'OZENILDO SILVA', 'MARCELO SOUZA', 'GABRIEL JOSÉ'].includes(empVal)) {
+          setEmpilhadorSelection(empVal);
+          setEmpilhadorOutro('');
+        } else if (empVal) {
+          setEmpilhadorSelection('Outro');
+          setEmpilhadorOutro(empVal);
+        } else {
+          setEmpilhadorSelection('');
+          setEmpilhadorOutro('');
+        }
+
         setTurno(parsed.turno || 'Diurno');
         setPlacaSelection(parsed.placaSelection || PLACAS[0]);
         setPlacaOutro(parsed.placaOutro || '');
@@ -100,7 +127,8 @@ export default function ArmazemPanel({ user, empresa }: ArmazemPanelProps) {
         setDraftRestored(!!(parsed.empilhador || parsed.placaOutro || parsed.inicio || parsed.fim || parsed.obs || (parsed.palhete !== undefined && parsed.palhete !== '') || parsed.operacao !== 'Carregamento'));
       } else {
         setOperacao('Carregamento');
-        setEmpilhador('');
+        setEmpilhadorSelection('');
+        setEmpilhadorOutro('');
         setTurno('Diurno');
         setPlacaSelection(PLACAS[0]);
         setPlacaOutro('');
@@ -133,16 +161,15 @@ export default function ArmazemPanel({ user, empresa }: ArmazemPanelProps) {
 
   // Sync with Firestore (scoped to company)
   const fbListenArmazem = () => {
-    const q = query(collection(db, 'armazem'));
+    const q = query(collection(db, 'armazem'), where('empresaId', '==', empresaId));
     return onSnapshot(q, (snap) => {
       const rows = snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as ArmazemRow));
-      const filtered = isCustomFirebaseConnected() ? rows : rows.filter(r => r.empresaId === empresaId);
-      setArmazemRows(filtered);
-      localStorage.setItem(`armazem_rows_${empresaId}`, JSON.stringify(filtered));
+      setArmazemRows(rows);
+      localStorage.setItem(`armazem_rows_${empresaId}`, JSON.stringify(rows));
       
       // Auto expand the most recent date
-      if (filtered.length > 0) {
-        const dates = [...new Set(filtered.map(r => r.dataISO))].sort().reverse();
+      if (rows.length > 0) {
+        const dates = [...new Set(rows.map(r => r.dataISO))].sort().reverse();
         if (dates.length > 0) {
           const firstDate = dates[0] as string;
           setExpandedDates(prev => ({ [firstDate]: true, ...prev }));
@@ -171,14 +198,17 @@ export default function ArmazemPanel({ user, empresa }: ArmazemPanelProps) {
 
   useEffect(() => {
     calcWindowStatus();
-  }, [inicio, fim]);
+  }, [inicio, fim, empilhadorSelection]);
 
   const calcWindowStatus = () => {
     if (!inicio || !fim) {
       setStatusChip('—');
       return;
     }
-    const isOk = inicio >= '07:00' && fim <= '21:00';
+    const isNightShift = turno === 'Noturno';
+    const isOk = isNightShift
+      ? (inicio >= '21:00' || inicio <= '06:30') && (fim >= '21:00' || fim <= '06:30')
+      : (inicio >= '07:00' && fim <= '21:00');
     setStatusChip(isOk ? '✅ DENTRO DA JANELA' : '⚠ FORA DA JANELA');
   };
 
@@ -209,9 +239,13 @@ export default function ArmazemPanel({ user, empresa }: ArmazemPanelProps) {
       return;
     }
 
-    const isOk = inicio >= '07:00' && fim <= '21:00';
+    const isNightShift = turno === 'Noturno';
+    const isOk = isNightShift
+      ? (inicio >= '21:00' || inicio <= '06:30') && (fim >= '21:00' || fim <= '06:30')
+      : (inicio >= '07:00' && fim <= '21:00');
     if (!isOk && !obs.trim()) {
-      setErrorMsg('Observação obrigatória ao lançar registros FORA da janela de faturamento (07:00 – 21:00).');
+      const windowStr = isNightShift ? '21:00 – 06:30' : '07:00 – 21:00';
+      setErrorMsg(`Observação obrigatória ao lançar registros FORA da janela de faturamento (${windowStr}).`);
       return;
     }
 
@@ -235,6 +269,7 @@ export default function ArmazemPanel({ user, empresa }: ArmazemPanelProps) {
       placa: finalPlaca,
       tipo,
       palhete: Number(palhete),
+      pernoite: operacao === 'Descarregamento' ? pernoiteSelection : undefined,
       obs: obs.trim()
     };
 
@@ -368,7 +403,7 @@ export default function ArmazemPanel({ user, empresa }: ArmazemPanelProps) {
               <div>
                 <span className="text-[10px] uppercase font-bold text-[#6a7d92] block tracking-wider">Eficiência / No Prazo</span>
                 <span className="text-xl font-bold text-snow font-mono">
-                  {armazemRows.filter(r => r.data === new Date().toLocaleDateString('pt-BR') && r.empilhador === user.nome && r.resultado?.includes('BATIDA')).length}
+                  {armazemRows.filter(r => r.data === new Date().toLocaleDateString('pt-BR') && r.empilhador === user.nome && r.status?.includes('DENTRO')).length}
                 </span>
               </div>
             </div>
@@ -412,11 +447,11 @@ export default function ArmazemPanel({ user, empresa }: ArmazemPanelProps) {
                           <td className="py-3 px-3 font-mono text-[#6a7d92]">{r.inicio} - {r.fim}</td>
                           <td className="py-3 px-3">
                             <span className={`px-2 py-0.5 rounded-md font-bold text-[10px] ${
-                              (r.resultado || '').includes('BATIDA') 
+                              (r.status || '').includes('DENTRO') 
                                 ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
                                 : 'bg-red-500/10 text-red-400 border border-red-500/20'
                             }`}>
-                              {r.resultado}
+                              {r.status}
                             </span>
                           </td>
                         </tr>
@@ -455,7 +490,8 @@ export default function ArmazemPanel({ user, empresa }: ArmazemPanelProps) {
                   setPalhete(1);
                   setObs('');
                   setPlacaOutro('');
-                  setEmpilhador('');
+                  setEmpilhadorSelection('');
+                  setEmpilhadorOutro('');
                   setPlacaSelection(PLACAS[0]);
                   setDraftRestored(false);
                   localStorage.removeItem(draftKey);
@@ -507,14 +543,41 @@ export default function ArmazemPanel({ user, empresa }: ArmazemPanelProps) {
             </div>
             <div className="flex flex-col gap-1.5">
               <label className="text-[10px] font-bold tracking-[1.5px] uppercase text-[#6a7d92]">Empilhador Responsável *</label>
-              <input 
-                type="text" 
+              <select 
+                value={empilhadorSelection} 
+                onChange={e => {
+                  const val = e.target.value;
+                  setEmpilhadorSelection(val);
+                  if (val !== 'Outro') {
+                    setEmpilhadorOutro('');
+                  }
+                  if (val === 'MARCELO SOUZA' || val === 'GABRIEL JOSÉ') {
+                    setTurno('Noturno');
+                  } else if (val === 'VICTOR RAMOS' || val === 'ALEXANDRE SILVA' || val === 'OZENILDO SILVA') {
+                    setTurno('Diurno');
+                  }
+                }} 
+                className="g-input bg-[#151b23] border-[#1c2530]"
                 required
-                placeholder="Nome do operador"
-                value={empilhador}
-                onChange={e => setEmpilhador(e.target.value)}
-                className="g-input"
-              />
+              >
+                <option value="">Selecione o empilhador...</option>
+                <option value="VICTOR RAMOS">VICTOR RAMOS</option>
+                <option value="ALEXANDRE SILVA">ALEXANDRE SILVA</option>
+                <option value="OZENILDO SILVA">OZENILDO SILVA</option>
+                <option value="MARCELO SOUZA">MARCELO SOUZA</option>
+                <option value="GABRIEL JOSÉ">GABRIEL JOSÉ</option>
+                <option value="Outro">Outro...</option>
+              </select>
+              {empilhadorSelection === 'Outro' && (
+                <input 
+                  type="text" 
+                  required
+                  placeholder="Nome do operador"
+                  value={empilhadorOutro}
+                  onChange={e => setEmpilhadorOutro(e.target.value)}
+                  className="g-input mt-2"
+                />
+              )}
             </div>
             <div className="flex flex-col gap-1.5">
               <label className="text-[10px] font-bold tracking-[1.5px] uppercase text-[#6a7d92]">Turno operacional *</label>
@@ -576,7 +639,7 @@ export default function ArmazemPanel({ user, empresa }: ArmazemPanelProps) {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className={`grid grid-cols-1 ${operacao === 'Descarregamento' ? 'md:grid-cols-4' : 'md:grid-cols-3'} gap-4`}>
             <div className="flex flex-col gap-1.5">
               <label className="text-[10px] font-bold tracking-[1.5px] uppercase text-[#6a7d92]">Hora de Início *</label>
               <div className="flex gap-2">
@@ -613,8 +676,26 @@ export default function ArmazemPanel({ user, empresa }: ArmazemPanelProps) {
                 </button>
               </div>
             </div>
+            {operacao === 'Descarregamento' && (
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-bold tracking-[1.5px] uppercase text-[#6a7d92]">Pernoite *</label>
+                <select 
+                  value={pernoiteSelection} 
+                  onChange={e => setPernoiteSelection(e.target.value as any)} 
+                  className="g-input bg-[#151b23] border-[#1c2530]"
+                >
+                  <option value="D0">D0 (Mesmo Dia)</option>
+                  <option value="D1">D1 (1 Dia)</option>
+                  <option value="D2">D2 (2 Dias)</option>
+                  <option value="D3">D3 (3 Dias)</option>
+                  <option value="D4">D4 (4+ Dias)</option>
+                </select>
+              </div>
+            )}
             <div className="flex flex-col gap-1.5">
-              <label className="text-[10px] font-bold tracking-[1.5px] uppercase text-[#6a7d92]">Status de Faturamento (07:00 → 21:00)</label>
+              <label className="text-[10px] font-bold tracking-[1.5px] uppercase text-[#6a7d92]">
+                {empilhadorSelection === 'Paulo' ? 'Status de Faturamento (21:00 → 06:30)' : 'Status de Faturamento (07:00 → 21:00)'}
+              </label>
               <div className={`py-3 px-4 rounded-xl border border-[#222d3a] text-xs font-bold font-sans tracking-wide text-center bg-[#07090d] ${statusChip.includes('DENTRO') ? 'text-[#22c55e]' : statusChip === '—' ? 'text-[#6a7d92]' : 'text-[#f5a623]'}`}>
                 {statusChip}
               </div>
@@ -741,6 +822,8 @@ export default function ArmazemPanel({ user, empresa }: ArmazemPanelProps) {
         </div>
       )}
 
+      {/* Sugerir Melhoria / Plano de Ação para Supervisores */}
+      <SugerirMelhoriaCard user={user} empresa={empresa} setor="EFC / EFD" />
     </div>
   );
 }

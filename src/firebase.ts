@@ -14,13 +14,13 @@ interface FirebaseConfigExtended {
 }
 
 const DEFAULT_CONFIG: FirebaseConfigExtended = {
-  apiKey: "AIzaSyA_ykhJGRk1DbPuDNYooM1VvB2DeVzp2VE",
-  authDomain: "armazemfacil-b2292.firebaseapp.com",
-  projectId: "armazemfacil-b2292",
-  storageBucket: "armazemfacil-b2292.appspot.com",
-  messagingSenderId: "688234941301",
-  appId: "1:688234941301:web:153e2ad3f634379fe3213c",
-  measurementId: "G-6HFDEKWVDB",
+  apiKey: "AIzaSyCZ2yYeYPVA_TVIEwsvQNJ9tzq4f3kYyis",
+  authDomain: "armazemrelatorios.firebaseapp.com",
+  projectId: "armazemrelatorios",
+  storageBucket: "armazemrelatorios.firebasestorage.app",
+  messagingSenderId: "1060201893094",
+  appId: "1:1060201893094:web:5702ee694b6e234f0dbf27",
+  measurementId: undefined,
   firestoreDatabaseId: undefined
 };
 
@@ -33,7 +33,10 @@ if (typeof window !== 'undefined') {
   if (savedConfigStr) {
     try {
       const parsed = JSON.parse(savedConfigStr);
-      if (parsed && parsed.apiKey && parsed.projectId) {
+      if (parsed && parsed.projectId === 'armazemfacil-b2292') {
+        // Automatically clear stale cache pointing to old project
+        localStorage.removeItem('custom_firebase_config');
+      } else if (parsed && parsed.apiKey && parsed.projectId) {
         firebaseConfig = {
           apiKey: parsed.apiKey,
           authDomain: parsed.authDomain || `${parsed.projectId}.firebaseapp.com`,

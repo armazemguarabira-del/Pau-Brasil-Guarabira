@@ -3,6 +3,7 @@ import { db, isCustomFirebaseConnected } from '../firebase';
 import { collection, addDoc, onSnapshot, query, where, deleteDoc, doc } from 'firebase/firestore';
 import { Usuario, Empresa, BlitzRefugoRow } from '../types';
 import { TrendingUp, CheckCircle, Clock, Award, BarChart2 } from 'lucide-react';
+import SugerirMelhoriaCard from './SugerirMelhoriaCard';
 
 interface RefugoPanelProps {
   user: Usuario;
@@ -149,13 +150,12 @@ export default function RefugoPanel({ user, empresa }: RefugoPanelProps) {
       return;
     }
 
-    const q = query(collection(db, 'blitz_refugo'));
+    const q = query(collection(db, 'blitz_refugo'), where('empresaId', '==', empresaId));
     const unsub = onSnapshot(q, (snap) => {
       const rows = snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as BlitzRefugoRow));
-      const filtered = isCustomFirebaseConnected() ? rows : rows.filter(r => r.empresaId === empresaId);
-      filtered.sort((a, b) => (b.dataISO || '').localeCompare(a.dataISO || ''));
-      setBlitzRows(filtered);
-      localStorage.setItem(`blitz_${empresaId}`, JSON.stringify(filtered));
+      rows.sort((a, b) => (b.dataISO || '').localeCompare(a.dataISO || ''));
+      setBlitzRows(rows);
+      localStorage.setItem(`blitz_${empresaId}`, JSON.stringify(rows));
     });
 
     return () => unsub();
@@ -829,6 +829,8 @@ export default function RefugoPanel({ user, empresa }: RefugoPanelProps) {
         </div>
       )}
 
+      {/* Sugerir Melhoria / Plano de Ação para Supervisores */}
+      <SugerirMelhoriaCard user={user} empresa={empresa} setor="Retorno de Rota" />
     </div>
   );
 }

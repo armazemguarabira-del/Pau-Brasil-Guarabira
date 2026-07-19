@@ -167,7 +167,7 @@ export default function FirebasePanel() {
               type="text" 
               value={authDomain} 
               onChange={(e) => setAuthDomain(e.target.value)}
-              placeholder="Ex: armazemfacil-b2292.firebaseapp.com"
+              placeholder="Ex: armazemrelatorios.firebaseapp.com"
               className="w-full bg-[#07090d] border border-[#222d3a] rounded-lg px-3 py-2 text-xs text-snow font-mono focus:border-[#f5a623] focus:outline-none"
             />
           </div>
@@ -180,7 +180,7 @@ export default function FirebasePanel() {
               type="text" 
               value={projectId} 
               onChange={(e) => setProjectId(e.target.value)}
-              placeholder="Ex: armazemfacil-b2292"
+              placeholder="Ex: armazemrelatorios"
               className="w-full bg-[#07090d] border border-[#222d3a] rounded-lg px-3 py-2 text-xs text-snow font-mono focus:border-[#f5a623] focus:outline-none"
             />
           </div>
@@ -193,7 +193,7 @@ export default function FirebasePanel() {
               type="text" 
               value={storageBucket} 
               onChange={(e) => setStorageBucket(e.target.value)}
-              placeholder="Ex: armazemfacil-b2292.appspot.com"
+              placeholder="Ex: armazemrelatorios.firebasestorage.app"
               className="w-full bg-[#07090d] border border-[#222d3a] rounded-lg px-3 py-2 text-xs text-snow font-mono focus:border-[#f5a623] focus:outline-none"
             />
           </div>
@@ -206,7 +206,7 @@ export default function FirebasePanel() {
               type="text" 
               value={messagingSenderId} 
               onChange={(e) => setMessagingSenderId(e.target.value)}
-              placeholder="Ex: 688234941301"
+              placeholder="Ex: 1060201893094"
               className="w-full bg-[#07090d] border border-[#222d3a] rounded-lg px-3 py-2 text-xs text-snow font-mono focus:border-[#f5a623] focus:outline-none"
             />
           </div>
@@ -219,7 +219,7 @@ export default function FirebasePanel() {
               type="text" 
               value={appId} 
               onChange={(e) => setAppId(e.target.value)}
-              placeholder="Ex: 1:688234941301:web:153e2ad3f634379fe3213c"
+              placeholder="Ex: 1:1060201893094:web:5702ee694b6e234f0dbf27"
               className="w-full bg-[#07090d] border border-[#222d3a] rounded-lg px-3 py-2 text-xs text-snow font-mono focus:border-[#f5a623] focus:outline-none"
             />
           </div>
@@ -232,7 +232,7 @@ export default function FirebasePanel() {
               type="text" 
               value={measurementId} 
               onChange={(e) => setMeasurementId(e.target.value)}
-              placeholder="Ex: G-6HFDEKWVDB"
+              placeholder="Ex: G-XXXXXXXXXX"
               className="w-full bg-[#07090d] border border-[#222d3a] rounded-lg px-3 py-2 text-xs text-snow font-mono focus:border-[#f5a623] focus:outline-none"
             />
           </div>

@@ -7,7 +7,8 @@ import {
   addDoc, 
   deleteDoc, 
   doc,
-  updateDoc
+  updateDoc,
+  where
 } from 'firebase/firestore';
 import { Usuario, Empresa, RepackA3Board } from '../types';
 import { 
@@ -331,14 +332,14 @@ export default function A3BoardComponent({ user, empresa, dashboard }: A3BoardCo
   // Sync A3 Boards from firestore
   useEffect(() => {
     const companyId = empresa?.id || 'demo';
-    const q = query(collection(db, 'repack_a3_boards'));
+    const q = query(collection(db, 'repack_a3_boards'), where('empresaId', '==', companyId));
     const unsub = onSnapshot(q, (snap) => {
       const list = snap.docs.map(docSnap => ({
         _docId: docSnap.id,
         ...docSnap.data()
       } as RepackA3Board));
       
-      const filtered = list.filter(b => b.empresaId === companyId && (b.dashboard === dashboard || (!b.dashboard && dashboard === 'repack')));
+      const filtered = list.filter(b => b.dashboard === dashboard || (!b.dashboard && dashboard === 'repack'));
       setBoards(filtered);
     }, (err) => {
       console.error(`Error loading A3 boards for dashboard ${dashboard}:`, err);

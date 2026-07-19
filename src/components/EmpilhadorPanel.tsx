@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { db, isCustomFirebaseConnected } from '../firebase';
 import { collection, onSnapshot, query, where, updateDoc, doc, addDoc } from 'firebase/firestore';
 import { Usuario, Empresa, Tarefa } from '../types';
+import SugerirMelhoriaCard from './SugerirMelhoriaCard';
 
 interface EmpilhadorPanelProps {
   user: Usuario;
@@ -110,7 +111,7 @@ export default function EmpilhadorPanel({ user, empresa }: EmpilhadorPanelProps)
       return;
     }
 
-    const q = query(collection(db, 'tarefas'));
+    const q = query(collection(db, 'tarefas'), where('empresaId', '==', empresaId));
     const unsub = onSnapshot(q, (snap) => {
       const rows = snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as Tarefa));
       setTasks(rows);
@@ -598,6 +599,8 @@ export default function EmpilhadorPanel({ user, empresa }: EmpilhadorPanelProps)
         </div>
       )}
 
+      {/* Sugerir Melhoria / Plano de Ação para Supervisores */}
+      <SugerirMelhoriaCard user={user} empresa={empresa} setor="Picking" />
     </div>
   );
 }

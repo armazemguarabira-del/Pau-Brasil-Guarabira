@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   BarChart, 
   Bar, 
@@ -14,11 +14,18 @@ import {
   Pie,
   Legend,
   AreaChart,
-  Area
+  Area,
+  ScatterChart,
+  Scatter,
+  ZAxis,
+  ReferenceLine
 } from 'recharts';
 import { 
   Calendar, 
   ChevronRight, 
+  ChevronLeft,
+  ChevronDown,
+  Sparkles,
   AlertTriangle,
   ArrowLeft,
   Download,
@@ -39,12 +46,12 @@ import {
   Users,
   AlertCircle,
   Search,
-  CheckSquare,
-  Sparkles
+  CheckSquare
 } from 'lucide-react';
 import { Usuario, Empresa, ValidadeRow } from '../types';
 import { db, isCustomFirebaseConnected } from '../firebase';
-import { collection, onSnapshot, query } from 'firebase/firestore';
+import { collection, onSnapshot, query, where } from 'firebase/firestore';
+import { generateMockValidades } from '../mockDataGenerator';
 import { PRODUCTS } from '../planosData';
 import A3BoardComponent from './A3BoardComponent';
 
@@ -55,7 +62,7 @@ interface FefoDashboardProps {
 }
 
 // Sub-pages defined by user
-type FefoPage = 'executiva' | 'fefo' | 'estoque-picking' | 'estoque-estoque' | 'rlp' | 'detalhes' | 'boarda3';
+type FefoPage = 'executiva' | 'fefo' | 'estoque-picking' | 'estoque-estoque' | 'rlp' | 'boarda3';
 
 interface RLPMeeting {
   id: string;
@@ -180,12 +187,12 @@ const SEED_ACTION_POINTS: ActionPoint[] = [
 ];
 
 const SEED_STOCK_TRANSFERS: StockTransfer[] = [
-  { ruaOrigem: 'Rua A', ruaDestino: 'Rua D', produto: 'SKOL 600ML', lote: 'SK-2026A', validade: '12/07/2026', quantidade: 140, motivo: 'Consolidação de Lote Antigo (FEFO)', data: '26/06/2026' },
-  { ruaOrigem: 'Rua B', ruaDestino: 'Rua C', produto: 'BRAHMA CHOPP GFA VD 1L', lote: 'BR-9842', validade: '22/07/2026', quantidade: 80, motivo: 'Correção de Endereçamento de Corredor', data: '25/06/2026' },
-  { ruaOrigem: 'Rua A', ruaDestino: 'Rua F', produto: 'ORIGINAL 600ML', lote: 'OR-3310', validade: '18/08/2026', quantidade: 120, motivo: 'Reorganização do Blocado de Alto Giro', data: '27/06/2026' },
-  { ruaOrigem: 'Rua C', ruaDestino: 'Rua B', produto: 'PEPSI COLA PET 2L', lote: 'PE-4100', validade: '05/09/2026', quantidade: 200, motivo: 'Ajuste de Paletes de Lastro Duplo', data: '24/06/2026' },
-  { ruaOrigem: 'Rua E', ruaDestino: 'Rua D', produto: 'BUDWEISER 600ML', lote: 'BU-80', validade: '15/07/2026', quantidade: 90, motivo: 'Desvio de Fluxo Corrigido', data: '26/06/2026' },
-  { ruaOrigem: 'Rua A', ruaDestino: 'Rua B', produto: 'SKOL GFA VD 1L', lote: 'SK-12', validade: '01/08/2026', quantidade: 70, motivo: 'Remontagem de Palete Danificado', data: '27/06/2026' }
+  { ruaOrigem: 'A1', ruaDestino: 'A4', produto: 'SKOL 600ML', lote: 'SK-2026A', validade: '12/07/2026', quantidade: 140, motivo: 'Consolidação de Lote Antigo (FEFO)', data: '26/06/2026' },
+  { ruaOrigem: 'B2', ruaDestino: 'B4', produto: 'BRAHMA CHOPP GFA VD 1L', lote: 'BR-9842', validade: '22/07/2026', quantidade: 80, motivo: 'Correção de Endereçamento de Bloco', data: '25/06/2026' },
+  { ruaOrigem: 'A3', ruaDestino: 'C1', produto: 'ORIGINAL 600ML', lote: 'OR-3310', validade: '18/08/2026', quantidade: 120, motivo: 'Reorganização do Blocado de Alto Giro', data: '27/06/2026' },
+  { ruaOrigem: 'C2', ruaDestino: 'B1', produto: 'PEPSI COLA PET 2L', lote: 'PE-4100', validade: '05/09/2026', quantidade: 200, motivo: 'Ajuste de Paletes de Lastro Duplo', data: '24/06/2026' },
+  { ruaOrigem: 'A2', ruaDestino: 'C4', produto: 'BUDWEISER 600ML', lote: 'BU-80', validade: '15/07/2026', quantidade: 90, motivo: 'Desvio de Fluxo Corrigido', data: '26/06/2026' },
+  { ruaOrigem: 'B3', ruaDestino: 'A1', produto: 'SKOL GFA VD 1L', lote: 'SK-12', validade: '01/08/2026', quantidade: 70, motivo: 'Remontagem de Palete Danificado', data: '27/06/2026' }
 ];
 
 const SEED_PICKING_COMP: PickingComparison[] = [
@@ -198,15 +205,100 @@ const SEED_PICKING_COMP: PickingComparison[] = [
   { produto: 'PEPSI COLA PET 2L', lote: 'PE-4100', validade: '05/09/2026', qtdEstoque: 600, qtdPicking: 580, diferenca: 20, status: 'Conforme' }
 ];
 
+const CustomScatterTooltip = ({ active, payload }: any) => {
+  if (active && payload && payload.length) {
+    const data = payload[0].payload;
+    return (
+      <div className="bg-white p-3 border border-gray-200 rounded-lg shadow-md text-xs font-sans">
+        <p className="font-extrabold text-[#032b5e] uppercase mb-1">{data.fullName}</p>
+        <p className="text-gray-500 font-bold">Validade Estoque: <span className="text-slate-800">{data.estoque} dias</span></p>
+        <p className="text-gray-500 font-bold">Validade Picking: <span className="text-slate-800">{data.picking} dias</span></p>
+        <p className="text-gray-500 font-bold">Diferença (Gap): <span className={`font-black ${data.gap > 0 ? 'text-red-600' : 'text-emerald-600'}`}>{data.gap > 0 ? `+${data.gap}` : data.gap} dias</span></p>
+        <p className="text-gray-500 font-bold mt-1">Qtd. Estoque: <span className="text-slate-800">{data.qtdEstoque} cx</span></p>
+        <p className="text-gray-500 font-bold">Localização: <span className="text-slate-800">{data.location}</span></p>
+      </div>
+    );
+  }
+  return null;
+};
+
+const PORTUGUESE_MONTHS = [
+  'JANEIRO', 'FEVEREIRO', 'MARÇO', 'ABRIL', 'MAIO', 'JUNHO',
+  'JULHO', 'AGOSTO', 'SETEMBRO', 'OUTUBRO', 'NOVEMBRO', 'DEZEMBRO'
+];
+
+interface BlockData {
+  id: string;
+  avgValidity: number; // in days
+  menorValidade: number; // in days
+  skuCount: number;
+  pallets: number;
+  criticalPct: number; // percentage of critical products (<=30 days)
+  riskIndex: number;
+  ranges: {
+    critical: number;  // 0-30 days
+    alertMedium: number; // 31-60 days
+    alertLow: number;  // 61-90 days
+    safe: number;      // >90 days
+  };
+}
+
+const BLOCKS_DATA: Record<string, BlockData> = {
+  A1: { id: 'A1', avgValidity: 105, menorValidade: 98, skuCount: 14, pallets: 160, criticalPct: 3, riskIndex: 15, ranges: { critical: 5, alertMedium: 15, alertLow: 30, safe: 110 } },
+  A2: { id: 'A2', avgValidity: 95, menorValidade: 91, skuCount: 18, pallets: 170, criticalPct: 5, riskIndex: 25, ranges: { critical: 8, alertMedium: 22, alertLow: 45, safe: 95 } },
+  A3: { id: 'A3', avgValidity: 72, menorValidade: 65, skuCount: 22, pallets: 180, criticalPct: 14, riskIndex: 48, ranges: { critical: 25, alertMedium: 35, alertLow: 80, safe: 40 } },
+  A4: { id: 'A4', avgValidity: 25, menorValidade: 12, skuCount: 28, pallets: 155, criticalPct: 61, riskIndex: 94, ranges: { critical: 95, alertMedium: 40, alertLow: 15, safe: 5 } },
+  B1: { id: 'B1', avgValidity: 115, menorValidade: 104, skuCount: 12, pallets: 167, criticalPct: 1, riskIndex: 10, ranges: { critical: 2, alertMedium: 10, alertLow: 25, safe: 130 } },
+  B2: { id: 'B2', avgValidity: 68, menorValidade: 62, skuCount: 24, pallets: 168, criticalPct: 12, riskIndex: 45, ranges: { critical: 20, alertMedium: 48, alertLow: 65, safe: 35 } },
+  B3: { id: 'B3', avgValidity: 42, menorValidade: 38, skuCount: 26, pallets: 165, criticalPct: 27, riskIndex: 65, ranges: { critical: 45, alertMedium: 60, alertLow: 40, safe: 20 } },
+  B4: { id: 'B4', avgValidity: 28, menorValidade: 18, skuCount: 30, pallets: 168, criticalPct: 52, riskIndex: 88, ranges: { critical: 88, alertMedium: 50, alertLow: 20, safe: 10 } },
+  C1: { id: 'C1', avgValidity: 120, menorValidade: 112, skuCount: 10, pallets: 166, criticalPct: 1, riskIndex: 8, ranges: { critical: 1, alertMedium: 5, alertLow: 15, safe: 145 } },
+  C2: { id: 'C2', avgValidity: 92, menorValidade: 92, skuCount: 16, pallets: 190, criticalPct: 5, riskIndex: 28, ranges: { critical: 10, alertMedium: 25, alertLow: 70, safe: 85 } },
+  C3: { id: 'C3', avgValidity: 78, menorValidade: 64, skuCount: 20, pallets: 175, criticalPct: 17, riskIndex: 55, ranges: { critical: 30, alertMedium: 55, alertLow: 60, safe: 30 } },
+  C4: { id: 'C4', avgValidity: 15, menorValidade: 5, skuCount: 32, pallets: 152, criticalPct: 72, riskIndex: 98, ranges: { critical: 110, alertMedium: 30, alertLow: 10, safe: 2 } }
+};
+
+const getDaysInMonth = (year: number, month: number) => {
+  return new Date(year, month + 1, 0).getDate();
+};
+
+const getFirstDayOfMonth = (year: number, month: number) => {
+  return new Date(year, month, 1).getDay();
+};
+
 export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardProps) {
   const [activeTab, setActiveTab] = useState<FefoPage>('executiva');
+  const [viewUnit, setViewUnit] = useState<'u' | 'he'>('u');
+  const [selectedBlock, setSelectedBlock] = useState<string>('A4');
+
+  // Helper to convert individual units (can/bottle) to HE
+  const convertUnitsToHE = (units: number, descricao: string): number => {
+    const desc = (descricao || '').toUpperCase();
+    let volumePerUnit = 0.350; // default to 350ml in liters
+    if (desc.includes('250')) volumePerUnit = 0.250;
+    else if (desc.includes('269')) volumePerUnit = 0.269;
+    else if (desc.includes('350')) volumePerUnit = 0.350;
+    else if (desc.includes('473')) volumePerUnit = 0.473;
+    else if (desc.includes('500')) volumePerUnit = 0.500;
+    else if (desc.includes('600')) volumePerUnit = 0.600;
+    else if (desc.includes('1L') || desc.includes('1 L')) volumePerUnit = 1.0;
+    else if (desc.includes('2L') || desc.includes('2 L')) volumePerUnit = 2.0;
+    else if (desc.includes('300')) volumePerUnit = 0.300;
+    return (units * volumePerUnit) / 100;
+  };
   
   // Core dynamic datasets from firebase / localstorage
-  const [validades, setValidades] = useState<ValidadeRow[]>([]);
+  const [actualValidades, setActualValidades] = useState<ValidadeRow[]>([]);
   const [rlpMeetings, setRlpMeetings] = useState<RLPMeeting[]>([]);
   const [actionPoints, setActionPoints] = useState<ActionPoint[]>([]);
   const [stockTransfers, setStockTransfers] = useState<StockTransfer[]>([]);
   const [pickingComp, setPickingComp] = useState<PickingComparison[]>([]);
+
+  const validades = useMemo(() => {
+    const companyId = empresa?.id || 'demo';
+    const mockRows = generateMockValidades(companyId);
+    return [...actualValidades, ...mockRows];
+  }, [actualValidades, empresa?.id]);
 
   // Advanced Filters State
   const [periodFilter, setPeriodFilter] = useState<string>('30');
@@ -214,10 +306,23 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
   const [categoryFilter, setCategoryFilter] = useState<string>('TODAS');
   const [ CDFilter, setCDFilter] = useState<string>('TODOS');
   const [streetFilter, setStreetFilter] = useState<string>('TODAS');
+  const [blocoFilter, setBlocoFilter] = useState<string>('TODOS');
   const [lotFilter, setLotFilter] = useState<string>('TODOS');
   const [expiryBracketFilter, setExpiryBracketFilter] = useState<string>('TODAS');
   const [actionStatusFilter, setActionStatusFilter] = useState<string>('TODOS');
   const [responsibleFilter, setResponsibleFilter] = useState<string>('TODOS');
+
+  // Estoque x Picking tab advanced filters
+  const [epColaborador, setEpColaborador] = useState<string>('todos');
+  const [epEmbalagem, setEpEmbalagem] = useState<string>('todos');
+  const [epMeta, setEpMeta] = useState<string>('todos');
+  const [epStartDate, setEpStartDate] = useState<string>('');
+  const [epEndDate, setEpEndDate] = useState<string>('');
+  const [showEpCalendar, setShowEpCalendar] = useState<boolean>(false);
+  const [draftStartDate, setDraftStartDate] = useState<string>('');
+  const [draftEndDate, setDraftEndDate] = useState<string>('');
+  const [calMonth, setCalMonth] = useState<number>(6); // July (0-indexed is 6)
+  const [calYear, setCalYear] = useState<number>(2026);
 
   // Addition forms states
   const [showAddAction, setShowAddAction] = useState(false);
@@ -242,8 +347,8 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
 
   const [showAddTransfer, setShowAddTransfer] = useState(false);
   const [newTransfer, setNewTransfer] = useState<StockTransfer>({
-    ruaOrigem: 'Rua A',
-    ruaDestino: 'Rua B',
+    ruaOrigem: 'A1',
+    ruaDestino: 'A2',
     produto: 'SKOL 600ML',
     lote: '',
     validade: '',
@@ -259,15 +364,14 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
     // Sync validades (dynamic)
     if (!db) {
       const saved = localStorage.getItem(`validades_${companyId}`);
-      if (saved) setValidades(JSON.parse(saved));
+      if (saved) setActualValidades(JSON.parse(saved));
       return;
     }
 
-    const q = query(collection(db, 'validades'));
+    const q = query(collection(db, 'validades'), where('empresaId', '==', companyId));
     const unsub = onSnapshot(q, (snap) => {
       const rows = snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as ValidadeRow));
-      const filtered = isCustomFirebaseConnected() ? rows : rows.filter(r => r.empresaId === companyId);
-      setValidades(filtered);
+      setActualValidades(rows);
     });
 
     return () => unsub();
@@ -347,7 +451,8 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
     else if (days <= 60) bracket = '31-60';
     else if (days <= 90) bracket = '61-90';
 
-    const totalUnities = (v.palhete || 0) * (v.lastro || 1) * (v.caixa || 1);
+    const totalUnitiesRaw = (v.palhete || 0) * (v.lastro || 1) * (v.caixa || 1);
+    const totalUnities = viewUnit === 'u' ? totalUnitiesRaw : Math.round(convertUnitsToHE(totalUnitiesRaw, v.descricao) * 100) / 100;
     const category = v.descricao.toLowerCase().includes('pet') ? 'PET' : 
                      v.descricao.toLowerCase().includes('lata') || v.descricao.toLowerCase().includes('lt') ? 'Lata' : 'Garrafa Retornável';
 
@@ -356,9 +461,10 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
       days,
       bracket,
       totalUnities,
+      totalUnitiesRaw,
       category,
       unitCost: 6.20, // estimated cost factor per bottle/pack
-      estimatedCost: totalUnities * 6.20
+      estimatedCost: totalUnitiesRaw * 6.20
     };
   });
 
@@ -450,8 +556,8 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
     }
     saveTransfers([newTransfer, ...stockTransfers]);
     setNewTransfer({
-      ruaOrigem: 'Rua A',
-      ruaDestino: 'Rua B',
+      ruaOrigem: 'A1',
+      ruaDestino: 'A2',
       produto: 'SKOL 600ML',
       lote: '',
       validade: '',
@@ -474,9 +580,13 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
         // dynamic check of locations/picking
         if (streetFilter === 'PICKING' && v.localizacao !== 'picking') return false;
         if (streetFilter === 'CENTRAL' && v.localizacao !== 'central') return false;
+        if (streetFilter === 'MARKETPLACE' && v.localizacao !== 'marketplace') return false;
       }
       // Bracket
       if (expiryBracketFilter !== 'TODAS' && v.bracket !== expiryBracketFilter) return false;
+
+      // Bloco
+      if (blocoFilter !== 'TODOS' && v.bloco !== blocoFilter) return false;
 
       // Period limit
       if (periodFilter !== 'tudo') {
@@ -488,7 +598,7 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
     });
   };
 
-  const filteredValidadesList = getFilteredProductsList();
+  const filteredValidadesList = getFilteredProductsList().sort((a, b) => a.days - b.days);
 
   // 5. Chart Data preparations
   // Bracket distribution chart
@@ -499,10 +609,10 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
 
   const bracketChartData = [
     { name: 'Crítico (0-30 dias)', value: bracketCount['0-30'], color: '#ef4444' },
-    { name: 'Alerta (31-60 dias)', value: bracketCount['31-60'], color: '#f5a623' },
+    { name: 'Alerta (31-60 dias)', value: bracketCount['31-60'], color: '#3b82f6' },
     { name: 'Atenção (61-90 dias)', value: bracketCount['61-90'], color: '#eab308' },
     { name: 'Seguro (+90 dias)', value: bracketCount['90+'], color: '#10b981' }
-  ].filter(b => b.value > 0);
+  ];
 
   // Overdue actions by category
   const actionsStatusCount = { 'Pendente': 0, 'Em Andamento': 0, 'Concluído': 0, 'Atrasado': 0 };
@@ -549,6 +659,244 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
     { week: 'Semana 5', risco: totalRiscoUnities,       aderencia: aderenciaFEFO }
   ];
 
+  // Calendar generator for custom datepicker
+  const calendarDays = useMemo(() => {
+    const firstDayIndex = getFirstDayOfMonth(calYear, calMonth);
+    const totalDays = getDaysInMonth(calYear, calMonth);
+    
+    // Previous month info
+    const prevMonth = calMonth === 0 ? 11 : calMonth - 1;
+    const prevYear = calMonth === 0 ? calYear - 1 : calYear;
+    const prevMonthDays = getDaysInMonth(prevYear, prevMonth);
+    
+    const days = [];
+    
+    // Fill previous month trailing days
+    for (let i = firstDayIndex - 1; i >= 0; i--) {
+      const dayNum = prevMonthDays - i;
+      const dateStr = `${prevYear}-${String(prevMonth + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
+      days.push({
+        dayNum,
+        isCurrentMonth: false,
+        dateStr,
+        month: prevMonth,
+        year: prevYear
+      });
+    }
+    
+    // Fill current month days
+    for (let i = 1; i <= totalDays; i++) {
+      const dateStr = `${calYear}-${String(calMonth + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
+      days.push({
+        dayNum: i,
+        isCurrentMonth: true,
+        dateStr,
+        month: calMonth,
+        year: calYear
+      });
+    }
+    
+    // Fill next month leading days
+    const nextMonth = calMonth === 11 ? 0 : calMonth + 1;
+    const nextYear = calMonth === 11 ? calYear + 1 : calYear;
+    let nextDayNum = 1;
+    while (days.length < 42) {
+      const dateStr = `${nextYear}-${String(nextMonth + 1).padStart(2, '0')}-${String(nextDayNum).padStart(2, '0')}`;
+      days.push({
+        dayNum: nextDayNum,
+        isCurrentMonth: false,
+        dateStr,
+        month: nextMonth,
+        year: nextYear
+      });
+      nextDayNum++;
+    }
+    
+    return days;
+  }, [calMonth, calYear]);
+
+  // Apply predefined shortcut dates
+  const applyShortcut = (shortcut: string) => {
+    const today = new Date('2026-07-18T00:00:00');
+    let start = new Date(today);
+    let end = new Date(today);
+    
+    switch (shortcut) {
+      case 'hoje':
+        // 2026-07-18 to 2026-07-18
+        break;
+      case 'ontem':
+        start.setDate(today.getDate() - 1);
+        end.setDate(today.getDate() - 1);
+        break;
+      case '7dias':
+        start.setDate(today.getDate() - 6);
+        break;
+      case '30dias':
+        start.setDate(today.getDate() - 29);
+        break;
+      case 'esteMes':
+        start = new Date(today.getFullYear(), today.getMonth(), 1);
+        end = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+        break;
+      case 'mesPassado':
+        start = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+        end = new Date(today.getFullYear(), today.getMonth(), 0);
+        break;
+      case '4meses':
+        start = new Date(today.getFullYear(), today.getMonth() - 4, today.getDate());
+        break;
+      default:
+        break;
+    }
+    
+    const formatDate = (d: Date) => {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const r = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${r}`;
+    };
+    
+    setDraftStartDate(formatDate(start));
+    setDraftEndDate(formatDate(end));
+    
+    // Focus calendar view to start date's month and year
+    setCalMonth(start.getMonth());
+    setCalYear(start.getFullYear());
+  };
+
+  // Filtered picking data for Estoque x Picking tab
+  const filteredPickingComp = useMemo(() => {
+    return pickingComp.filter(p => {
+      // 1. Filter by Packaging (Embalagem)
+      if (epEmbalagem !== 'todos') {
+        const prodUpper = p.produto.toUpperCase();
+        if (epEmbalagem === 'vidro') {
+          const isVidro = prodUpper.includes('GFA') || prodUpper.includes('VD') || prodUpper.includes('600ML') || prodUpper.includes('1L') || prodUpper.includes('ORIGINAL') || prodUpper.includes('BUDWEISER') || prodUpper.includes('BRAHMA') || prodUpper.includes('SKOL');
+          if (!isVidro) return false;
+        } else if (epEmbalagem === 'lata') {
+          const isLata = prodUpper.includes('LT') || prodUpper.includes('LATA') || prodUpper.includes('269') || prodUpper.includes('LATA');
+          if (!isLata) return false;
+        } else if (epEmbalagem === 'pet') {
+          const isPet = prodUpper.includes('PET') || prodUpper.includes('2L') || prodUpper.includes('PEPSI') || prodUpper.includes('GUARANA') || prodUpper.includes('ANTARCTICA');
+          if (!isPet) return false;
+        }
+      }
+
+      // 2. Filter by Meta (Compliance)
+      if (epMeta !== 'todos') {
+        if (epMeta === 'dentro') {
+          if (p.status !== 'Conforme') return false;
+        } else if (epMeta === 'fora') {
+          if (p.status !== 'Atenção' && p.status !== 'Desvio Crítico') return false;
+        }
+      }
+
+      // 3. Filter by Date range (validade)
+      if (epStartDate || epEndDate) {
+        if (p.validade) {
+          const parts = p.validade.split('/');
+          if (parts.length === 3) {
+            const valDate = new Date(`${parts[2]}-${parts[1]}-${parts[0]}T00:00:00`);
+            if (epStartDate) {
+              const start = new Date(epStartDate + 'T00:00:00');
+              if (valDate < start) return false;
+            }
+            if (epEndDate) {
+              const end = new Date(epEndDate + 'T00:00:00');
+              if (valDate > end) return false;
+            }
+          }
+        }
+      }
+
+      // 4. Filter by Collaborator (Colaborador)
+      if (epColaborador !== 'todos') {
+        const pColab = p.produto.includes('SKOL') || p.produto.includes('ORIGINAL') ? 'Marcos' :
+                       p.produto.includes('BRAHMA') || p.produto.includes('BUDWEISER') ? 'Thiago' :
+                       p.produto.includes('STELLA') ? 'Aline' :
+                       p.produto.includes('GUARANA') ? 'Cleiton' : 'Carlos';
+        if (pColab.toLowerCase() !== epColaborador.toLowerCase()) return false;
+      }
+
+      return true;
+    });
+  }, [pickingComp, epEmbalagem, epMeta, epStartDate, epEndDate, epColaborador]);
+
+  // 4 New Operational Charts Datasets for ESTOQUE x PICKING
+  const fefoEstoquePickingData = useMemo(() => {
+    return filteredPickingComp.map(p => {
+      const days = getDaysRemaining(p.validade);
+      // Clean up product name for short SKU
+      let shortSku = p.produto;
+      if (p.produto.includes('SKOL')) shortSku = 'SKOL 600';
+      else if (p.produto.includes('BRAHMA')) shortSku = 'BRAHMA 1L';
+      else if (p.produto.includes('STELLA')) shortSku = 'STELLA 269';
+      else if (p.produto.includes('GUARANA')) shortSku = 'GUARANÁ 2L';
+      else if (p.produto.includes('ORIGINAL')) shortSku = 'ORIGINAL 600';
+      else if (p.produto.includes('BUDWEISER')) shortSku = 'BUD 600';
+      else if (p.produto.includes('PEPSI')) shortSku = 'PEPSI 2L';
+      else {
+        shortSku = p.produto.split(' ').slice(0, 2).join(' ');
+      }
+
+      // Consistent mock values for default data
+      let pickingDays = Math.max(5, days);
+      let estoqueDays = pickingDays;
+
+      if (p.produto === 'SKOL 600ML') { estoqueDays = 15; pickingDays = 45; }
+      else if (p.produto === 'BRAHMA CHOPP GFA VD 1L') { estoqueDays = 25; pickingDays = 25; }
+      else if (p.produto === 'STELLA ARTOIS LT 269ML') { estoqueDays = 60; pickingDays = 45; }
+      else if (p.produto === 'GUARANA CHP ANTARCTICA PET 2L') { estoqueDays = 30; pickingDays = 90; }
+      else if (p.produto === 'ORIGINAL 600ML') { estoqueDays = 40; pickingDays = 40; }
+      else if (p.produto === 'BUDWEISER 600ML') { estoqueDays = 15; pickingDays = 35; }
+      else if (p.produto === 'PEPSI COLA PET 2L') { estoqueDays = 90; pickingDays = 70; }
+      else {
+        // Dynamic fallback
+        if (p.status === 'Desvio Crítico') {
+          estoqueDays = Math.max(10, Math.round(pickingDays * 0.4));
+        } else if (p.status === 'Conforme') {
+          estoqueDays = Math.round(pickingDays * 1.3);
+        } else {
+          estoqueDays = pickingDays;
+        }
+      }
+
+      const gap = pickingDays - estoqueDays;
+
+      return {
+        sku: shortSku,
+        fullName: p.produto,
+        estoque: estoqueDays,
+        picking: pickingDays,
+        gap: gap,
+        status: p.status,
+        qtdEstoque: p.qtdEstoque,
+        qtdPicking: p.qtdPicking,
+        location: p.status === 'Conforme' ? 'Picking' : 'Estoque Central',
+        validade: p.validade
+      };
+    });
+  }, [filteredPickingComp]);
+
+  const gapSortedData = useMemo(() => {
+    return [...fefoEstoquePickingData].sort((a, b) => b.gap - a.gap);
+  }, [fefoEstoquePickingData]);
+
+  const conformidadeData = useMemo(() => {
+    const currentConformes = filteredPickingComp.filter(p => p.status === 'Conforme').length;
+    const currentDesvios = filteredPickingComp.filter(p => p.status === 'Desvio Crítico' || p.status === 'Atenção').length;
+    const currentPct = filteredPickingComp.length > 0 ? Math.round((currentConformes / filteredPickingComp.length) * 100) : 100;
+
+    return [
+      { mes: 'Março/2026', conformes: 14, naoConformes: 6, percentual: 70, meta: 98 },
+      { mes: 'Abril/2026', conformes: 16, naoConformes: 4, percentual: 80, meta: 98 },
+      { mes: 'Maio/2026', conformes: 19, naoConformes: 3, percentual: 86, meta: 98 },
+      { mes: 'Junho/2026', conformes: 22, naoConformes: 2, percentual: 91, meta: 98 },
+      { mes: 'Julho/2026 (Atual)', conformes: currentConformes, naoConformes: currentDesvios, percentual: currentPct, meta: 98 }
+    ];
+  }, [filteredPickingComp]);
+
   return (
     <div id="fefo-dashboard-wrapper" className="flex flex-col gap-3 bg-[#f8fafc] text-[#0f172a] p-4 rounded-xl shadow-sm border border-gray-200/80 w-full">
       
@@ -583,12 +931,6 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
             Visão Executiva
           </button>
           <button 
-            onClick={() => setActiveTab('fefo')}
-            className={`px-3 py-2 rounded-lg font-sans font-bold text-[10px] uppercase tracking-wider transition-all border-none cursor-pointer ${activeTab === 'fefo' ? 'bg-[#032b5e] text-white shadow-sm' : 'text-gray-500 hover:text-[#032b5e] bg-transparent'}`}
-          >
-            FEFO
-          </button>
-          <button 
             onClick={() => setActiveTab('estoque-picking')}
             className={`px-3 py-2 rounded-lg font-sans font-bold text-[10px] uppercase tracking-wider transition-all border-none cursor-pointer ${activeTab === 'estoque-picking' ? 'bg-[#032b5e] text-white shadow-sm' : 'text-gray-500 hover:text-[#032b5e] bg-transparent'}`}
           >
@@ -598,13 +940,7 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
             onClick={() => setActiveTab('estoque-estoque')}
             className={`px-3 py-2 rounded-lg font-sans font-bold text-[10px] uppercase tracking-wider transition-all border-none cursor-pointer ${activeTab === 'estoque-estoque' ? 'bg-[#032b5e] text-white shadow-sm' : 'text-gray-500 hover:text-[#032b5e] bg-transparent'}`}
           >
-            Estoque x Estoque (Rua x Rua)
-          </button>
-          <button 
-            onClick={() => setActiveTab('detalhes')}
-            className={`px-3 py-2 rounded-lg font-sans font-bold text-[10px] uppercase tracking-wider transition-all border-none cursor-pointer ${activeTab === 'detalhes' ? 'bg-[#032b5e] text-white shadow-sm' : 'text-gray-500 hover:text-[#032b5e] bg-transparent'}`}
-          >
-            Detalhamento SKUs
+            Estoque x Estoque por Bloco
           </button>
           <button 
             onClick={() => setActiveTab('boarda3')}
@@ -613,16 +949,40 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
             Quadro de Ações
           </button>
         </div>
+
+        {/* Unit Selector Toggle */}
+        <div className="flex flex-col shrink-0">
+          <span className="text-[10px] font-extrabold text-slate-500 tracking-wider uppercase mb-1">
+            VISUALIZAÇÃO
+          </span>
+          <div className="flex items-center bg-gray-100 p-0.5 rounded-xl border border-gray-200/60 h-[38px] w-[110px] shrink-0">
+            <button
+              type="button"
+              onClick={() => setViewUnit('u')}
+              className={`flex-1 rounded-lg font-sans font-black text-xs transition-all border-none cursor-pointer h-full flex items-center justify-center ${viewUnit === 'u' ? 'bg-[#032b5e] text-white shadow-sm' : 'text-slate-400 hover:text-[#032b5e] bg-transparent'}`}
+            >
+              CX
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewUnit('he')}
+              className={`flex-1 rounded-lg font-sans font-black text-xs transition-all border-none cursor-pointer h-full flex items-center justify-center ${viewUnit === 'he' ? 'bg-[#032b5e] text-white shadow-sm' : 'text-slate-400 hover:text-[#032b5e] bg-transparent'}`}
+            >
+              HE
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* CORE STATS (KPIs) - DISPLAYED REGARDLESS OF TAB */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+      {activeTab !== 'estoque-estoque' && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-4">
         <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between">
           <div>
             <span className="text-[8.5px] uppercase font-black tracking-widest text-gray-400 block">PRODUTOS PRÓXIMOS AO VENCIMENTO</span>
             <div className="flex items-baseline mt-2">
               <span className="text-3xl font-extrabold text-[#ef4444]">{totalRiscoUnities}</span>
-              <span className="text-[10px] font-bold text-gray-500 ml-1">u (≤90 dias)</span>
+              <span className="text-[10px] font-bold text-gray-500 ml-1">{viewUnit === 'u' ? 'CX' : 'HE'} (≤90 dias)</span>
             </div>
           </div>
           <div className="border-t border-gray-100 pt-2 mt-2 text-[9px] text-gray-400 font-bold uppercase flex justify-between">
@@ -686,31 +1046,9 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
           </div>
         </div>
       </div>
+      )}
 
-      {/* AUTOMATIC SYSTEM ALERTS / INSIGHT BAR */}
-      <div className="bg-[#fffbeb] border border-amber-200 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shadow-sm">
-        <div className="flex items-start gap-2.5">
-          <AlertCircle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
-          <div>
-            <span className="text-xs font-black text-[#7c2d12] uppercase tracking-wider block">ALERTAS FEFO OPERACIONAIS AUTOMÁTICOS</span>
-            <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1 text-[10px] text-amber-800 font-semibold">
-              {totalVencidosUnidades > 0 && <span className="flex items-center gap-1 text-red-600">🛑 {totalVencidosUnidades} UNIDADES VENCIDAS NO ESTOQUE!</span>}
-              {totalDesviosFEFO > 0 && <span className="flex items-center gap-1">⚠️ {totalDesviosFEFO} produtos fora da estratégia FEFO no Picking.</span>}
-              {actionPoints.filter(a => a.status === 'Atrasado').length > 0 && <span className="flex items-center gap-1 text-red-600">🚨 {actionPoints.filter(a => a.status === 'Atrasado').length} Ações RLP vencidas/atrasadas.</span>}
-              <span>📌 Rua A apresenta excesso de remanejamentos internos (+6 movimentações).</span>
-            </div>
-          </div>
-        </div>
-        <button 
-          onClick={() => {
-            const saved = localStorage.getItem(`validades_${companyId}`);
-            if (saved) setValidades(JSON.parse(saved));
-          }}
-          className="flex items-center gap-1 text-[9px] font-black text-[#032b5e] uppercase border border-[#032b5e]/25 hover:bg-white bg-transparent px-2 py-1 rounded-lg transition-colors cursor-pointer"
-        >
-          <RefreshCw className="w-3 h-3" /> Atualizar
-        </button>
-      </div>
+
 
       {/* TAB PAGE RENDERINGS */}
 
@@ -851,7 +1189,7 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
                     <YAxis stroke="#94a3b8" fontSize={9} />
                     <Tooltip contentStyle={{ fontSize: 9 }} />
                     <Legend wrapperStyle={{ fontSize: 9 }} />
-                    <Line type="monotone" dataKey="risco" name="Volume Crítico (unidades)" stroke="#ef4444" strokeWidth={2} />
+                    <Line type="monotone" dataKey="risco" name={`Volume Crítico (${viewUnit === 'u' ? 'CX' : 'HE'})`} stroke="#ef4444" strokeWidth={2} />
                     <Line type="monotone" dataKey="aderencia" name="Aderência FEFO (%)" stroke="#10b981" strokeWidth={2} />
                   </LineChart>
                 </ResponsiveContainer>
@@ -862,399 +1200,1047 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
       )}
 
 
-      {/* ─────────────────────────────────────────────────────────────────
-          TAB 2: FEFO PANEL
-          ───────────────────────────────────────────────────────────────── */}
-      {activeTab === 'fefo' && (
-        <div className="flex flex-col gap-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            
-            {/* Left Column: Ranking of Highest Risk Products */}
-            <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
-              <h3 className="font-sans font-black text-xs uppercase text-[#032b5e] tracking-wider mb-3">
-                RANKING DOS PRODUTOS COM MAIOR RISCO (MÉTODO PARETO)
-              </h3>
-              <p className="text-[10px] text-gray-400 font-bold mb-4">Lotes cadastrados organizados pela criticidade de vencimento</p>
-              
-              <div className="overflow-x-auto">
-                <table className="w-full border-collapse font-sans text-xs">
-                  <thead>
-                    <tr className="bg-slate-50 border-b border-gray-200">
-                      <th className="p-2.5 text-gray-500 text-left uppercase tracking-wider text-[9px]">Código</th>
-                      <th className="p-2.5 text-gray-500 text-left uppercase tracking-wider text-[9px]">Produto</th>
-                      <th className="p-2.5 text-gray-500 text-center uppercase tracking-wider text-[9px]">Prazo</th>
-                      <th className="p-2.5 text-gray-500 text-right uppercase tracking-wider text-[9px]">Unidades</th>
-                      <th className="p-2.5 text-gray-500 text-center uppercase tracking-wider text-[9px]">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {compiledValidades.length === 0 ? (
-                      <tr>
-                        <td colSpan={5} className="p-6 text-center text-gray-400">Nenhum lote com validade cadastrado para gerar o ranking.</td>
-                      </tr>
-                    ) : (
-                      [...compiledValidades]
-                        .sort((a, b) => a.days - b.days)
-                        .slice(0, 10)
-                        .map((v, idx) => {
-                          const statusColor = v.days < 0 ? 'text-red-600 bg-red-100' :
-                                              v.days <= 30 ? 'text-red-600 bg-red-50' :
-                                              v.days <= 60 ? 'text-amber-600 bg-amber-50' : 'text-emerald-600 bg-emerald-50';
-                          return (
-                            <tr key={idx} className="hover:bg-slate-50/40">
-                              <td className="p-2.5 font-mono font-bold text-slate-700">{v.codigo}</td>
-                              <td className="p-2.5 font-semibold text-slate-800 uppercase">{v.descricao}</td>
-                              <td className="p-2.5 text-center font-bold">
-                                <span className={v.days < 0 ? 'text-red-600' : v.days <= 30 ? 'text-red-500' : 'text-slate-600'}>
-                                  {v.days < 0 ? `Vencido há ${Math.abs(v.days)} dias` : `${v.days} dias`}
-                                </span>
-                              </td>
-                              <td className="p-2.5 text-right font-black text-slate-800">{v.totalUnities}</td>
-                              <td className="p-2.5 text-center">
-                                <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${statusColor}`}>
-                                  {v.days < 0 ? 'VENCIDO' : v.days <= 30 ? 'CRÍTICO' : v.days <= 60 ? 'ALERTA' : 'OK'}
-                                </span>
-                              </td>
-                            </tr>
-                          );
-                        })
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
 
-            {/* Right Column: Out of FEFO oldest batch alert */}
-            <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between">
-              <div>
-                <h3 className="font-sans font-black text-xs uppercase text-[#032b5e] tracking-wider mb-2">
-                  DESVIOS DE LOTE MAIS ANTIGO (NÃO-EXPEDIDOS)
-                </h3>
-                <p className="text-[10px] text-gray-400 font-bold mb-4">Lotes que deveriam ter prioridade absoluta de expedição pela regra FEFO</p>
-                
-                <div className="space-y-3.5">
-                  <div className="bg-red-50 border-l-4 border-red-500 p-3.5 rounded-r-lg flex items-start gap-3">
-                    <AlertTriangle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
-                    <div>
-                      <span className="text-[11px] font-black text-red-800 block">SKOL 600ML (Lote: SK-2026A)</span>
-                      <p className="text-[10px] text-red-700 mt-1 leading-normal">
-                        Lote antigo parado no endereço <strong>Rua A - End: 12</strong> com vencimento em <strong>12/07/2026</strong>. Lote mais novo SK-2026B está sendo enviado no picking no lugar deste.
-                      </p>
-                      <span className="inline-block bg-red-100 text-red-800 text-[8px] font-black uppercase px-1.5 py-0.5 rounded mt-2">Diferença de Vencimento: 24 dias</span>
-                    </div>
-                  </div>
-
-                  <div className="bg-amber-50 border-l-4 border-amber-500 p-3.5 rounded-r-lg flex items-start gap-3">
-                    <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-                    <div>
-                      <span className="text-[11px] font-black text-amber-800 block">GUARANA CHP ANTARCTICA PET 2L (Lote: GU-8821)</span>
-                      <p className="text-[10px] text-amber-700 mt-1 leading-normal">
-                        Lote parado na <strong>Rua B - Central</strong>. Lote mais novo sendo expedido na rota de vendas. Bloquear expedição e priorizar escoamento FEFO.
-                      </p>
-                      <span className="inline-block bg-amber-100 text-amber-800 text-[8px] font-black uppercase px-1.5 py-0.5 rounded mt-2">Ação Sugerida: FIFO Switch imediato</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Incidence addresses */}
-              <div className="mt-5 pt-4 border-t border-gray-100">
-                <span className="text-[9px] uppercase font-black text-gray-400 block mb-2">ENDEREÇOS (RUAS) COM MAIOR INCIDÊNCIA DE DESVIOS FEFO</span>
-                <div className="grid grid-cols-3 gap-2">
-                  <div className="bg-slate-50 p-2.5 rounded-lg border border-gray-100 text-center">
-                    <span className="text-[11px] font-black text-red-600 block">Rua A</span>
-                    <span className="text-[9px] text-gray-500 font-bold uppercase mt-1 block">4 Desvios</span>
-                  </div>
-                  <div className="bg-slate-50 p-2.5 rounded-lg border border-gray-100 text-center">
-                    <span className="text-[11px] font-black text-amber-500 block">Rua C</span>
-                    <span className="text-[9px] text-gray-500 font-bold uppercase mt-1 block">2 Desvios</span>
-                  </div>
-                  <div className="bg-slate-50 p-2.5 rounded-lg border border-gray-100 text-center">
-                    <span className="text-[11px] font-black text-gray-500 block">Rua B</span>
-                    <span className="text-[9px] text-gray-500 font-bold uppercase mt-1 block">1 Desvio</span>
-                  </div>
-                </div>
-              </div>
-
-            </div>
-
-          </div>
-        </div>
-      )}
 
 
       {/* ─────────────────────────────────────────────────────────────────
           TAB 3: ESTOQUE X PICKING
           ───────────────────────────────────────────────────────────────── */}
       {activeTab === 'estoque-picking' && (
-        <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-gray-100 pb-4 mb-4">
-            <div>
-              <h3 className="font-sans font-black text-xs uppercase text-[#032b5e] tracking-wider">
-                CONCILIAÇÃO FÍSICA E AJUSTES: ESTOQUE x PICKING
-              </h3>
-              <p className="text-[10px] text-gray-400 font-bold mt-0.5">Visão detalhada de diferenças volumétricas entre o depósito central e as ruas de picking</p>
-            </div>
-            
-            <div className="flex items-center gap-2">
-              <span className="flex items-center gap-1 text-[9.5px] font-bold text-gray-500 uppercase">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" /> Conforme
-              </span>
-              <span className="flex items-center gap-1 text-[9.5px] font-bold text-gray-500 uppercase">
-                <span className="w-2.5 h-2.5 rounded-full bg-amber-500" /> Atenção
-              </span>
-              <span className="flex items-center gap-1 text-[9.5px] font-bold text-gray-500 uppercase">
-                <span className="w-2.5 h-2.5 rounded-full bg-red-500" /> Desvio Crítico
-              </span>
+        <div className="flex flex-col gap-6">
+          
+          {/* PAINEL DE FILTROS DE ESTOQUE x PICKING (IGUAL A FOTO) */}
+          <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex flex-col gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 w-full">
+              
+              {/* Filtro por Colaborador */}
+              <div className="flex flex-col gap-1.5 w-full">
+                <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">Colaborador</label>
+                <div className="relative w-full">
+                  <select 
+                    value={epColaborador} 
+                    onChange={e => setEpColaborador(e.target.value)}
+                    className="w-full h-10 pl-3.5 pr-10 border border-slate-200 rounded-xl bg-white text-xs font-bold text-slate-700 hover:border-slate-300 hover:bg-slate-50 transition-all cursor-pointer shadow-sm outline-none appearance-none"
+                  >
+                    <option value="todos">Todos</option>
+                    <option value="marcos">Marcos</option>
+                    <option value="thiago">Thiago</option>
+                    <option value="aline">Aline</option>
+                    <option value="cleiton">Cleiton</option>
+                    <option value="carlos">Carlos</option>
+                  </select>
+                  <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                    <ChevronDown className="w-4 h-4 text-slate-400" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Filtro por Embalagem */}
+              <div className="flex flex-col gap-1.5 w-full">
+                <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">Embalagem</label>
+                <div className="relative w-full">
+                  <select 
+                    value={epEmbalagem} 
+                    onChange={e => setEpEmbalagem(e.target.value)}
+                    className="w-full h-10 pl-3.5 pr-10 border border-slate-200 rounded-xl bg-white text-xs font-bold text-slate-700 hover:border-slate-300 hover:bg-slate-50 transition-all cursor-pointer shadow-sm outline-none appearance-none"
+                  >
+                    <option value="todos">Todas</option>
+                    <option value="vidro">Garrafa de Vidro (VD)</option>
+                    <option value="lata">Lata (LT)</option>
+                    <option value="pet">Embalagem PET</option>
+                  </select>
+                  <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                    <ChevronDown className="w-4 h-4 text-slate-400" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Filtro por Período (Calendário) */}
+              <div className="flex flex-col gap-1.5 w-full relative">
+                <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">Período (Calendário)</label>
+                <div 
+                  onClick={() => {
+                    const nextVal = !showEpCalendar;
+                    if (nextVal) {
+                      setDraftStartDate(epStartDate);
+                      setDraftEndDate(epEndDate);
+                      const d = epStartDate ? new Date(epStartDate + 'T00:00:00') : new Date('2026-07-18T00:00:00');
+                      setCalMonth(d.getMonth());
+                      setCalYear(d.getFullYear());
+                    }
+                    setShowEpCalendar(nextVal);
+                  }}
+                  className="w-full h-10 px-3.5 border border-slate-200 rounded-xl bg-white flex items-center justify-between text-xs font-bold hover:border-slate-300 hover:bg-slate-50 transition-all cursor-pointer shadow-sm select-none"
+                >
+                  <div className="flex items-center gap-2">
+                    <Calendar className="w-4 h-4 text-blue-600" />
+                    <span className="text-blue-600 font-extrabold">
+                      {epStartDate || epEndDate ? (
+                        `${epStartDate ? epStartDate.split('-').reverse().slice(0, 2).join('/') : ''} a ${epEndDate ? epEndDate.split('-').reverse().slice(0, 2).join('/') : ''}`
+                      ) : 'Todo o Período'}
+                    </span>
+                  </div>
+                  <ChevronDown className="w-4 h-4 text-slate-400" />
+                </div>
+
+                {showEpCalendar && (
+                  <>
+                    <div 
+                      className="fixed inset-0 z-40" 
+                      onClick={() => setShowEpCalendar(false)} 
+                    />
+                    <div className="absolute top-[45px] left-1/2 -translate-x-1/2 sm:translate-x-0 sm:-left-[240px] mt-1 bg-white border border-slate-200 rounded-2xl shadow-2xl flex flex-col sm:flex-row z-50 overflow-hidden divide-y sm:divide-y-0 sm:divide-x divide-slate-100 w-[95vw] sm:w-[560px] md:w-[600px] select-none animate-in fade-in-50 zoom-in-95 duration-150">
+                      
+                      {/* COLUNA ESQUERDA - ATALHOS */}
+                      <div className="w-full sm:w-[170px] p-4 flex flex-col justify-between bg-slate-50/50">
+                        <div className="flex flex-col gap-1">
+                          <span className="text-[9px] font-black tracking-wider text-slate-400 uppercase mb-3">Atalhos</span>
+                          {[
+                            { label: 'Hoje', id: 'hoje' },
+                            { label: 'Ontem', id: 'ontem' },
+                            { label: 'Últimos 7 dias', id: '7dias' },
+                            { label: 'Últimos 30 dias', id: '30dias' },
+                            { label: 'Este Mês', id: 'esteMes' },
+                            { label: 'Mês Passado', id: 'mesPassado' },
+                            { label: 'Últimos 4 meses', id: '4meses' }
+                          ].map((item) => {
+                            const todayStr = '2026-07-18';
+                            let active = false;
+                            
+                            // Visual active state for shortcuts
+                            if (item.id === 'hoje' && draftStartDate === todayStr && draftEndDate === todayStr) active = true;
+                            if (item.id === 'esteMes' && draftStartDate === '2026-07-01' && draftEndDate === '2026-07-31') active = true;
+                            if (item.id === 'mesPassado' && draftStartDate === '2026-06-01' && draftEndDate === '2026-06-30') active = true;
+                            
+                            return (
+                              <button
+                                key={item.id}
+                                onClick={() => applyShortcut(item.id)}
+                                className={`text-left text-xs px-2.5 py-1.5 rounded-lg font-bold transition-all border-none outline-none cursor-pointer ${
+                                  active 
+                                    ? 'bg-blue-50 text-blue-700 font-extrabold' 
+                                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-800'
+                                }`}
+                              >
+                                {item.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        
+                        <button
+                          onClick={() => {
+                            setDraftStartDate('');
+                            setDraftEndDate('');
+                            setEpStartDate('');
+                            setEpEndDate('');
+                            setShowEpCalendar(false);
+                          }}
+                          className="text-left text-[11px] font-extrabold text-rose-600 hover:text-rose-700 transition-all border-none bg-transparent pt-4 uppercase tracking-wider outline-none cursor-pointer mt-4"
+                        >
+                          Limpar Filtro
+                        </button>
+                      </div>
+
+                      {/* COLUNA DIREITA - CALENDÁRIO */}
+                      <div className="flex-1 p-5 flex flex-col gap-4 bg-white">
+                        {/* Navegação de Mês */}
+                        <div className="flex justify-between items-center px-1">
+                          <button 
+                            onClick={() => {
+                              if (calMonth === 0) {
+                                setCalMonth(11);
+                                setCalYear(prev => prev - 1);
+                              } else {
+                                setCalMonth(prev => prev - 1);
+                              }
+                            }}
+                            className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 hover:text-slate-700 transition-all border-none bg-transparent cursor-pointer outline-none"
+                          >
+                            <ChevronLeft className="w-4 h-4" />
+                          </button>
+                          
+                          <span className="text-xs font-black text-[#032b5e] uppercase tracking-widest">
+                            {PORTUGUESE_MONTHS[calMonth]} {calYear}
+                          </span>
+                          
+                          <button 
+                            onClick={() => {
+                              if (calMonth === 11) {
+                                setCalMonth(0);
+                                setCalYear(prev => prev + 1);
+                              } else {
+                                setCalMonth(prev => prev + 1);
+                              }
+                            }}
+                            className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 hover:text-slate-700 transition-all border-none bg-transparent cursor-pointer outline-none"
+                          >
+                            <ChevronRight className="w-4 h-4" />
+                          </button>
+                        </div>
+
+                        {/* Grid Dias da Semana */}
+                        <div className="grid grid-cols-7 gap-1 text-center font-bold text-[9px] text-slate-400 uppercase tracking-wider">
+                          <span>Dom</span>
+                          <span>Seg</span>
+                          <span>Ter</span>
+                          <span>Qua</span>
+                          <span>Qui</span>
+                          <span>Sex</span>
+                          <span>Sáb</span>
+                        </div>
+
+                        {/* Grid Dias */}
+                        <div className="grid grid-cols-7 gap-1">
+                          {calendarDays.map((day, idx) => {
+                            const isToday = day.dateStr === '2026-07-18';
+                            const isSelectedStart = draftStartDate === day.dateStr;
+                            const isSelectedEnd = draftEndDate === day.dateStr;
+                            const isInRange = draftStartDate && draftEndDate && 
+                                              day.dateStr >= draftStartDate && 
+                                              day.dateStr <= draftEndDate;
+                            
+                            // Selection cell styling
+                            let cellClass = "relative h-8 w-8 mx-auto flex flex-col items-center justify-center text-xs font-bold transition-all cursor-pointer select-none border-none outline-none ";
+                            
+                            if (isSelectedStart || isSelectedEnd) {
+                              cellClass += "bg-[#032b5e] text-white rounded-xl z-10 shadow-sm";
+                            } else if (isInRange) {
+                              cellClass += "bg-blue-50/70 text-blue-700 rounded-none w-full";
+                              if (day.dateStr === draftStartDate) cellClass += " rounded-l-xl";
+                              if (day.dateStr === draftEndDate) cellClass += " rounded-r-xl";
+                            } else if (!day.isCurrentMonth) {
+                              cellClass += "text-slate-300 hover:bg-slate-50 rounded-lg";
+                            } else {
+                              cellClass += "text-slate-700 hover:bg-slate-100 rounded-lg";
+                            }
+
+                            return (
+                              <div
+                                key={idx}
+                                onClick={() => {
+                                  if (!draftStartDate || (draftStartDate && draftEndDate)) {
+                                    setDraftStartDate(day.dateStr);
+                                    setDraftEndDate('');
+                                  } else {
+                                    if (day.dateStr >= draftStartDate) {
+                                      setDraftEndDate(day.dateStr);
+                                    } else {
+                                      setDraftStartDate(day.dateStr);
+                                      setDraftEndDate('');
+                                    }
+                                  }
+                                }}
+                                className={cellClass}
+                              >
+                                <span>{day.dayNum}</span>
+                                
+                                {/* Today indicator dot */}
+                                {isToday && (
+                                  <span className={`absolute bottom-1 w-1 h-1 rounded-full ${
+                                    isSelectedStart || isSelectedEnd ? 'bg-white' : 'bg-blue-600'
+                                  }`} />
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {/* Rodapé do Calendário */}
+                        <div className="flex justify-between items-center pt-3 border-t border-slate-100 mt-2 text-xs">
+                          <div className="flex flex-col">
+                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-wide">Customizado</span>
+                            <span className="text-[11px] font-bold text-slate-700">
+                              {draftStartDate ? (
+                                draftEndDate ? (
+                                  `${draftStartDate.split('-').reverse().slice(0, 2).join('/')}/${draftStartDate.split('-')[0]} - ${draftEndDate.split('-').reverse().slice(0, 2).join('/')}/${draftEndDate.split('-')[0]}`
+                                ) : `${draftStartDate.split('-').reverse().slice(0, 2).join('/')}/${draftStartDate.split('-')[0]}`
+                              ) : '_'}
+                            </span>
+                          </div>
+
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => {
+                                setDraftStartDate('');
+                                setDraftEndDate('');
+                              }}
+                              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-xs font-bold transition-colors border-none cursor-pointer outline-none uppercase tracking-wide"
+                            >
+                              Limpar
+                            </button>
+                            
+                            <button
+                              onClick={() => {
+                                setEpStartDate(draftStartDate);
+                                setEpEndDate(draftEndDate);
+                                setShowEpCalendar(false);
+                              }}
+                              className="px-4 py-1.5 bg-[#032b5e] hover:bg-[#021d3f] text-white rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5 border-none cursor-pointer outline-none uppercase tracking-wider shadow-sm"
+                            >
+                              <Sparkles className="w-3.5 h-3.5 text-yellow-300 fill-yellow-300" /> Aplicar
+                            </button>
+                          </div>
+                        </div>
+
+                      </div>
+
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* Filtro por Status da Meta */}
+              <div className="flex flex-col gap-1.5 w-full">
+                <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">Status da Meta</label>
+                <div className="relative w-full">
+                  <select 
+                    value={epMeta} 
+                    onChange={e => setEpMeta(e.target.value)}
+                    className="w-full h-10 pl-3.5 pr-10 border border-slate-200 rounded-xl bg-white text-xs font-bold text-slate-700 hover:border-slate-300 hover:bg-slate-50 transition-all cursor-pointer shadow-sm outline-none appearance-none"
+                  >
+                    <option value="todos">Todos</option>
+                    <option value="dentro">Dentro da Meta</option>
+                    <option value="fora">Fora da Meta</option>
+                  </select>
+                  <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                    <ChevronDown className="w-4 h-4 text-slate-400" />
+                  </div>
+                </div>
+              </div>
+
             </div>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse font-sans text-xs min-w-[700px]">
-              <thead>
-                <tr className="bg-slate-50 border-b border-gray-200">
-                  <th className="p-3 text-gray-500 text-left uppercase tracking-wider text-[9px]">Produto</th>
-                  <th className="p-3 text-gray-500 text-left uppercase tracking-wider text-[9px]">Lote</th>
-                  <th className="p-3 text-gray-500 text-center uppercase tracking-wider text-[9px]">Validade</th>
-                  <th className="p-3 text-gray-500 text-right uppercase tracking-wider text-[9px]">Quantidade no Estoque</th>
-                  <th className="p-3 text-gray-500 text-right uppercase tracking-wider text-[9px]">Quantidade no Picking</th>
-                  <th className="p-3 text-gray-500 text-right uppercase tracking-wider text-[9px]">Diferença Física</th>
-                  <th className="p-3 text-gray-500 text-center uppercase tracking-wider text-[9px]">Status de Alinhamento</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {pickingComp.map((p, idx) => {
-                  const badgeColor = p.status === 'Conforme' ? 'bg-emerald-100 text-emerald-800' :
-                                     p.status === 'Atenção' ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-800';
-                  
-                  return (
-                    <tr key={idx} className="hover:bg-slate-50/55">
-                      <td className="p-3 font-semibold text-slate-800 uppercase">{p.produto}</td>
-                      <td className="p-3 font-mono font-bold text-gray-600">{p.lote}</td>
-                      <td className="p-3 text-center text-slate-700 font-medium">{p.validade}</td>
-                      <td className="p-3 text-right font-semibold text-slate-700">{p.qtdEstoque} cx</td>
-                      <td className="p-3 text-right font-semibold text-slate-700">{p.qtdPicking} cx</td>
-                      <td className="p-3 text-right font-black text-slate-900">{p.diferenca} cx</td>
-                      <td className="p-3 text-center">
-                        <span className={`px-3 py-1 rounded-full text-[9px] font-bold uppercase tracking-wider ${badgeColor}`}>
-                          {p.status}
-                        </span>
+          {/* Grid com os 4 Gráficos Operacionais e Gerenciais de Controle FEFO */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+            {/* 1. Comparativo de Validade - Estoque x Picking */}
+            <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between">
+              <div>
+                <span className="text-[9px] bg-blue-50 text-[#032b5e] border border-blue-200 px-2 py-0.5 rounded font-black tracking-wider uppercase">Indicador Comparativo</span>
+                <h3 className="font-sans font-black text-xs uppercase text-[#032b5e] tracking-wider mt-2">
+                  1. Comparativo de Validade - Estoque x Picking
+                </h3>
+                <p className="text-[10px] text-gray-400 font-bold mt-0.5">
+                  Comparação do vencimento médio dos lotes em estoque vs. no picking por SKU
+                </p>
+              </div>
+
+              <div className="h-56 w-full mt-4">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={fefoEstoquePickingData} margin={{ top: 15, right: 10, left: -25, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                    <XAxis dataKey="sku" stroke="#94a3b8" fontSize={9} fontStyle="bold" />
+                    <YAxis stroke="#94a3b8" fontSize={9} label={{ value: 'Dias a vencer', angle: -90, position: 'insideLeft', style: { fontSize: 8, fill: '#94a3b8' } }} />
+                    <Tooltip 
+                      content={({ active, payload }) => {
+                        if (active && payload && payload.length) {
+                          const data = payload[0].payload;
+                          const gapColor = data.gap > 0 ? 'text-red-600' : 'text-emerald-600';
+                          return (
+                            <div className="bg-white p-2.5 border border-slate-200 rounded-lg shadow-md text-xs font-sans">
+                              <p className="font-black text-[#032b5e] uppercase mb-1">{data.fullName}</p>
+                              <p className="text-slate-500 font-bold text-[10px]">Validade Estoque: <span className="text-slate-800 font-mono">{data.estoque} dias</span></p>
+                              <p className="text-slate-500 font-bold text-[10px]">Validade Picking: <span className="text-slate-800 font-mono">{data.picking} dias</span></p>
+                              <p className="text-slate-500 font-bold text-[10px] border-t border-slate-100 pt-1 mt-1">
+                                Diferença: <span className={`font-black font-mono ${gapColor}`}>{data.gap > 0 ? `+${data.gap}` : data.gap} dias</span>
+                              </p>
+                              {data.gap > 0 && (
+                                <p className="text-[8px] font-black text-red-600 bg-red-50 px-1.5 py-0.5 rounded uppercase mt-1">
+                                  🚨 POSSÍVEL QUEBRA DO FEFO
+                                </p>
+                              )}
+                            </div>
+                          );
+                        }
+                        return null;
+                      }}
+                    />
+                    <Legend wrapperStyle={{ fontSize: 9 }} />
+                    <Bar dataKey="estoque" name="Estoque (Média)" fill="#032b5e" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="picking" name="Picking (Média)" fill="#93c5fd" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+
+              <div className="bg-red-50 border border-red-100 p-2 rounded-lg mt-3 text-[9px] text-red-700 font-bold leading-normal">
+                ⚠️ <strong>Atenção Operacional:</strong> SKUs onde a barra de Picking (azul claro) supera a de Estoque (azul escuro) indicam quebra crítica de FEFO (lotes novos consumidos antes).
+              </div>
+            </div>
+
+            {/* 2. Gap de Validade (Diferença entre Estoque e Picking) */}
+            <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between">
+              <div>
+                <span className="text-[9px] bg-red-50 text-red-600 border border-red-200 px-2 py-0.5 rounded font-black tracking-wider uppercase">Indicador de Desvio</span>
+                <h3 className="font-sans font-black text-xs uppercase text-[#032b5e] tracking-wider mt-2">
+                  2. Gap de Validade - Estoque x Picking
+                </h3>
+                <p className="text-[10px] text-gray-400 font-bold mt-0.5">
+                  Gap = Validade Picking − Validade Estoque. Valores positivos indicam inversão (erro).
+                </p>
+              </div>
+
+              <div className="h-56 w-full mt-4">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={gapSortedData} layout="vertical" margin={{ top: 5, right: 15, left: -15, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                    <XAxis type="number" stroke="#94a3b8" fontSize={9} />
+                    <YAxis type="category" dataKey="sku" stroke="#94a3b8" fontSize={9} width={65} />
+                    <Tooltip 
+                      content={({ active, payload }) => {
+                        if (active && payload && payload.length) {
+                          const data = payload[0].payload;
+                          return (
+                            <div className="bg-white p-2.5 border border-slate-200 rounded-lg shadow-md text-xs font-sans">
+                              <p className="font-black text-[#032b5e] uppercase mb-1">{data.fullName}</p>
+                              <p className="text-slate-500 font-bold text-[10px]">Calculado: <span className="font-mono text-slate-800">{data.picking}d (Picking) - {data.estoque}d (Estoque)</span></p>
+                              <p className="text-slate-500 font-bold text-[10px] mt-0.5">Gap Operacional: <span className={`font-black font-mono ${data.gap > 0 ? 'text-red-600' : data.gap === 0 ? 'text-amber-600' : 'text-emerald-600'}`}>{data.gap > 0 ? `+${data.gap}` : data.gap} dias</span></p>
+                            </div>
+                          );
+                        }
+                        return null;
+                      }}
+                    />
+                    <Bar dataKey="gap" name="Gap de Validade (dias)" radius={[0, 4, 4, 0]}>
+                      {gapSortedData.map((entry, index) => {
+                        const barColor = entry.gap > 0 ? '#032b5e' : entry.gap === 0 ? '#3b82f6' : '#93c5fd';
+                        return <Cell key={`cell-${index}`} fill={barColor} />;
+                      })}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+
+              <div className="grid grid-cols-3 gap-1.5 text-[8px] font-black uppercase text-slate-500 mt-3">
+                <div className="bg-blue-50 border border-blue-100 p-1.5 rounded text-blue-800 text-center flex items-center justify-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-[#93c5fd]" /> Gap &lt; 0 (FEFO OK)
+                </div>
+                <div className="bg-blue-50 border border-blue-100 p-1.5 rounded text-blue-800 text-center flex items-center justify-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-[#3b82f6]" /> Gap = 0 (Correto)
+                </div>
+                <div className="bg-blue-50 border border-blue-100 p-1.5 rounded text-blue-800 text-center flex items-center justify-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-[#032b5e]" /> Gap &gt; 0 (Erro / Inversão)
+                </div>
+              </div>
+            </div>
+
+            {/* 3. Dispersão Estoque × Picking */}
+            <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between">
+              <div>
+                <span className="text-[9px] bg-emerald-50 text-emerald-600 border border-emerald-200 px-2 py-0.5 rounded font-black tracking-wider uppercase">Equilíbrio do CD</span>
+                <h3 className="font-sans font-black text-xs uppercase text-[#032b5e] tracking-wider mt-2">
+                  3. Validade Estoque x Picking (Dispersão)
+                </h3>
+                <p className="text-[10px] text-gray-400 font-bold mt-0.5">
+                  Eixo X (Estoque) vs. Eixo Y (Picking). Pontos acima da diagonal representam desvios do FEFO.
+                </p>
+              </div>
+
+              <div className="h-56 w-full mt-4">
+                <ResponsiveContainer width="100%" height="100%">
+                  <ScatterChart margin={{ top: 15, right: 15, bottom: 5, left: -25 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                    <XAxis type="number" dataKey="estoque" name="Validade Estoque" unit=" dias" stroke="#94a3b8" fontSize={9} domain={[0, 100]} />
+                    <YAxis type="number" dataKey="picking" name="Validade Picking" unit=" dias" stroke="#94a3b8" fontSize={9} domain={[0, 100]} />
+                    <ZAxis range={[60, 60]} />
+                    <Tooltip content={<CustomScatterTooltip />} cursor={{ strokeDasharray: '3 3' }} />
+                    
+                    {/* Linha diagonal de referência (Y=X) */}
+                    <ReferenceLine segment={[{ x: 10, y: 10 }, { x: 90, y: 90 }]} stroke="#94a3b8" strokeWidth={1.5} strokeDasharray="3 3" />
+                    
+                    <Scatter name="SKUs" data={fefoEstoquePickingData}>
+                      {fefoEstoquePickingData.map((entry, index) => {
+                        const pointColor = entry.gap > 0 ? '#032b5e' : entry.gap === 0 ? '#3b82f6' : '#93c5fd';
+                        return <Cell key={`cell-${index}`} fill={pointColor} />;
+                      })}
+                    </Scatter>
+                  </ScatterChart>
+                </ResponsiveContainer>
+              </div>
+
+              <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200 mt-3 text-[9px] text-slate-500 font-medium leading-normal">
+                💡 <strong>Análise de Dispersão:</strong> Pontos <strong>abaixo</strong> da diagonal indicam picking correto (consumindo lotes mais antigos). Pontos <strong>acima</strong> exigem verificação imediata de posicionamento.
+              </div>
+            </div>
+
+            {/* 4. Índice de Conformidade FEFO */}
+            <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between">
+              <div>
+                <span className="text-[9px] bg-purple-50 text-purple-600 border border-purple-200 px-2 py-0.5 rounded font-black tracking-wider uppercase">Evolução Histórica</span>
+                <h3 className="font-sans font-black text-xs uppercase text-[#032b5e] tracking-wider mt-2">
+                  4. Conformidade FEFO Histórica - Estoque x Picking
+                </h3>
+                <p className="text-[10px] text-gray-400 font-bold mt-0.5">
+                  Percentual de conformidade de giro nos últimos meses vs. Meta Operacional (98%)
+                </p>
+              </div>
+
+              <div className="h-56 w-full mt-4">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={conformidadeData} margin={{ top: 15, right: 10, left: -25, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                    <XAxis dataKey="mes" stroke="#94a3b8" fontSize={8.5} fontStyle="bold" />
+                    <YAxis stroke="#94a3b8" fontSize={9} domain={[0, 100]} unit="%" />
+                    <Tooltip 
+                      content={({ active, payload }) => {
+                        if (active && payload && payload.length) {
+                          const data = payload[0].payload;
+                          return (
+                            <div className="bg-white p-2.5 border border-slate-200 rounded-lg shadow-md text-xs font-sans">
+                              <p className="font-black text-[#032b5e] uppercase mb-1">{data.mes}</p>
+                              <p className="text-emerald-600 font-bold text-[10px]">SKUs Conformes: <span className="font-bold">{data.conformes}</span></p>
+                              <p className="text-red-500 font-bold text-[10px]">Desvios de FEFO: <span className="font-bold">{data.naoConformes}</span></p>
+                              <p className="text-slate-800 font-extrabold text-[11px] mt-1 pt-1 border-t border-slate-100">
+                                Índice de Conformidade: <span className="font-mono">{data.percentual}%</span>
+                              </p>
+                            </div>
+                          );
+                        }
+                        return null;
+                      }}
+                    />
+                    
+                    {/* Linha de Meta Operacional 98% */}
+                    <ReferenceLine y={98} stroke="#ef4444" strokeWidth={1.5} strokeDasharray="3 3" label={{ value: 'Meta CD: 98%', fill: '#ef4444', fontSize: 8.5, position: 'top', fontWeight: 'bold' }} />
+                    
+                    <Bar dataKey="percentual" name="Índice FEFO (%)" radius={[4, 4, 0, 0]}>
+                      {conformidadeData.map((entry, index) => {
+                        const barColor = entry.percentual >= 98 ? '#032b5e' : entry.percentual >= 85 ? '#3b82f6' : '#93c5fd';
+                        return <Cell key={`cell-${index}`} fill={barColor} />;
+                      })}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+
+              <div className="bg-[#eff6ff] p-2 rounded-lg mt-3 text-[9px] text-[#1e40af] font-bold leading-normal text-center">
+                📊 <strong>Análise de Coleta de Dados:</strong> No mês atual, registramos <strong>{aderenciaFEFO}%</strong> de conformidade com base nas auditorias de validade no CD. A evolução histórica mostra uma melhora consistente desde Março (70%) até Junho (91%), sofrendo impacto de novos lotes pendentes no picking em Julho.
+              </div>
+            </div>
+
+          </div>
+
+          {/* Main Reconciliation Table */}
+          <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-gray-100 pb-4 mb-4">
+              <div>
+                <h3 className="font-sans font-black text-xs uppercase text-[#032b5e] tracking-wider">
+                  CONCILIAÇÃO FÍSICA E AJUSTES: ESTOQUE x PICKING
+                </h3>
+                <p className="text-[10px] text-gray-400 font-bold mt-0.5">Visão detalhada de diferenças volumétricas entre o depósito central e as ruas de picking</p>
+              </div>
+              
+              <div className="flex items-center gap-2">
+                <span className="flex items-center gap-1 text-[9.5px] font-bold text-gray-500 uppercase">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" /> Conforme
+                </span>
+                <span className="flex items-center gap-1 text-[9.5px] font-bold text-gray-500 uppercase">
+                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500" /> Atenção
+                </span>
+                <span className="flex items-center gap-1 text-[9.5px] font-bold text-gray-500 uppercase">
+                  <span className="w-2.5 h-2.5 rounded-full bg-red-500" /> Desvio Crítico
+                </span>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse font-sans text-xs min-w-[700px]">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-gray-200">
+                    <th className="p-3 text-gray-500 text-left uppercase tracking-wider text-[9px]">Produto</th>
+                    <th className="p-3 text-gray-500 text-left uppercase tracking-wider text-[9px]">Lote</th>
+                    <th className="p-3 text-gray-500 text-center uppercase tracking-wider text-[9px]">Validade</th>
+                    <th className="p-3 text-gray-500 text-right uppercase tracking-wider text-[9px]">Quantidade no Estoque</th>
+                    <th className="p-3 text-gray-500 text-right uppercase tracking-wider text-[9px]">Quantidade no Picking</th>
+                    <th className="p-3 text-gray-500 text-right uppercase tracking-wider text-[9px]">Diferença Física</th>
+                    <th className="p-3 text-gray-500 text-center uppercase tracking-wider text-[9px]">Status de Alinhamento</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {filteredPickingComp.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="p-8 text-center text-gray-400 font-bold uppercase text-[10px]">
+                        Nenhum produto corresponde aos filtros operacionais aplicados.
                       </td>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                  ) : (
+                    filteredPickingComp.map((p, idx) => {
+                      const badgeColor = p.status === 'Conforme' ? 'bg-emerald-100 text-emerald-800' :
+                                         p.status === 'Atenção' ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-800';
+                      
+                      return (
+                        <tr key={idx} className="hover:bg-slate-50/55">
+                          <td className="p-3 font-semibold text-slate-800 uppercase">{p.produto}</td>
+                          <td className="p-3 font-mono font-bold text-gray-600">{p.lote}</td>
+                          <td className="p-3 text-center text-slate-700 font-medium">{p.validade}</td>
+                          <td className="p-3 text-right font-semibold text-slate-700">{p.qtdEstoque} cx</td>
+                          <td className="p-3 text-right font-semibold text-slate-700">{p.qtdPicking} cx</td>
+                          <td className="p-3 text-right font-black text-slate-900">{p.diferenca} cx</td>
+                          <td className="p-3 text-center">
+                            <span className={`px-3 py-1 rounded-full text-[9px] font-bold uppercase tracking-wider ${badgeColor}`}>
+                              {p.status}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
 
-          <div className="bg-slate-50 rounded-xl p-4 mt-5 border border-gray-200 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
-            <p className="text-gray-500 leading-relaxed max-w-2xl">
-              💡 <strong>Regra Operacional do Armazém:</strong> Diferenças acima de 200 caixas entre o estoque central e a rua de picking exigem tarefa de reposição urgente gerada automaticamente no painel do empilhador para evitar rupturas de carga de frota.
-            </p>
-            <button 
-              onClick={() => {
-                const refreshed = pickingComp.map(p => ({
-                  ...p,
-                  qtdPicking: p.status === 'Desvio Crítico' ? p.qtdPicking + 300 : p.qtdPicking,
-                  diferenca: p.status === 'Desvio Crítico' ? p.qtdEstoque - (p.qtdPicking + 300) : p.diferenca,
-                  status: p.status === 'Desvio Crítico' ? 'Conforme' : p.status as any
-                }));
-                savePicking(refreshed);
-                alert('Reposições enviadas ao coletor do Empilhador! Picking atualizado.');
-              }}
-              className="bg-[#032b5e] hover:bg-[#021f44] text-white font-sans font-bold text-[10px] uppercase tracking-wider py-2.5 px-4 rounded-lg transition-all border-none cursor-pointer shadow-sm shrink-0"
-            >
-              Forçar Reposição de Picking
-            </button>
+            <div className="bg-slate-50 rounded-xl p-4 mt-5 border border-gray-200 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
+              <p className="text-gray-500 leading-relaxed max-w-2xl">
+                💡 <strong>Regra Operacional do Armazém:</strong> Diferenças acima de 200 SKUs entre o estoque central e a rua de picking exigem tarefa de reposição urgente gerada automaticamente no painel do empilhador para evitar rupturas de carga de frota.
+              </p>
+              <button 
+                onClick={() => {
+                  const refreshed = pickingComp.map(p => ({
+                    ...p,
+                    qtdPicking: p.status === 'Desvio Crítico' ? p.qtdPicking + 300 : p.qtdPicking,
+                    diferenca: p.status === 'Desvio Crítico' ? p.qtdEstoque - (p.qtdPicking + 300) : p.diferenca,
+                    status: p.status === 'Desvio Crítico' ? 'Conforme' : p.status as any
+                  }));
+                  savePicking(refreshed);
+                  alert('Reposições enviadas ao coletor do Empilhador! Picking atualizado.');
+                }}
+                className="bg-[#032b5e] hover:bg-[#021f44] text-white font-sans font-bold text-[10px] uppercase tracking-wider py-2.5 px-4 rounded-lg transition-all border-none cursor-pointer shadow-sm shrink-0"
+              >
+                Forçar Reposição de Picking
+              </button>
+            </div>
           </div>
         </div>
       )}
 
 
       {/* ─────────────────────────────────────────────────────────────────
-          TAB 4: ESTOQUE X ESTOQUE (RUA X RUA)
+          TAB 4: ESTOQUE X ESTOQUE (POR BLOCO)
           ───────────────────────────────────────────────────────────────── */}
-      {activeTab === 'estoque-estoque' && (
-        <div className="flex flex-col gap-6">
-          
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      {activeTab === 'estoque-estoque' && (() => {
+        const blocksArray = Object.values(BLOCKS_DATA);
+
+        // 1. Average Validity Data: A1 to C4
+        const avgValidityData = blocksArray.map(b => ({
+          name: b.id,
+          avgValidity: b.avgValidity,
+          color: b.avgValidity > 90 ? '#10b981' : b.avgValidity > 30 ? '#eab308' : '#ef4444'
+        }));
+
+        // 2. Range Distribution Data
+        const rangeDistributionData = blocksArray.map(b => ({
+          name: b.id,
+          '0-30 dias': b.ranges.critical,
+          '31-60 dias': b.ranges.alertMedium,
+          '61-90 dias': b.ranges.alertLow,
+          '>90 dias': b.ranges.safe,
+        }));
+
+        // 3. Risk Ranking Data: sorted by riskIndex descending
+        const riskRankingData = [...blocksArray]
+          .sort((a, b) => b.riskIndex - a.riskIndex)
+          .map(b => ({
+            name: b.id,
+            riskIndex: b.riskIndex,
+            pallets: b.pallets,
+            menorValidade: b.menorValidade,
+            color: b.riskIndex >= 70 ? '#ef4444' : b.riskIndex >= 40 ? '#f97316' : '#10b981'
+          }));
+
+        return (
+          <div className="flex flex-col gap-6">
             
-            {/* Left: Move form and list */}
-            <div className="lg:col-span-8 bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex flex-col gap-4">
-              <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+            {/* Grid for Chart Rows */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              
+              {/* 1. Comparativo de Validade Média por Bloco */}
+              <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
                 <div>
-                  <h3 className="font-sans font-black text-xs uppercase text-[#032b5e] tracking-wider">
-                    REMANEJAMENTO INTERNO: ESTOQUE x ESTOQUE
+                  <span className="text-[9px] bg-slate-100 text-slate-600 border border-slate-200 px-2 py-0.5 rounded font-black tracking-wider uppercase">
+                    Análise de Envelhecimento
+                  </span>
+                  <h3 className="font-sans font-black text-xs uppercase text-[#032b5e] tracking-wider mt-2.5">
+                    Validade Média por Bloco
                   </h3>
-                  <p className="text-[10px] text-gray-400 font-bold mt-0.5">Acompanhamento e registro de transferências físicas de lotes entre ruas de blocados</p>
+                  <p className="text-[10px] text-gray-400 font-bold mt-0.5">
+                    Comparação da validade média em dias. Cores em escala: Verde (Alta), Amarelo (Média), Vermelho (Baixa).
+                  </p>
                 </div>
-                <button 
-                  onClick={() => setShowAddTransfer(!showAddTransfer)}
-                  className="flex items-center gap-1 bg-[#032b5e] hover:bg-[#021f44] text-white font-sans font-bold text-[10px] uppercase tracking-wider px-2.5 py-1.5 rounded-lg border-none cursor-pointer"
-                >
-                  <Plus className="w-3.5 h-3.5" /> Transferir
-                </button>
+
+                <div className="h-64 w-full mt-4">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={avgValidityData} margin={{ top: 15, right: 10, left: -25, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                      <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} fontWeight="bold" />
+                      <YAxis stroke="#94a3b8" fontSize={9} label={{ value: 'Média de Dias', angle: -90, position: 'insideLeft', style: { fontSize: 8, fill: '#94a3b8', fontWeight: 'bold' } }} />
+                      <Tooltip 
+                        content={({ active, payload }) => {
+                          if (active && payload && payload.length) {
+                            const data = payload[0].payload;
+                            return (
+                              <div className="bg-white p-2.5 border border-slate-200 rounded-lg shadow-md text-xs font-sans">
+                                <p className="font-black text-[#032b5e] uppercase mb-1">Bloco {data.name}</p>
+                                <p className="text-slate-500 font-bold text-[10px]">
+                                  Validade Média: <span className="text-slate-800 font-mono font-black">{data.avgValidity} dias</span>
+                                </p>
+                              </div>
+                            );
+                          }
+                          return null;
+                        }}
+                      />
+                      <Bar dataKey="avgValidity" radius={[4, 4, 0, 0]}>
+                        {avgValidityData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+
+                <div className="bg-slate-50 border border-slate-100 p-2.5 rounded-lg mt-3 text-[10px] text-slate-500 font-medium leading-relaxed flex items-center justify-between">
+                  <div>
+                    <strong>Legenda Escala:</strong>
+                    <span className="ml-2 inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500" /> Alta (&gt;90d)</span>
+                    <span className="ml-2 inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-yellow-500" /> Média (31-90d)</span>
+                    <span className="ml-2 inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500" /> Baixa (≤30d)</span>
+                  </div>
+                </div>
               </div>
 
-              {showAddTransfer && (
-                <form onSubmit={handleAddTransferItem} className="bg-slate-50 p-4 border border-gray-200 rounded-lg text-xs flex flex-col gap-3">
-                  <h4 className="font-black text-[#032b5e] uppercase text-[9px] tracking-wider">Lançar Transferência Física de Rua</h4>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                    <div>
-                      <label className="block text-[8.5px] font-bold text-gray-500 uppercase mb-1">Rua Origem</label>
-                      <select 
-                        value={newTransfer.ruaOrigem} 
-                        onChange={e => setNewTransfer({ ...newTransfer, ruaOrigem: e.target.value })}
-                        className="w-full p-2 border border-gray-300 rounded text-xs"
-                      >
-                        <option value="Rua A">Rua A</option>
-                        <option value="Rua B">Rua B</option>
-                        <option value="Rua C">Rua C</option>
-                        <option value="Rua D">Rua D</option>
-                        <option value="Rua E">Rua E</option>
-                        <option value="Rua F">Rua F</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-[8.5px] font-bold text-gray-500 uppercase mb-1">Rua Destino</label>
-                      <select 
-                        value={newTransfer.ruaDestino} 
-                        onChange={e => setNewTransfer({ ...newTransfer, ruaDestino: e.target.value })}
-                        className="w-full p-2 border border-gray-300 rounded text-xs"
-                      >
-                        <option value="Rua A">Rua A</option>
-                        <option value="Rua B">Rua B</option>
-                        <option value="Rua C">Rua C</option>
-                        <option value="Rua D">Rua D</option>
-                        <option value="Rua E">Rua E</option>
-                        <option value="Rua F">Rua F</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-[8.5px] font-bold text-gray-500 uppercase mb-1">Lote</label>
-                      <input 
-                        type="text" 
-                        value={newTransfer.lote} 
-                        onChange={e => setNewTransfer({ ...newTransfer, lote: e.target.value })}
-                        placeholder="Ex: SK-20"
-                        className="w-full p-2 border border-gray-300 rounded text-xs"
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[8.5px] font-bold text-gray-500 uppercase mb-1">Quantidade (Caixas)</label>
-                      <input 
-                        type="number" 
-                        value={newTransfer.quantidade} 
-                        onChange={e => setNewTransfer({ ...newTransfer, quantidade: parseInt(e.target.value) || 0 })}
-                        className="w-full p-2 border border-gray-300 rounded text-xs"
-                        required
-                      />
-                    </div>
-                  </div>
+              {/* 2. Distribuição das Faixas de Validade por Bloco */}
+              <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
+                <div>
+                  <span className="text-[9px] bg-amber-50 text-amber-600 border border-amber-200 px-2 py-0.5 rounded font-black tracking-wider uppercase">
+                    Distribuição de Lotes
+                  </span>
+                  <h3 className="font-sans font-black text-xs uppercase text-[#032b5e] tracking-wider mt-2.5">
+                    Distribuição de Validades por Bloco
+                  </h3>
+                  <p className="text-[10px] text-gray-400 font-bold mt-0.5">
+                    Quantidade de paletes/caixas em cada bloco divididos por faixas de prazo de validade.
+                  </p>
+                </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                    <div>
-                      <label className="block text-[8.5px] font-bold text-gray-500 uppercase mb-1">Produto</label>
-                      <select 
-                        value={newTransfer.produto} 
-                        onChange={e => setNewTransfer({ ...newTransfer, produto: e.target.value })}
-                        className="w-full p-2 border border-gray-300 rounded text-xs"
-                      >
-                        {PRODUCTS.slice(0, 10).map(p => (
-                          <option key={p.codigo} value={p.descricao}>{p.descricao}</option>
+                <div className="h-64 w-full mt-4">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={rangeDistributionData} margin={{ top: 15, right: 10, left: -25, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                      <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} fontWeight="bold" />
+                      <YAxis stroke="#94a3b8" fontSize={9} />
+                      <Tooltip 
+                        content={({ active, payload }) => {
+                          if (active && payload && payload.length) {
+                            const data = payload[0].payload;
+                            return (
+                              <div className="bg-white p-2.5 border border-slate-200 rounded-lg shadow-md text-xs font-sans">
+                                <p className="font-black text-[#032b5e] uppercase mb-1.5">Bloco {data.name}</p>
+                                <p className="text-red-600 font-bold text-[10px]">0-30 dias: <span className="font-black font-mono">{data['0-30 dias']} un</span></p>
+                                <p className="text-orange-500 font-bold text-[10px]">31-60 dias: <span className="font-black font-mono">{data['31-60 dias']} un</span></p>
+                                <p className="text-yellow-500 font-bold text-[10px]">61-90 dias: <span className="font-black font-mono">{data['61-90 dias']} un</span></p>
+                                <p className="text-emerald-600 font-bold text-[10px]">&gt;90 dias: <span className="font-black font-mono">{data['>90 dias']} un</span></p>
+                              </div>
+                            );
+                          }
+                          return null;
+                        }}
+                      />
+                      <Legend wrapperStyle={{ fontSize: 9, fontWeight: 'bold' }} />
+                      <Bar dataKey="0-30 dias" stackId="a" fill="#ef4444" name="0-30d" />
+                      <Bar dataKey="31-60 dias" stackId="a" fill="#f97316" name="31-60d" />
+                      <Bar dataKey="61-90 dias" stackId="a" fill="#eab308" name="61-90d" />
+                      <Bar dataKey=">90 dias" stackId="a" fill="#10b981" name=">90d" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+
+                <div className="bg-red-50 border border-red-100 p-2.5 rounded-lg mt-3 text-[10px] text-red-700 font-bold leading-relaxed">
+                  ⚠️ <strong>Destaque Operacional:</strong> Os blocos com maior concentração na faixa de <strong>0-30 dias</strong> são: 
+                  <span className="bg-red-600 text-white font-black font-mono px-1.5 py-0.5 rounded ml-1.5 mr-1">C4 (110)</span>,
+                  <span className="bg-red-600 text-white font-black font-mono px-1.5 py-0.5 rounded mr-1">A4 (95)</span>, e 
+                  <span className="bg-red-600 text-white font-black font-mono px-1.5 py-0.5 rounded">B4 (88)</span>.
+                </div>
+              </div>
+
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              
+              {/* 3. Ranking dos Blocos com Maior Risco de Vencimento */}
+              <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
+                <div>
+                  <span className="text-[9px] bg-red-50 text-red-600 border border-red-200 px-2 py-0.5 rounded font-black tracking-wider uppercase">
+                    Priorização de Expedição
+                  </span>
+                  <h3 className="font-sans font-black text-xs uppercase text-[#032b5e] tracking-wider mt-2.5">
+                    Ranking de Risco por Bloco
+                  </h3>
+                  <p className="text-[10px] text-gray-400 font-bold mt-0.5">
+                    Ordenação do maior para o menor risco, baseado na quantidade total e dias restantes. Destaque em vermelho para os blocos críticos.
+                  </p>
+                </div>
+
+                <div className="h-64 w-full mt-4">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={riskRankingData} layout="vertical" margin={{ top: 5, right: 15, left: -25, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                      <XAxis type="number" stroke="#94a3b8" fontSize={9} fontWeight="bold" domain={[0, 100]} label={{ value: 'Índice de Risco', position: 'insideBottom', offset: -5, style: { fontSize: 8, fill: '#94a3b8', fontWeight: 'bold' } }} />
+                      <YAxis type="category" dataKey="name" stroke="#94a3b8" fontSize={10} fontWeight="bold" width={35} />
+                      <Tooltip 
+                        content={({ active, payload }) => {
+                          if (active && payload && payload.length) {
+                            const data = payload[0].payload;
+                            const riskStatus = data.riskIndex >= 70 ? 'CRÍTICO' : data.riskIndex >= 40 ? 'MÉDIO' : 'SEGURO';
+                            return (
+                              <div className="bg-white p-2.5 border border-slate-200 rounded-lg shadow-md text-xs font-sans">
+                                <p className="font-black text-[#032b5e] uppercase mb-1">Bloco {data.name}</p>
+                                <p className="text-slate-500 font-bold text-[10px]">
+                                  Índice de Risco: <span className="text-slate-800 font-mono font-black">{data.riskIndex}/100</span>
+                                </p>
+                                <p className="text-slate-500 font-bold text-[10px]">
+                                  Menor Validade: <span className="text-slate-800 font-mono font-bold">{data.menorValidade} dias</span>
+                                </p>
+                                <p className="text-slate-500 font-bold text-[10px]">
+                                  Volume Estocado: <span className="text-slate-800 font-mono font-bold">{data.pallets} paletes</span>
+                                </p>
+                                <p className="text-[9px] font-black uppercase text-white px-1.5 py-0.5 rounded mt-1.5 text-center" style={{ backgroundColor: data.color }}>
+                                  STATUS: {riskStatus}
+                                </p>
+                              </div>
+                            );
+                          }
+                          return null;
+                        }}
+                      />
+                      <Bar dataKey="riskIndex" name="Índice de Risco" radius={[0, 4, 4, 0]}>
+                        {riskRankingData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
                         ))}
-                      </select>
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+
+                <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-100 text-[10px] text-slate-500 leading-normal font-medium">
+                  💡 <strong>Diretriz Operacional:</strong> Os blocos vermelhos indicam que os lotes estocados requerem <strong>expedição imediata</strong> ou <strong>transferência prioritária para picking</strong> para evitar quebra de validade.
+                </div>
+              </div>
+
+              {/* 4. Heat Map de Validade dos Blocos */}
+              <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
+                <div>
+                  <span className="text-[9px] bg-emerald-50 text-emerald-600 border border-emerald-200 px-2 py-0.5 rounded font-black tracking-wider uppercase">
+                    Layout Físico
+                  </span>
+                  <h3 className="font-sans font-black text-xs uppercase text-[#032b5e] tracking-wider mt-2.5">
+                    Mapa de Validade por Bloco
+                  </h3>
+                  <p className="text-[10px] text-gray-400 font-bold mt-0.5">
+                    Representação física do armazém. Clique em um bloco para ver a auditoria detalhada de SKUs, paletes e menor validade.
+                  </p>
+                </div>
+
+                {/* Interactive Warehouse Grid and details side-by-side */}
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-4 mt-4">
+                  
+                  {/* 3x4 Grid Layout of the Warehouse */}
+                  <div className="md:col-span-7 bg-slate-50 p-3 rounded-xl border border-slate-200 flex flex-col justify-center">
+                    <div className="text-center font-black text-[9px] uppercase tracking-wider text-slate-400 mb-2 font-mono">
+                      ▲ CORREDOR OPERACIONAL / ENTRADA ▲
                     </div>
-                    <div>
-                      <label className="block text-[8.5px] font-bold text-gray-500 uppercase mb-1">Motivo da Movimentação</label>
-                      <input 
-                        type="text" 
-                        value={newTransfer.motivo} 
-                        onChange={e => setNewTransfer({ ...newTransfer, motivo: e.target.value })}
-                        placeholder="Ex: Reorganização de Blocado..."
-                        className="w-full p-2 border border-gray-300 rounded text-xs"
-                      />
+                    
+                    <div className="grid grid-cols-4 gap-2">
+                      {/* Headers */}
+                      <div className="col-span-4 grid grid-cols-4 gap-2 text-center text-[9px] font-bold text-slate-400 uppercase font-mono">
+                        <span>SEC 1</span>
+                        <span>SEC 2</span>
+                        <span>SEC 3</span>
+                        <span>SEC 4</span>
+                      </div>
+
+                      {/* Row A */}
+                      {['A1', 'A2', 'A3', 'A4'].map((id) => {
+                        const b = BLOCKS_DATA[id];
+                        const isSelected = selectedBlock === id;
+                        let colorClass = 'bg-emerald-500 text-white hover:bg-emerald-600';
+                        if (b.menorValidade <= 30) colorClass = 'bg-red-500 text-white hover:bg-red-600';
+                        else if (b.menorValidade <= 60) colorClass = 'bg-orange-500 text-white hover:bg-orange-600';
+                        else if (b.menorValidade <= 90) colorClass = 'bg-yellow-500 text-slate-800 hover:bg-yellow-600';
+
+                        return (
+                          <button
+                            key={id}
+                            onClick={() => setSelectedBlock(id)}
+                            className={`p-3 rounded-lg text-center font-sans transition-all duration-150 relative cursor-pointer border-none flex flex-col items-center justify-center ${colorClass} ${
+                              isSelected ? 'ring-4 ring-offset-2 ring-slate-800 shadow-lg scale-105 z-10' : 'opacity-90 shadow-sm'
+                            }`}
+                          >
+                            <span className="font-black text-xs">{id}</span>
+                            <span className="text-[8px] font-bold font-mono mt-0.5">{b.menorValidade} dias</span>
+                          </button>
+                        );
+                      })}
+
+                      {/* Row B */}
+                      {['B1', 'B2', 'B3', 'B4'].map((id) => {
+                        const b = BLOCKS_DATA[id];
+                        const isSelected = selectedBlock === id;
+                        let colorClass = 'bg-emerald-500 text-white hover:bg-emerald-600';
+                        if (b.menorValidade <= 30) colorClass = 'bg-red-500 text-white hover:bg-red-600';
+                        else if (b.menorValidade <= 60) colorClass = 'bg-orange-500 text-white hover:bg-orange-600';
+                        else if (b.menorValidade <= 90) colorClass = 'bg-yellow-500 text-slate-800 hover:bg-yellow-600';
+
+                        return (
+                          <button
+                            key={id}
+                            onClick={() => setSelectedBlock(id)}
+                            className={`p-3 rounded-lg text-center font-sans transition-all duration-150 relative cursor-pointer border-none flex flex-col items-center justify-center ${colorClass} ${
+                              isSelected ? 'ring-4 ring-offset-2 ring-slate-800 shadow-lg scale-105 z-10' : 'opacity-90 shadow-sm'
+                            }`}
+                          >
+                            <span className="font-black text-xs">{id}</span>
+                            <span className="text-[8px] font-bold font-mono mt-0.5">{b.menorValidade} dias</span>
+                          </button>
+                        );
+                      })}
+
+                      {/* Row C */}
+                      {['C1', 'C2', 'C3', 'C4'].map((id) => {
+                        const b = BLOCKS_DATA[id];
+                        const isSelected = selectedBlock === id;
+                        let colorClass = 'bg-emerald-500 text-white hover:bg-emerald-600';
+                        if (b.menorValidade <= 30) colorClass = 'bg-red-500 text-white hover:bg-red-600';
+                        else if (b.menorValidade <= 60) colorClass = 'bg-orange-500 text-white hover:bg-orange-600';
+                        else if (b.menorValidade <= 90) colorClass = 'bg-yellow-500 text-slate-800 hover:bg-yellow-600';
+
+                        return (
+                          <button
+                            key={id}
+                            onClick={() => setSelectedBlock(id)}
+                            className={`p-3 rounded-lg text-center font-sans transition-all duration-150 relative cursor-pointer border-none flex flex-col items-center justify-center ${colorClass} ${
+                              isSelected ? 'ring-4 ring-offset-2 ring-slate-800 shadow-lg scale-105 z-10' : 'opacity-90 shadow-sm'
+                            }`}
+                          >
+                            <span className="font-black text-xs">{id}</span>
+                            <span className="text-[8px] font-bold font-mono mt-0.5">{b.menorValidade} dias</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <div className="flex justify-center items-center gap-2 mt-3 flex-wrap text-[8px] font-black uppercase text-slate-400 tracking-wider">
+                      <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 bg-emerald-500 rounded" /> &gt;90d</span>
+                      <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 bg-yellow-500 rounded" /> 61-90d</span>
+                      <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 bg-orange-500 rounded" /> 31-60d</span>
+                      <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 bg-red-500 rounded" /> ≤30d</span>
                     </div>
                   </div>
 
-                  <button 
-                    type="submit"
-                    className="self-end py-1.5 px-4 bg-emerald-500 text-white rounded font-sans font-bold text-[9px] uppercase tracking-wider border-none cursor-pointer hover:bg-emerald-600"
-                  >
-                    Confirmar Transferência
-                  </button>
-                </form>
-              )}
+                  {/* Audit details side card for selected block */}
+                  <div className="md:col-span-5 bg-slate-50 border border-slate-200 p-4 rounded-xl flex flex-col justify-between font-sans">
+                    <div>
+                      <h4 className="text-[10px] font-black text-[#032b5e] uppercase tracking-wider mb-2 pb-1.5 border-b border-slate-200">
+                        Detalhamento: Bloco {selectedBlock}
+                      </h4>
+                      
+                      <div className="space-y-2 text-xs">
+                        <div className="flex justify-between items-center py-1">
+                          <span className="text-slate-500 font-bold text-[10px] uppercase">SKUs Ativos</span>
+                          <span className="font-mono font-black text-slate-800">{BLOCKS_DATA[selectedBlock].skuCount} SKUs</span>
+                        </div>
+                        <div className="flex justify-between items-center py-1">
+                          <span className="text-slate-500 font-bold text-[10px] uppercase">Paletes Totais</span>
+                          <span className="font-mono font-black text-slate-800">{BLOCKS_DATA[selectedBlock].pallets} un</span>
+                        </div>
+                        <div className="flex justify-between items-center py-1">
+                          <span className="text-slate-500 font-bold text-[10px] uppercase">Menor Validade</span>
+                          <span className="font-mono font-black text-red-600 bg-red-50 px-1.5 py-0.5 rounded">{BLOCKS_DATA[selectedBlock].menorValidade} dias</span>
+                        </div>
+                        <div className="flex justify-between items-center py-1">
+                          <span className="text-slate-500 font-bold text-[10px] uppercase">Validade Média</span>
+                          <span className="font-mono font-black text-slate-800">{BLOCKS_DATA[selectedBlock].avgValidity} dias</span>
+                        </div>
+                        <div className="flex justify-between items-center py-1">
+                          <span className="text-slate-500 font-bold text-[10px] uppercase">Lotes Críticos (≤30d)</span>
+                          <span className="font-mono font-black text-red-500 bg-red-50 px-1.5 py-0.5 rounded">{BLOCKS_DATA[selectedBlock].criticalPct}%</span>
+                        </div>
+                      </div>
+                    </div>
 
-              <div className="overflow-x-auto">
-                <table className="w-full border-collapse font-sans text-[11px]">
+                    {/* Progress bar representing critical % */}
+                    <div className="mt-3 pt-2 border-t border-slate-200">
+                      <div className="flex justify-between text-[9px] font-bold text-slate-400 mb-1">
+                        <span>PERCENTUAL CRÍTICO (≤30d)</span>
+                        <span className="text-red-500 font-black">{BLOCKS_DATA[selectedBlock].criticalPct}%</span>
+                      </div>
+                      <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
+                        <div 
+                          className={`h-full ${BLOCKS_DATA[selectedBlock].criticalPct > 50 ? 'bg-red-500' : 'bg-amber-500'} transition-all duration-300`} 
+                          style={{ width: `${BLOCKS_DATA[selectedBlock].criticalPct}%` }} 
+                        />
+                      </div>
+                    </div>
+
+                  </div>
+
+                </div>
+              </div>
+
+            </div>
+
+            {/* 5. Tabela Resultado do Dashboard */}
+            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+              <div>
+                <span className="text-[9px] bg-blue-50 text-[#032b5e] border border-blue-200 px-2 py-0.5 rounded font-black tracking-wider uppercase">
+                  Metodologia Operacional
+                </span>
+                <h3 className="font-sans font-black text-xs uppercase text-[#032b5e] tracking-wider mt-2">
+                  Resultado do Dashboard & Matriz de Decisão Operacional
+                </h3>
+                <p className="text-[10px] text-gray-400 font-bold mt-0.5">
+                  Diretrizes de campo baseadas nos indicadores gerenciais de validade por bloco físico.
+                </p>
+              </div>
+
+              <div className="overflow-x-auto mt-4">
+                <table className="w-full border-collapse font-sans text-xs">
                   <thead>
-                    <tr className="bg-slate-50 border-b border-gray-200">
-                      <th className="p-2.5 text-gray-500 text-left uppercase tracking-wider text-[9px]">Data</th>
-                      <th className="p-2.5 text-gray-500 text-center uppercase tracking-wider text-[9px]">Origem</th>
-                      <th className="p-2.5 text-gray-500 text-center uppercase tracking-wider text-[9px]">Destino</th>
-                      <th className="p-2.5 text-gray-500 text-left uppercase tracking-wider text-[9px]">Produto / Lote</th>
-                      <th className="p-2.5 text-gray-500 text-right uppercase tracking-wider text-[9px]">Qtd</th>
-                      <th className="p-2.5 text-gray-500 text-left uppercase tracking-wider text-[9px]">Motivo Justificado</th>
+                    <tr className="bg-slate-50 border-b border-slate-200 text-left">
+                      <th className="p-3 text-gray-500 uppercase tracking-wider text-[10px] font-black w-1/4">Gráfico</th>
+                      <th className="p-3 text-gray-500 uppercase tracking-wider text-[10px] font-black w-1/3">Objetivo</th>
+                      <th className="p-3 text-gray-500 uppercase tracking-wider text-[10px] font-black w-5/12">Decisão Operacional</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {stockTransfers.map((t, idx) => (
-                      <tr key={idx} className="hover:bg-slate-50/40">
-                        <td className="p-2.5 text-gray-500">{t.data}</td>
-                        <td className="p-2.5 text-center font-bold text-[#ef4444]">{t.ruaOrigem}</td>
-                        <td className="p-2.5 text-center font-bold text-emerald-600">{t.ruaDestino}</td>
-                        <td className="p-2.5">
-                          <div className="font-semibold text-slate-800 uppercase truncate max-w-[150px]">{t.produto}</div>
-                          <div className="text-[9px] text-gray-400 font-mono">Lote: {t.lote}</div>
-                        </td>
-                        <td className="p-2.5 text-right font-extrabold text-slate-700">{t.quantidade} cx</td>
-                        <td className="p-2.5 text-gray-600 italic font-medium">{t.motivo}</td>
-                      </tr>
-                    ))}
+                    <tr className="hover:bg-slate-50/50">
+                      <td className="p-3 font-bold text-slate-800">Validade Média por Bloco</td>
+                      <td className="p-3 text-slate-600">Comparar a validade média entre os blocos A1–C4</td>
+                      <td className="p-3 text-slate-700 font-medium">Identificar blocos com estoque mais antigo.</td>
+                    </tr>
+                    <tr className="hover:bg-slate-50/50">
+                      <td className="p-3 font-bold text-slate-800">Distribuição das Faixas de Validade</td>
+                      <td className="p-3 text-slate-600">Verificar como as validades estão distribuídas em cada bloco</td>
+                      <td className="p-3 text-slate-700 font-medium">Direcionar a expedição e o remanejamento de produtos.</td>
+                    </tr>
+                    <tr className="hover:bg-slate-50/50">
+                      <td className="p-3 font-bold text-slate-800">Ranking de Risco por Bloco</td>
+                      <td className="p-3 text-slate-600">Priorizar os blocos com maior risco de vencimento</td>
+                      <td className="p-3 text-slate-700 font-medium">Definir a sequência de atuação da operação.</td>
+                    </tr>
+                    <tr className="hover:bg-slate-50/50">
+                      <td className="p-3 font-bold text-slate-800">Heat Map dos Blocos</td>
+                      <td className="p-3 text-slate-600">Localizar visualmente os blocos críticos</td>
+                      <td className="p-3 text-slate-700 font-medium">Facilitar a tomada de decisão rápida e o acompanhamento operacional.</td>
+                    </tr>
                   </tbody>
                 </table>
               </div>
             </div>
 
-            {/* Right: Heatmap list representation of critical streets */}
-            <div className="lg:col-span-4 bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between">
-              <div>
-                <h3 className="font-sans font-black text-xs uppercase text-[#032b5e] tracking-wider mb-2">
-                  MAPA DE CALOR: TAXA DE MOVIMENTAÇÃO DE RUAS
-                </h3>
-                <p className="text-[10px] text-gray-400 font-bold mb-4">Ruas com maior movimentação física exigem auditoria preventiva de posicionamento</p>
-                
-                <div className="space-y-3 mt-4">
-                  {Object.entries(streetActivity)
-                    .sort((a, b) => b[1] - a[1])
-                    .map(([street, total]) => {
-                      const pct = Math.min(100, Math.round((total / 1200) * 100));
-                      const barColor = pct > 60 ? 'bg-red-500' : pct > 30 ? 'bg-amber-500' : 'bg-emerald-500';
-                      return (
-                        <div key={street} className="flex flex-col gap-1 text-xs">
-                          <div className="flex justify-between font-bold text-slate-700">
-                            <span className="uppercase">{street}</span>
-                            <span>{total} Caixas remanejadas</span>
-                          </div>
-                          <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
-                            <div className={`h-full ${barColor} transition-all duration-500`} style={{ width: `${pct}%` }} />
-                          </div>
-                        </div>
-                      );
-                    })}
-                </div>
-              </div>
-
-              <div className="bg-[#eff6ff] p-3 rounded-lg border border-blue-100 mt-5 text-[10px] text-[#1e40af] font-medium leading-normal">
-                📌 <strong>Aviso Operacional:</strong> O excesso de movimentação física no mesmo corredor reduz a vida útil dos pisos industriais e eleva em até 23% a quebra operacional por acidente de empilhador. Planeje os blocados com FEFO estático no início do mês.
-              </div>
-            </div>
-
           </div>
-        </div>
-      )}
+        );
+      })()}
 
 
 
@@ -1307,7 +2293,7 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
                     />
                   </div>
                   <div>
-                    <label className="block text-[9px] font-bold text-gray-500 uppercase mb-1">Quantidade em Risco (Fardo/Caixas)</label>
+                    <label className="block text-[9px] font-bold text-gray-500 uppercase mb-1">Quantidade em Risco (Fardo/SKUs)</label>
                     <input 
                       type="number" 
                       value={newMeeting.quantidadeRisco} 
@@ -1571,155 +2557,7 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
       )}
 
 
-      {/* ─────────────────────────────────────────────────────────────────
-          TAB 6: DETALHAMENTO DOS PRODUTOS / ADVANCED FILTERS
-          ───────────────────────────────────────────────────────────────── */}
-      {activeTab === 'detalhes' && (
-        <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex flex-col gap-5">
-          
-          {/* Header */}
-          <div>
-            <h3 className="font-sans font-black text-xs uppercase text-[#032b5e] tracking-wider">
-              FILTROS AVANÇADOS E DETALHAMENTO DE PRODUTOS FEFO
-            </h3>
-            <p className="text-[10px] text-gray-400 font-bold mt-0.5">Auditoria profunda de todos os lotes de validades registrados no banco de dados corporativo</p>
-          </div>
 
-          {/* Filtering Block */}
-          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 bg-slate-50 p-4 rounded-xl border border-gray-200 text-xs">
-            
-            {/* Filter 1: Expiry Limit */}
-            <div className="flex flex-col gap-1">
-              <label className="text-[9px] font-bold text-gray-500 uppercase">Período Limite</label>
-              <select 
-                value={periodFilter} 
-                onChange={e => setPeriodFilter(e.target.value)}
-                className="w-full p-2 border border-gray-300 rounded text-xs outline-none"
-              >
-                <option value="30">Até 30 dias de validade</option>
-                <option value="60">Até 60 dias de validade</option>
-                <option value="90">Até 90 dias de validade</option>
-                <option value="tudo">Todos os Lotes</option>
-              </select>
-            </div>
-
-            {/* Filter 2: Category */}
-            <div className="flex flex-col gap-1">
-              <label className="text-[9px] font-bold text-gray-500 uppercase">Categoria</label>
-              <select 
-                value={categoryFilter} 
-                onChange={e => setCategoryFilter(e.target.value)}
-                className="w-full p-2 border border-gray-300 rounded text-xs outline-none"
-              >
-                <option value="TODAS">Todas as Categorias</option>
-                <option value="Garrafa Retornável">Garrafa Retornável</option>
-                <option value="PET">Embalagem PET</option>
-                <option value="Lata">Embalagem Lata</option>
-              </select>
-            </div>
-
-            {/* Filter 3: CD / Localizacao */}
-            <div className="flex flex-col gap-1">
-              <label className="text-[9px] font-bold text-gray-500 uppercase">Endereçamento / CD</label>
-              <select 
-                value={streetFilter} 
-                onChange={e => setStreetFilter(e.target.value)}
-                className="w-full p-2 border border-gray-300 rounded text-xs outline-none"
-              >
-                <option value="TODAS">Todos os Endereços</option>
-                <option value="PICKING">Somente Picking</option>
-                <option value="CENTRAL">Somente Blocado Central</option>
-              </select>
-            </div>
-
-            {/* Filter 4: Expiration Bracket */}
-            <div className="flex flex-col gap-1">
-              <label className="text-[9px] font-bold text-gray-500 uppercase">Faixa Crítica</label>
-              <select 
-                value={expiryBracketFilter} 
-                onChange={e => setExpiryBracketFilter(e.target.value)}
-                className="w-full p-2 border border-gray-300 rounded text-xs outline-none"
-              >
-                <option value="TODAS">Todas as Faixas</option>
-                <option value="0-30">Vencimento Crítico (0-30 dias)</option>
-                <option value="31-60">Alerta Médio (31-60 dias)</option>
-                <option value="61-90">Alerta Baixo (61-90 dias)</option>
-              </select>
-            </div>
-
-            {/* Clear filters */}
-            <div className="flex flex-col justify-end">
-              <button 
-                onClick={() => {
-                  setPeriodFilter('tudo');
-                  setProductFilter('TODOS');
-                  setCategoryFilter('TODAS');
-                  setStreetFilter('TODAS');
-                  setExpiryBracketFilter('TODAS');
-                }}
-                className="w-full p-2 bg-[#032b5e] hover:bg-[#021f44] text-white rounded font-sans font-bold text-[9px] uppercase tracking-wider border-none cursor-pointer"
-              >
-                Limpar Filtros
-              </button>
-            </div>
-
-          </div>
-
-          {/* Results table */}
-          <div className="overflow-x-auto mt-2">
-            <table className="w-full border-collapse font-sans text-xs">
-              <thead>
-                <tr className="bg-slate-50 border-b border-gray-200">
-                  <th className="p-3 text-gray-500 text-left uppercase tracking-wider text-[9px]">Código SKU</th>
-                  <th className="p-3 text-gray-500 text-left uppercase tracking-wider text-[9px]">Descrição do Produto</th>
-                  <th className="p-3 text-gray-500 text-center uppercase tracking-wider text-[9px]">Vencimento</th>
-                  <th className="p-3 text-gray-500 text-center uppercase tracking-wider text-[9px]">Faixa</th>
-                  <th className="p-3 text-gray-500 text-center uppercase tracking-wider text-[9px]">Dias Restantes</th>
-                  <th className="p-3 text-gray-500 text-right uppercase tracking-wider text-[9px]">Total Volumetria (un)</th>
-                  <th className="p-3 text-gray-500 text-center uppercase tracking-wider text-[9px]">Endereço físico</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {filteredValidadesList.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="p-6 text-center text-gray-400">Nenhum lote corresponde aos filtros selecionados.</td>
-                  </tr>
-                ) : (
-                  filteredValidadesList.map((v, idx) => {
-                    const statusBg = v.days < 0 ? 'bg-red-100 text-red-800' :
-                                     v.days <= 30 ? 'bg-red-50 text-red-600 border border-red-200' :
-                                     v.days <= 60 ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800';
-                    return (
-                      <tr key={idx} className="hover:bg-slate-50/45">
-                        <td className="p-3 font-mono font-bold text-[#032b5e]">{v.codigo}</td>
-                        <td className="p-3 font-semibold text-slate-800 uppercase">{v.descricao}</td>
-                        <td className="p-3 text-center text-slate-700 font-bold">{v.validade}</td>
-                        <td className="p-3 text-center">
-                          <span className={`px-2.5 py-0.5 rounded text-[8.5px] font-black uppercase tracking-tight ${statusBg}`}>
-                            {v.days < 0 ? 'Expirado' : v.days <= 30 ? 'CRÍTICO' : v.days <= 60 ? 'ALERTA' : 'SEGURO'}
-                          </span>
-                        </td>
-                        <td className="p-3 text-center font-extrabold">
-                          <span className={v.days <= 30 ? 'text-red-500' : 'text-slate-600'}>
-                            {v.days} dias
-                          </span>
-                        </td>
-                        <td className="p-3 text-right font-black text-[#032b5e]">{v.totalUnities}</td>
-                        <td className="p-3 text-center">
-                          <span className="bg-slate-100 text-slate-800 text-[9px] font-bold uppercase px-2 py-0.5 rounded-full">
-                            {v.localizacao === 'picking' ? 'Pista de Picking' : 'Blocado Central'}
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-
-        </div>
-      )}
 
 
       {activeTab === 'boarda3' && (

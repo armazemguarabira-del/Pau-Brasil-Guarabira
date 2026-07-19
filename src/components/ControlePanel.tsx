@@ -90,7 +90,7 @@ const getFormattedRoles = (funcaoStr?: string) => {
       case 'armazem': return 'Operação EFC / EFD';
       case 'quebras': return 'Operação Quebras';
       case 'validades': return 'Operação Validade';
-      case 'refugo': return 'Operação Blitz Refugo';
+      case 'refugo': return 'Operação Retorno de Rota';
       case 'empilhador': return 'Operação Picking';
       case 'conferente': return 'Operação Conferênte';
       case 'controle': return 'Supervisor Controle';
@@ -185,7 +185,7 @@ export default function ControlePanel({ user, empresa }: ControlePanelProps) {
       return;
     }
 
-    const q = query(collection(db, 'repack'));
+    const q = query(collection(db, 'repack'), where('empresaId', '==', empresaId));
     const unsub = onSnapshot(q, (snap) => {
       const rows = snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as RepackRow));
       rows.sort((a, b) => (b.dataISO || '').localeCompare(a.dataISO || '') || (b.inicio || '').localeCompare(a.inicio || ''));
@@ -204,7 +204,7 @@ export default function ControlePanel({ user, empresa }: ControlePanelProps) {
       return;
     }
 
-    const q = query(collection(db, 'dpo_audits'));
+    const q = query(collection(db, 'dpo_audits'), where('empresaId', '==', empresaId));
     const unsub = onSnapshot(q, (snap) => {
       const rows = snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as DpoAudit));
       rows.sort((a, b) => (b.dataISO || '').localeCompare(a.dataISO || ''));
@@ -1779,7 +1779,7 @@ export default function ControlePanel({ user, empresa }: ControlePanelProps) {
                           { id: 'armazem', label: 'Operação EFC / EFD' },
                           { id: 'quebras', label: 'Operação Quebras' },
                           { id: 'validades', label: 'Operação Validade' },
-                          { id: 'refugo', label: 'Operação Blitz Refugo' },
+                          { id: 'refugo', label: 'Operação Retorno de Rota' },
                           { id: 'empilhador', label: 'Operação Picking' },
                           { id: 'conferente', label: 'Operação Conferênte' },
                           { id: 'controle', label: 'Supervisor Controle' }
@@ -2013,7 +2013,7 @@ export default function ControlePanel({ user, empresa }: ControlePanelProps) {
                         <option value="armazem">Operador de Armazém Fácil</option>
                         <option value="quebras">Fiscal de Quebras</option>
                         <option value="validades">Gestor de Validades (FEFO)</option>
-                        <option value="refugo">Operador Blitz Refugo</option>
+                        <option value="refugo">Operador Retorno de Rota</option>
                         <option value="empilhador">Picking / Empilhadeira</option>
                         <option value="conferente">Conferente Geral</option>
                         <option value="controle">Controle / Supervisor</option>

@@ -41,6 +41,7 @@ export interface RepackRow {
   meta: string;
   resultado: string;
   operador?: string;
+  motivoNaoBaterMeta?: string;
   _criadoEm?: string;
 }
 
@@ -88,6 +89,7 @@ export interface ArmazemRow {
   placa: string;
   tipo: string;
   palhete: number;
+  pernoite?: 'D0' | 'D1' | 'D2' | 'D3' | 'D4';
   obs?: string;
   _criadoEm?: string;
 }
@@ -118,7 +120,8 @@ export interface ValidadeRow {
   lastro: number;
   caixa: number;
   validade: string;
-  localizacao: 'picking' | 'central';
+  localizacao: 'picking' | 'central' | 'marketplace';
+  bloco?: string;
   cadastradoEm?: string;
   _criadoEm?: string;
 }

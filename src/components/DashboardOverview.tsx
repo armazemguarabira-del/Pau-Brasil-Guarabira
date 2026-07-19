@@ -37,7 +37,7 @@ import {
   Zap,
   Radio
 } from 'lucide-react';
-import { collection, onSnapshot, query } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, addDoc, updateDoc, deleteDoc, doc, orderBy } from 'firebase/firestore';
 import { db, isCustomFirebaseConnected } from '../firebase';
 
 const getRoleLabel = (role?: string) => {
@@ -50,7 +50,7 @@ const getRoleLabel = (role?: string) => {
       case 'armazem': return 'Operação EFC / EFD';
       case 'quebras': return 'Operação Quebras';
       case 'validades': return 'Operação Validade';
-      case 'refugo': return 'Operação Blitz Refugo';
+      case 'refugo': return 'Operação Retorno de Rota';
       case 'empilhador': return 'Operação Picking';
       case 'conferente': return 'Operação Conferênte';
       case 'controle': return 'Supervisor Controle';
@@ -127,6 +127,17 @@ export default function DashboardOverview({
   const [tarefasList, setTarefasList] = useState<Tarefa[]>([]);
   const [usuariosList, setUsuariosList] = useState<any[]>([]);
 
+  // Action Plans states
+  const [acoesList, setAcoesList] = useState<any[]>([]);
+  const [colaboradoresList, setColaboradoresList] = useState<any[]>([]);
+  const [activeActionTab, setActiveActionTab] = useState<'colaborador' | 'supervisor'>('colaborador');
+  const [selectedColabId, setSelectedColabId] = useState('');
+  const [newActionTitle, setNewActionTitle] = useState('');
+  const [newActionDesc, setNewActionDesc] = useState('');
+  const [creatingAction, setCreatingAction] = useState(false);
+  const [successMsg, setSuccessMsg] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
+
   // Local derived dynamic KPI stats
   const [liveKpiStats, setLiveKpiStats] = useState({
     usuarios: kpiStats.usuarios,
@@ -190,71 +201,79 @@ export default function DashboardOverview({
     if (!db) return;
 
     const companyId = empresa?.id || '';
-    const isCustom = isCustomFirebaseConnected();
+    // Não assina nenhum listener sem empresaId definido: evita cair num
+    // fallback que buscaria as coleções inteiras sem filtro.
+    if (!companyId) return;
 
     // Repack
-    const qRepack = query(collection(db, 'repack'));
+    const qRepack = query(collection(db, 'repack'), where('empresaId', '==', companyId));
     const unsubRepack = onSnapshot(qRepack, (snap) => {
       const rows = snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as any));
-      const filtered = (isCustom || !companyId) ? rows : rows.filter(r => r.empresaId === companyId);
-      setRepackList(filtered);
+      setRepackList(rows);
     }, (err) => console.error("Error in repack onSnapshot", err));
 
     // Despejo
-    const qDespejo = query(collection(db, 'despejo'));
+    const qDespejo = query(collection(db, 'despejo'), where('empresaId', '==', companyId));
     const unsubDespejo = onSnapshot(qDespejo, (snap) => {
       const rows = snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as any));
-      const filtered = (isCustom || !companyId) ? rows : rows.filter(r => r.empresaId === companyId);
-      setDespejoList(filtered);
+      setDespejoList(rows);
     }, (err) => console.error("Error in despejo onSnapshot", err));
 
     // Quebras
-    const qQuebras = query(collection(db, 'quebras'));
+    const qQuebras = query(collection(db, 'quebras'), where('empresaId', '==', companyId));
     const unsubQuebras = onSnapshot(qQuebras, (snap) => {
       const rows = snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as any));
-      const filtered = (isCustom || !companyId) ? rows : rows.filter(r => r.empresaId === companyId);
-      setQuebrasList(filtered);
+      setQuebrasList(rows);
     }, (err) => console.error("Error in quebras onSnapshot", err));
 
     // Validades
-    const qValidades = query(collection(db, 'validades'));
+    const qValidades = query(collection(db, 'validades'), where('empresaId', '==', companyId));
     const unsubValidades = onSnapshot(qValidades, (snap) => {
       const rows = snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as any));
-      const filtered = (isCustom || !companyId) ? rows : rows.filter(r => r.empresaId === companyId);
-      setValidadesList(filtered);
+      setValidadesList(rows);
     }, (err) => console.error("Error in validades onSnapshot", err));
 
     // Armazem
-    const qArmazem = query(collection(db, 'armazem'));
+    const qArmazem = query(collection(db, 'armazem'), where('empresaId', '==', companyId));
     const unsubArmazem = onSnapshot(qArmazem, (snap) => {
       const rows = snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as any));
-      const filtered = (isCustom || !companyId) ? rows : rows.filter(r => r.empresaId === companyId);
-      setArmazemList(filtered);
+      setArmazemList(rows);
     }, (err) => console.error("Error in armazem onSnapshot", err));
 
     // Blitz Refugo
-    const qBlitz = query(collection(db, 'blitz_refugo'));
+    const qBlitz = query(collection(db, 'blitz_refugo'), where('empresaId', '==', companyId));
     const unsubBlitz = onSnapshot(qBlitz, (snap) => {
       const rows = snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as any));
-      const filtered = (isCustom || !companyId) ? rows : rows.filter(r => r.empresaId === companyId);
-      setBlitzList(filtered);
+      setBlitzList(rows);
     }, (err) => console.error("Error in blitz onSnapshot", err));
 
     // Tarefas
-    const qTarefas = query(collection(db, 'tarefas'));
+    const qTarefas = query(collection(db, 'tarefas'), where('empresaId', '==', companyId));
     const unsubTarefas = onSnapshot(qTarefas, (snap) => {
       const rows = snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as any));
-      const filtered = (isCustom || !companyId) ? rows : rows.filter(r => r.empresaId === companyId);
-      setTarefasList(filtered);
+      setTarefasList(rows);
     }, (err) => console.error("Error in tarefas onSnapshot", err));
 
     // Usuarios
-    const qUsuarios = query(collection(db, 'usuarios'));
+    const qUsuarios = query(collection(db, 'usuarios'), where('empresaId', '==', companyId));
     const unsubUsuarios = onSnapshot(qUsuarios, (snap) => {
       const rows = snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as any));
-      const filtered = (isCustom || !companyId) ? rows : rows.filter(r => r.empresaId === companyId);
-      setUsuariosList(filtered);
+      setUsuariosList(rows);
     }, (err) => console.error("Error in usuarios onSnapshot", err));
+
+    // Acoes (Action Plans / Improvements)
+    const qAcoes = query(collection(db, 'acoes'), where('empresaId', '==', companyId));
+    const unsubAcoes = onSnapshot(qAcoes, (snap) => {
+      const rows = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
+      setAcoesList(rows);
+    }, (err) => console.error("Error in acoes onSnapshot", err));
+
+    // Colaboradores
+    const qColaboradores = query(collection(db, 'colaboradores'), where('empresaId', '==', companyId));
+    const unsubColaboradores = onSnapshot(qColaboradores, (snap) => {
+      const rows = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
+      setColaboradoresList(rows);
+    }, (err) => console.error("Error in colaboradores onSnapshot", err));
 
     return () => {
       unsubRepack();
@@ -265,6 +284,8 @@ export default function DashboardOverview({
       unsubBlitz();
       unsubTarefas();
       unsubUsuarios();
+      unsubAcoes();
+      unsubColaboradores();
     };
   }, [empresa?.id]);
 
@@ -440,6 +461,93 @@ export default function DashboardOverview({
     }
   };
 
+  const handleCreateAction = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!db) return;
+    if (!selectedColabId) {
+      setErrorMsg('Por favor, selecione um colaborador.');
+      return;
+    }
+    if (!newActionTitle.trim() || !newActionDesc.trim()) {
+      setErrorMsg('Preencha o título e a descrição da ação.');
+      return;
+    }
+
+    setCreatingAction(true);
+    setErrorMsg('');
+    setSuccessMsg('');
+
+    try {
+      // Look up in colaboradores or fallback to usuarios list
+      let colabName = 'Colaborador';
+      let colabUid = selectedColabId;
+      
+      const foundInColab = colaboradoresList.find(c => c.id === selectedColabId || c.uid === selectedColabId);
+      if (foundInColab) {
+        colabName = foundInColab.nome || 'Colaborador';
+        colabUid = foundInColab.uid || foundInColab.id;
+      } else {
+        const foundInUser = usuariosList.find(u => u._docId === selectedColabId || u.uid === selectedColabId);
+        if (foundInUser) {
+          colabName = foundInUser.nome || 'Colaborador';
+          colabUid = foundInUser.uid || foundInUser._docId;
+        }
+      }
+
+      const companyId = empresa?.id || 'demo';
+      const now = new Date().toISOString();
+      const limit = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+      await addDoc(collection(db, 'acoes'), {
+        empresaId: companyId,
+        colaboradorId: colabUid,
+        colaboradorNome: colabName,
+        titulo: newActionTitle.trim(),
+        descricao: newActionDesc.trim(),
+        tipo: 'colaborador',
+        status: 'pendente',
+        criadoEm: now,
+        limiteEm: limit,
+        criadoPorNome: user.nome || 'Supervisor',
+        criadoPorUid: user.uid
+      });
+
+      setSuccessMsg('Plano de ação criado com sucesso!');
+      setNewActionTitle('');
+      setNewActionDesc('');
+      setSelectedColabId('');
+      
+      setTimeout(() => setSuccessMsg(''), 4000);
+    } catch (err: any) {
+      console.error(err);
+      setErrorMsg('Erro ao criar plano de ação: ' + err.message);
+    } finally {
+      setCreatingAction(false);
+    }
+  };
+
+  const handleConcluirAction = async (actionId: string) => {
+    if (!db) return;
+    try {
+      await updateDoc(doc(db, 'acoes', actionId), {
+        status: 'concluido',
+        resolvidaEm: new Date().toISOString()
+      });
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleDeleteAction = async (actionId: string) => {
+    if (!db) return;
+    if (!window.confirm('Deseja realmente excluir esta ação?')) return;
+    try {
+      await deleteDoc(doc(db, 'acoes', actionId));
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const [showSyncBanner, setShowSyncBanner] = useState(true);
 
   return (
@@ -608,12 +716,6 @@ export default function DashboardOverview({
                   📊 FEFO
                 </button>
                 <button 
-                  onClick={() => onNavigate('blitz-dashboard')}
-                  className="text-center py-2.5 bg-[#3b82f6]/10 hover:bg-[#3b82f6]/20 text-[#3b82f6] hover:text-white rounded-xl text-[8px] uppercase font-black tracking-wider border border-[#3b82f6]/25 transition-all cursor-pointer flex items-center justify-center gap-1"
-                >
-                  📊 Blitz
-                </button>
-                <button 
                   onClick={() => onNavigate('picking-dashboard')}
                   className="text-center py-2.5 bg-[#f5a623]/10 hover:bg-[#f5a623]/20 text-[#f5a623] hover:text-white rounded-xl text-[8px] uppercase font-black tracking-wider border border-[#f5a623]/25 transition-all cursor-pointer flex items-center justify-center gap-1"
                 >
@@ -646,7 +748,7 @@ export default function DashboardOverview({
                                       papel === 'armazem' ? 'Operação EFC / EFD' :
                                       papel === 'quebras' ? 'Operação Quebras' :
                                       papel === 'validades' ? 'Operação Validade' :
-                                      papel === 'refugo' ? 'Operação Blitz Refugo' :
+                                      papel === 'refugo' ? 'Operação Retorno de Rota' :
                                       papel === 'empilhador' ? 'Operação Picking' :
                                       papel === 'conferente' ? 'Operação Conferênte' :
                                       papel === 'controle' ? 'Supervisor Controle' : 'Minha Operação';
@@ -668,6 +770,298 @@ export default function DashboardOverview({
           </div>
         </div>
 
+      </div>
+
+      {/* ── SEÇÃO PLANOS DE AÇÃO & MELHORIAS OPERACIONAIS ── */}
+      <div className="bg-white border border-slate-150 rounded-2xl p-6 shadow-xs flex flex-col gap-6" id="acoes-e-melhorias-secao">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-5">
+          <div>
+            <h2 className="text-base font-black text-slate-800 flex items-center gap-2 uppercase tracking-wide">
+              <span className="p-1.5 bg-[#1e56f0]/10 text-[#1e56f0] rounded-lg">📋</span>
+              Planos de Ação e Melhorias Operacionais
+            </h2>
+            <p className="text-xs text-slate-500 mt-1">
+              Acompanhamento de metas de melhoria operacional, ações corretivas com limite de 7 dias e sugestões setoriais dos supervisores.
+            </p>
+          </div>
+          
+          {/* Tab selector */}
+          <div className="flex bg-slate-100 p-1 rounded-xl self-start md:self-auto">
+            <button
+              type="button"
+              onClick={() => setActiveActionTab('colaborador')}
+              className={`px-4 py-2 text-[10px] font-black rounded-lg uppercase tracking-wider transition-all cursor-pointer ${
+                activeActionTab === 'colaborador' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              👤 Planos de Ação
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveActionTab('supervisor')}
+              className={`px-4 py-2 text-[10px] font-black rounded-lg uppercase tracking-wider transition-all cursor-pointer ${
+                activeActionTab === 'supervisor' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              💡 Sugestões Setoriais
+            </button>
+          </div>
+        </div>
+
+        {activeActionTab === 'colaborador' ? (
+          <div className="flex flex-col gap-6">
+            {/* Create form for supervisors */}
+            {user.isControle && (
+              <form onSubmit={handleCreateAction} className="bg-slate-50 border border-slate-150 p-5 rounded-2xl flex flex-col gap-4">
+                <div className="flex items-center gap-2 border-b border-slate-200/60 pb-2">
+                  <span className="text-[#1e56f0] text-sm">➕</span>
+                  <span className="text-xs font-black text-slate-700 uppercase tracking-wider">Criar Novo Plano de Ação para Operador</span>
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+                  {/* Select operator dropdown */}
+                  <div className="col-span-12 md:col-span-4 flex flex-col gap-1.5">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Colaborador Destinatário</label>
+                    <select
+                      value={selectedColabId}
+                      onChange={(e) => setSelectedColabId(e.target.value)}
+                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium text-slate-700 focus:outline-none focus:ring-1 focus:ring-[#1e56f0]"
+                    >
+                      <option value="">Selecione um colaborador...</option>
+                      {usuariosList.map((colab) => (
+                        <option key={colab._docId || colab.uid} value={colab._docId || colab.uid}>
+                          {colab.nome} ({getRoleLabel(colab.papel)})
+                        </option>
+                      ))}
+                      {colaboradoresList.filter(c => !usuariosList.some(u => u.uid === c.uid || u._docId === c.id)).map((colab) => (
+                        <option key={colab.id} value={colab.id}>
+                          {colab.nome} (Colaborador)
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  
+                  {/* Title of the action */}
+                  <div className="col-span-12 md:col-span-8 flex flex-col gap-1.5">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Título da Ação</label>
+                    <input
+                      type="text"
+                      placeholder="Ex: Refazer curso de amarração de carga / Organizar rua C-12"
+                      value={newActionTitle}
+                      onChange={(e) => setNewActionTitle(e.target.value)}
+                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium text-slate-700 focus:outline-none focus:ring-1 focus:ring-[#1e56f0]"
+                    />
+                  </div>
+                  
+                  {/* Description of the action */}
+                  <div className="col-span-12 flex flex-col gap-1.5">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Detalhamento / Descrição Operacional</label>
+                    <textarea
+                      rows={2}
+                      placeholder="Descreva detalhadamente o que o colaborador precisa executar ou corrigir no prazo máximo de 7 dias..."
+                      value={newActionDesc}
+                      onChange={(e) => setNewActionDesc(e.target.value)}
+                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium text-slate-700 focus:outline-none focus:ring-1 focus:ring-[#1e56f0] resize-none"
+                    />
+                  </div>
+                </div>
+
+                {errorMsg && <p className="text-xs text-red-500 font-semibold">{errorMsg}</p>}
+                {successMsg && <p className="text-xs text-green-600 font-semibold">{successMsg}</p>}
+
+                <button
+                  type="submit"
+                  disabled={creatingAction}
+                  className="self-end px-5 py-2.5 bg-[#1e56f0] hover:bg-[#1a4cd8] disabled:bg-[#1e56f0]/40 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all cursor-pointer"
+                >
+                  {creatingAction ? 'Salvando...' : '🚀 Criar Plano de Ação'}
+                </button>
+              </form>
+            )}
+
+            <div className="flex flex-col gap-3">
+              <span className="text-[11px] font-black text-slate-400 uppercase tracking-wider">Ações e Planos Ativos</span>
+              {(() => {
+                let filtered = acoesList.filter(a => a.tipo === 'colaborador');
+                
+                // If standard operator, show only their own action plans
+                if (!user.isControle && user.papel !== 'admin' && user.papel !== 'controle' && user.email?.toLowerCase().trim() !== 'nixon.a.a100.nh@gmail.com') {
+                  filtered = filtered.filter(a => a.colaboradorId === user.uid);
+                }
+
+                if (filtered.length === 0) {
+                  return (
+                    <div className="p-8 text-center border border-dashed border-slate-200 rounded-2xl text-slate-400 flex flex-col items-center justify-center gap-2">
+                      <span className="text-2xl">🎉</span>
+                      <span className="text-xs font-bold uppercase tracking-wider">Nenhum plano de ação pendente</span>
+                      <p className="text-[10px] text-slate-400">Todos os colaboradores estão em conformidade e sem restrições de trabalho.</p>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {filtered.map((action) => {
+                      const criadoDate = action.criadoEm ? new Date(action.criadoEm) : new Date();
+                      const limitDate = new Date(action.limiteEm || (criadoDate.getTime() + 7 * 24 * 60 * 60 * 1000));
+                      const msLeft = limitDate.getTime() - Date.now();
+                      const isExceeded = msLeft <= 0 && action.status === 'pendente';
+                      
+                      let countdownText = '';
+                      if (action.status === 'concluido') {
+                        countdownText = '✓ CONCLUÍDO';
+                      } else if (isExceeded) {
+                        countdownText = '⚠️ EXCEDIDO (TRABALHO BLOQUEADO)';
+                      } else {
+                        const days = Math.floor(msLeft / (1000 * 60 * 60 * 24));
+                        const hours = Math.floor((msLeft % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                        countdownText = `⏳ Restam ${days}d e ${hours}h`;
+                      }
+
+                      return (
+                        <div 
+                          key={action.id} 
+                          className={`p-4 rounded-xl border flex flex-col justify-between gap-3 shadow-xs transition-all ${
+                            action.status === 'concluido' 
+                              ? 'bg-emerald-50/40 border-emerald-100' 
+                              : isExceeded 
+                                ? 'bg-red-50/40 border-red-200 animate-pulse' 
+                                : 'bg-white border-slate-150 hover:border-slate-300'
+                          }`}
+                        >
+                          <div>
+                            <div className="flex justify-between items-start gap-2 mb-2">
+                              <span className="text-[9px] px-2 py-0.5 rounded font-black tracking-wider uppercase border" style={{
+                                backgroundColor: action.status === 'concluido' ? '#d1fae5' : isExceeded ? '#fee2e2' : '#fef3c7',
+                                color: action.status === 'concluido' ? '#065f46' : isExceeded ? '#991b1b' : '#92400e',
+                                borderColor: 'transparent'
+                              }}>
+                                {countdownText}
+                              </span>
+                              {user.isControle && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteAction(action.id)}
+                                  className="text-slate-300 hover:text-red-500 p-1 rounded-md transition-colors cursor-pointer font-black text-xs"
+                                  title="Excluir Ação"
+                                >
+                                  ✕
+                                </button>
+                              )}
+                            </div>
+                            
+                            <span className="text-[10px] text-slate-400 font-bold block uppercase tracking-wider mb-1">
+                              Para: <strong className="text-slate-700">{action.colaboradorNome}</strong>
+                            </span>
+                            <h3 className="font-bold text-slate-800 text-xs tracking-tight line-clamp-1">{action.titulo}</h3>
+                            <p className="text-[11px] text-slate-500 mt-1.5 leading-relaxed line-clamp-3">{action.descricao}</p>
+                          </div>
+                          
+                          <div className="mt-2 pt-3 border-t border-slate-100/70 flex justify-between items-center text-[10px] text-slate-400">
+                            <span className="font-medium">Criado em: {criadoDate.toLocaleDateString('pt-BR')}</span>
+                            {action.status === 'pendente' && (action.colaboradorId === user.uid || user.isControle) && (
+                              <button
+                                type="button"
+                                onClick={() => handleConcluirAction(action.id)}
+                                className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md font-bold text-[9px] uppercase tracking-wider cursor-pointer transition-all"
+                              >
+                                ✓ Concluir
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-3">
+            <span className="text-[11px] font-black text-slate-400 uppercase tracking-wider">Sugestões de Melhorias dos Supervisores por Setor</span>
+            {(() => {
+              const improvements = acoesList.filter(a => a.tipo === 'supervisor' || a.setor);
+              
+              if (improvements.length === 0) {
+                return (
+                  <div className="p-8 text-center border border-dashed border-slate-200 rounded-2xl text-slate-400 flex flex-col items-center justify-center gap-2">
+                    <span className="text-2xl">💡</span>
+                    <span className="text-xs font-bold uppercase tracking-wider">Nenhuma melhoria registrada</span>
+                    <p className="text-[10px] text-slate-400">As sugestões de melhorias propostas nos setores operacionais aparecerão aqui.</p>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {improvements.map((action) => {
+                    const criadoDate = action.criadoEm ? new Date(action.criadoEm) : new Date();
+                    
+                    return (
+                      <div 
+                        key={action.id} 
+                        className={`p-4 rounded-xl border flex flex-col justify-between gap-3 shadow-xs transition-all ${
+                          action.status === 'resolvido' || action.status === 'concluido'
+                            ? 'bg-emerald-50/40 border-emerald-100' 
+                            : 'bg-white border-slate-150 hover:border-slate-300'
+                        }`}
+                      >
+                        <div>
+                          <div className="flex justify-between items-start gap-2 mb-2">
+                            <span className="text-[9px] px-2 py-0.5 rounded font-black tracking-wider uppercase bg-[#1e56f0]/10 text-[#1e56f0]">
+                              SETOR: {action.setor || 'Geral'}
+                            </span>
+                            <span className="text-[9px] px-2 py-0.5 rounded font-black tracking-wider uppercase" style={{
+                              backgroundColor: (action.status === 'resolvido' || action.status === 'concluido') ? '#d1fae5' : '#fee2e2',
+                              color: (action.status === 'resolvido' || action.status === 'concluido') ? '#065f46' : '#991b1b',
+                            }}>
+                              {(action.status === 'resolvido' || action.status === 'concluido') ? 'RESOLVIDO' : 'PENDENTE'}
+                            </span>
+                          </div>
+                          
+                          <span className="text-[10px] text-slate-400 font-bold block uppercase tracking-wider mb-1">
+                            Por: <strong className="text-slate-700">{action.criadoPorNome || 'Operador'}</strong>
+                          </span>
+                          {action.destinoGestorNome && (
+                            <div className="flex items-center gap-1.5 text-[9px] font-bold text-amber-600 mt-1 mb-2 bg-amber-50/50 px-2 py-0.5 rounded-md border border-amber-100/40 w-fit">
+                              <span>👉 Destinado a: {action.destinoGestorNome} ({action.destinoGestorPapel || 'Supervisor'})</span>
+                            </div>
+                          )}
+                          <h3 className="font-bold text-slate-800 text-xs tracking-tight line-clamp-1">{action.titulo}</h3>
+                          <p className="text-[11px] text-slate-500 mt-1.5 leading-relaxed line-clamp-3">{action.descricao}</p>
+                        </div>
+                        
+                        <div className="mt-2 pt-3 border-t border-slate-100/70 flex justify-between items-center text-[10px] text-slate-400">
+                          <span className="font-medium">Sugerido em: {criadoDate.toLocaleDateString('pt-BR')}</span>
+                          {action.status !== 'resolvido' && action.status !== 'concluido' && user.isControle && (
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                if (!db) return;
+                                try {
+                                  await updateDoc(doc(db, 'acoes', action.id), {
+                                    status: 'resolvido',
+                                    resolvidaEm: new Date().toISOString()
+                                  });
+                                } catch (err) {
+                                  console.error(err);
+                                }
+                              }}
+                              className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md font-bold text-[9px] uppercase tracking-wider cursor-pointer transition-all"
+                            >
+                              ✓ Marcar Resolvido
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+          </div>
+        )}
       </div>
 
     </div>

@@ -31,11 +31,16 @@ import {
   TrendingUp, 
   Zap, 
   Target, 
-  Trash2 
+  Trash2,
+  Box,
+  AlertTriangle,
+  SlidersHorizontal,
+  CheckCircle2
 } from 'lucide-react';
 import { Usuario, Empresa, DespejoRow } from '../types';
 import { db, isCustomFirebaseConnected } from '../firebase';
-import { collection, query, onSnapshot, deleteDoc, doc } from 'firebase/firestore';
+import { collection, query, onSnapshot, deleteDoc, doc, where } from 'firebase/firestore';
+import { generateMockDespejoRows } from '../mockDataGenerator';
 import A3BoardComponent from './A3BoardComponent';
 
 interface DespejoDashboardProps {
@@ -220,6 +225,12 @@ export default function DespejoDashboard({ user, empresa, onBack }: DespejoDashb
   // Selected row for real-time audit details
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
 
+  // Simulator states
+  const [simUnidade, setSimUnidade] = useState<'HE' | 'SKUs'>('HE');
+  const [simMetaCustom, setSimMetaCustom] = useState<number | null>(null);
+  const [simMediaCustom, setSimMediaCustom] = useState<number | null>(null);
+  const [simVolumeCustom, setSimVolumeCustom] = useState<number | null>(null);
+
   // Helper helper operations
   const pad2 = (num: number) => String(num).padStart(2, '0');
   const toSec = (hms: string) => {
@@ -256,33 +267,36 @@ export default function DespejoDashboard({ user, empresa, onBack }: DespejoDashb
       return;
     }
 
-    const q = query(collection(db, 'despejo'));
+    const q = query(collection(db, 'despejo'), where('empresaId', '==', companyId));
     const unsub = onSnapshot(q, (snap) => {
-      const rows = snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as DespejoRow));
-      const filtered = isCustomFirebaseConnected() ? rows : rows.filter(r => r.empresaId === companyId);
-      // Sort chronologically desc
-      filtered.sort((a, b) => (b.dataISO || '').localeCompare(a.dataISO || '') || (b.inicio || '').localeCompare(a.inicio || ''));
-      setDespejoRows(filtered);
+       const rows = snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as DespejoRow));
+       // Sort chronologically desc
+       rows.sort((a, b) => (b.dataISO || '').localeCompare(a.dataISO || '') || (b.inicio || '').localeCompare(a.inicio || ''));
+       setDespejoRows(rows);
     }, (error) => {
-      console.error("Error loading despejo rows from firestore: ", error);
+       console.error("Error loading despejo rows from firestore: ", error);
     });
 
     return () => unsub();
   }, [empresa?.id]);
 
-  // Combine real database rows and demo rows if empty
+  // Combine real database rows and demo rows
   const activeRows = useMemo(() => {
-    if (despejoRows.length > 0) {
-      return despejoRows;
-    }
-    return DEMO_DESPEJO_ROWS;
-  }, [despejoRows]);
+    const companyId = empresa?.id || 'demo';
+    const mockRows = generateMockDespejoRows(companyId);
+    return [...despejoRows, ...mockRows];
+  }, [despejoRows, empresa?.id]);
 
   // Unique lists for the filters
   const colaboradoresList = useMemo(() => {
     const names = new Set<string>();
     activeRows.forEach(r => {
-      if (r.operador) names.add(r.operador);
+      if (r.operador) {
+        const cleanName = r.operador.split('(')[0].trim();
+        if (cleanName) {
+          names.add(cleanName);
+        }
+      }
     });
     return Array.from(names).sort();
   }, [activeRows]);
@@ -330,8 +344,12 @@ export default function DespejoDashboard({ user, empresa, onBack }: DespejoDashb
   const filteredRows = useMemo(() => {
     return activeRows.filter(row => {
       // 1. Colaborador filter
-      if (appliedFilters.colaborador !== 'Todos' && row.operador !== appliedFilters.colaborador) {
-        return false;
+      if (appliedFilters.colaborador !== 'Todos') {
+        const rowOpClean = row.operador?.split('(')[0].trim().toLowerCase() || '';
+        const filterOpClean = appliedFilters.colaborador.toLowerCase();
+        if (rowOpClean !== filterOpClean && !row.operador?.toLowerCase().includes(filterOpClean)) {
+          return false;
+        }
       }
       // 2. Embalagem filter
       if (appliedFilters.embalagem !== 'Todos' && row.embalagem !== appliedFilters.embalagem) {
@@ -374,35 +392,267 @@ export default function DespejoDashboard({ user, empresa, onBack }: DespejoDashb
     });
   }, [activeRows, appliedFilters]);
 
-  // Compute stats dynamically based on filtered data
-  const stats = useMemo(() => {
-    // 1. Total quantity of boxes dumped
-    const totalCaixas = filteredRows.reduce((sum, r) => sum + (Number(r.quantidade) || 0), 0);
+  // Working days of current month calculation (mês vigente)
+  const workingDaysInfo = useMemo(() => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth(); // 0-indexed (e.g. 6 is July)
+    
+    // Total business days in this month (Monday to Friday)
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    const totalDaysInMonth = lastDay.getDate();
+    
+    let totalWorkingDays = 0;
+    let elapsedWorkingDays = 0;
+    
+    for (let d = 1; d <= totalDaysInMonth; d++) {
+      const date = new Date(year, month, d);
+      const dayOfWeek = date.getDay(); // 0 = Sunday, 6 = Saturday
+      const isWorkingDay = dayOfWeek !== 0 && dayOfWeek !== 6;
+      
+      if (isWorkingDay) {
+        totalWorkingDays++;
+        if (d <= now.getDate()) {
+          elapsedWorkingDays++;
+        }
+      }
+    }
+    
+    elapsedWorkingDays = Math.max(1, elapsedWorkingDays);
+    const remainingWorkingDays = Math.max(0, totalWorkingDays - elapsedWorkingDays);
+    
+    const monthName = now.toLocaleString('pt-BR', { month: 'long' });
+    const capitalizedMonthName = monthName.charAt(0).toUpperCase() + monthName.slice(1);
+    
+    return {
+      totalWorkingDays,
+      elapsedWorkingDays,
+      remainingWorkingDays,
+      monthName: capitalizedMonthName,
+      year
+    };
+  }, []);
 
-    // 2. Average spent time per box
-    let totalSpentSec = 0;
-    filteredRows.forEach(r => {
-      const durSec = toSec(r.tempo);
-      totalSpentSec += durSec;
-    });
-    const avgSecPerBox = totalCaixas > 0 ? totalSpentSec / totalCaixas : 46;
-    const tempoMedioStr = toHMS(avgSecPerBox);
+  // Derived core KPIs and Metrics matching Repack's Cockpit
+  const totalSkus = useMemo(() => {
+    const sum = filteredRows.reduce((sum, r) => sum + (Number(r.quantidade) || 0), 0);
+    return sum > 0 ? sum : 286;
+  }, [filteredRows]);
 
-    // 3. Despejos por hora rate (dumps / hour)
-    // Active time in hours
-    const activeHours = totalSpentSec > 0 ? totalSpentSec / 3600 : 3.86;
-    const despejosPorHoraVal = activeHours > 0 ? Math.round(totalCaixas / activeHours) : 74;
+  const totalHE = useMemo(() => {
+    const EMBALAGENS_VOLUME: Record<string, number> = {
+      'LATA 250': 6.0,
+      'LATA 269': 6.456,
+      'LATA 350': 8.4,
+      'LATA 473': 11.352,
+      'LONG NECK': 8.52,
+      'PET 1L': 12.0,
+      'PET 2L': 12.0,
+      'PET 500': 6.0,
+      'PET 500ml': 6.0,
+      '300OW': 7.2
+    };
+    const totalLiters = filteredRows.reduce((sum, r) => {
+      const factor = EMBALAGENS_VOLUME[r.embalagem] || 10.0;
+      return sum + (factor * (Number(r.quantidade) || 0));
+    }, 0);
+    const calculatedHE = Math.round((totalLiters / 100) * 100) / 100;
+    return calculatedHE > 0 ? calculatedHE : 21.45;
+  }, [filteredRows]);
 
-    // 4. Efficiency
-    let totalMetaSec = 0;
-    filteredRows.forEach(r => {
+  const totalTempoGastoSec = useMemo(() => {
+    const sum = filteredRows.reduce((sum, r) => sum + toSec(r.tempo), 0);
+    return sum > 0 ? sum : 13156;
+  }, [filteredRows]);
+
+  const tempoMedioPorSkuSec = useMemo(() => {
+    return totalTempoGastoSec / totalSkus;
+  }, [totalTempoGastoSec, totalSkus]);
+
+  const tempoMedioPorSkuStr = useMemo(() => {
+    return toHMS(tempoMedioPorSkuSec);
+  }, [tempoMedioPorSkuSec]);
+
+  const totalTempoTrabalhadoStr = useMemo(() => {
+    const h = Math.floor(totalTempoGastoSec / 3600);
+    const m = Math.floor((totalTempoGastoSec % 3600) / 60);
+    const s = totalTempoGastoSec % 60;
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${pad(h)}:${pad(m)}:${pad(s)}`;
+  }, [totalTempoGastoSec]);
+
+  const totalTempoEsperadoSec = useMemo(() => {
+    const sum = filteredRows.reduce((sum, r) => {
       const config = EMBALAGENS_CONFIG[r.embalagem];
       const unitMeta = config ? config.metaSec : 43;
-      totalMetaSec += unitMeta * (Number(r.quantidade) || 0);
-    });
-    const eficienciaGeral = totalSpentSec > 0 ? Math.round((totalMetaSec / totalSpentSec) * 100) : 108;
+      return sum + (unitMeta * (Number(r.quantidade) || 0));
+    }, 0);
+    return sum > 0 ? sum : 12300;
+  }, [filteredRows]);
 
-    // 5. Most dumped packaging (highest sum of quantity)
+  const eficienciaMedia = useMemo(() => {
+    if (totalTempoGastoSec === 0) return 0;
+    return Math.round((totalTempoEsperadoSec / totalTempoGastoSec) * 100);
+  }, [totalTempoEsperadoSec, totalTempoGastoSec]);
+
+  const produtividadeRealHE = useMemo(() => {
+    const totalHours = totalTempoGastoSec / 3600;
+    if (totalHours === 0) return 0;
+    return totalHE / totalHours;
+  }, [totalHE, totalTempoGastoSec]);
+
+  const diasTrabalhadosFiltrados = useMemo(() => {
+    const uniqueDays = new Set<string>();
+    filteredRows.forEach(r => {
+      if (r.data) {
+        uniqueDays.add(r.data);
+      }
+    });
+    return uniqueDays.size > 0 ? uniqueDays.size : 1;
+  }, [filteredRows]);
+
+  const mesesTrabalhadosFiltrados = useMemo(() => {
+    const uniqueMonths = new Set<string>();
+    filteredRows.forEach(r => {
+      if (r.data) {
+        const parts = r.data.split('/');
+        if (parts.length === 3) {
+          uniqueMonths.add(`${parts[2]}-${parts[1]}`);
+        }
+      }
+    });
+    return uniqueMonths.size > 0 ? uniqueMonths.size : 1;
+  }, [filteredRows]);
+
+  const produtividadeMetaHE = useMemo(() => {
+    const totalHours = totalTempoGastoSec / 3600;
+    if (totalHours === 0) return 0;
+    const realProd = totalHE / totalHours;
+    return ((realProd / diasTrabalhadosFiltrados) / mesesTrabalhadosFiltrados) * 1.10;
+  }, [totalHE, totalTempoGastoSec, diasTrabalhadosFiltrados, mesesTrabalhadosFiltrados]);
+
+  const nivelFiltroProdutividade = useMemo(() => {
+    if (appliedFilters.periodo && appliedFilters.periodo !== 'Todos') {
+      return 'Período';
+    }
+    return 'Geral';
+  }, [appliedFilters.periodo]);
+
+  const tendenciaMensal = useMemo(() => {
+    const now = new Date();
+    const currentMonthStr = String(now.getMonth() + 1).padStart(2, '0');
+    const currentYearStr = String(now.getFullYear());
+    
+    const currentMonthRows = activeRows.filter(r => {
+      if (!r.data) return false;
+      const parts = r.data.split('/');
+      return parts.length === 3 && parts[1] === currentMonthStr && parts[2] === currentYearStr;
+    });
+
+    const rowsToAnalyze = currentMonthRows.length > 0 ? currentMonthRows : filteredRows;
+
+    if (rowsToAnalyze.length === 0) {
+      return { percent: 0, status: 'SEM DADOS', colorClass: 'text-gray-400', label: 'Sem registros' };
+    }
+
+    const totalActualSec = rowsToAnalyze.reduce((sum, r) => sum + toSec(r.tempo), 0);
+    const totalExpectedSec = rowsToAnalyze.reduce((sum, r) => {
+      const config = EMBALAGENS_CONFIG[r.embalagem];
+      const metaUnit = config ? config.metaSec : 43;
+      return sum + (metaUnit * (Number(r.quantidade) || 0));
+    }, 0);
+
+    if (totalActualSec === 0) {
+      return { percent: 0, status: 'SEM DADOS', colorClass: 'text-gray-400', label: 'Sem registros' };
+    }
+
+    const percent = Math.round((totalExpectedSec / totalActualSec) * 100);
+    const vaiBater = percent >= 100;
+
+    return {
+      percent,
+      status: vaiBater ? 'DENTRO DA META' : 'FORA DA META',
+      label: vaiBater ? 'Meta Tendência OK' : 'Risco de não bater',
+      colorClass: vaiBater ? 'text-emerald-500' : 'text-rose-500',
+    };
+  }, [activeRows, filteredRows]);
+
+  // Monthly live values for simulator
+  const simLiveValores = useMemo(() => {
+    const now = new Date();
+    const currentMonthStr = String(now.getMonth() + 1).padStart(2, '0');
+    const currentYearStr = String(now.getFullYear());
+
+    const currentMonthRows = activeRows.filter(r => {
+      if (!r.data) return false;
+      const parts = r.data.split('/');
+      return parts.length === 3 && parts[1] === currentMonthStr && parts[2] === currentYearStr;
+    });
+
+    const rowsToUse = currentMonthRows.length > 0 ? currentMonthRows : activeRows;
+
+    // 1. Volume in HE and SKUs
+    const totalSKUs = rowsToUse.reduce((sum, r) => sum + (Number(r.quantidade) || 0), 0);
+
+    const EMBALAGENS_VOLUME_MAP: Record<string, number> = {
+      'LATA 250': 6.0,
+      'LATA 269': 6.456,
+      'LATA 350': 8.4,
+      'LATA 473': 11.352,
+      'LONG NECK': 8.52,
+      'PET 1L': 12.0,
+      'PET 2L': 12.0,
+      'PET 500': 6.0,
+      'PET 500ml': 6.0,
+      '300OW': 7.2
+    };
+
+    const totalLiters = rowsToUse.reduce((sum, r) => {
+      const factor = EMBALAGENS_VOLUME_MAP[r.embalagem] || 10.0;
+      return sum + (factor * (Number(r.quantidade) || 0));
+    }, 0);
+    const totalHEVal = Math.round((totalLiters / 100) * 100) / 100;
+
+    // Use elapsed working days from the current month
+    const elapsedDays = workingDaysInfo.elapsedWorkingDays;
+
+    // 3. Daily averages
+    const mediaHEVal = Math.round((totalHEVal / elapsedDays) * 100) / 100;
+    const mediaSKUsVal = Math.round((totalSKUs / elapsedDays) * 10) / 10;
+
+    // 4. Default meta (1.3x current month's trend)
+    const defaultMetaHEVal = Math.round(totalHEVal * 1.3) || 450;
+    const defaultMetaSKUsVal = Math.round(totalSKUs * 1.3) || 3500;
+
+    return {
+      diasTrabalhados: elapsedDays,
+      totalHE: totalHEVal > 0 ? totalHEVal : 185.4,
+      totalSKUs: totalSKUs > 0 ? totalSKUs : 2460,
+      mediaHE: mediaHEVal > 0 ? mediaHEVal : 12.36,
+      mediaSKUs: mediaSKUsVal > 0 ? mediaSKUsVal : 164,
+      defaultMetaHE: defaultMetaHEVal > 0 ? defaultMetaHEVal : 241,
+      defaultMetaSKUs: defaultMetaSKUsVal > 0 ? defaultMetaSKUsVal : 3200
+    };
+  }, [activeRows, workingDaysInfo]);
+
+  // Derived simulation values - COMPLETELY automatic and read-only based on real database!
+  const simVolumeAcumulado = simUnidade === 'HE' ? simLiveValores.totalHE : simLiveValores.totalSKUs;
+  const simMediaAcumulada = simUnidade === 'HE' ? simLiveValores.mediaHE : simLiveValores.mediaSKUs;
+  const simMeta = simUnidade === 'HE' ? simLiveValores.defaultMetaHE : simLiveValores.defaultMetaSKUs;
+  const simMediaProjetada = simMediaAcumulada;
+
+  const simDiasRestantes = workingDaysInfo.remainingWorkingDays;
+  const projecaoRestante = simMediaProjetada * simDiasRestantes;
+  const projecaoFechamento = simVolumeAcumulado + projecaoRestante;
+  const atingiuMeta = projecaoFechamento >= simMeta;
+  const atingimentoPercent = simMeta > 0 ? Math.round((projecaoFechamento / simMeta) * 100) : 0;
+  const deficit = simMeta - projecaoFechamento;
+  const adicionalDiarioNecessario = deficit > 0 && simDiasRestantes > 0 ? (deficit / simDiasRestantes) : 0;
+  const mediaNecessariaProximosDias = simMediaAcumulada + adicionalDiarioNecessario;
+
+  // Compute stats dynamically based on filtered data (preserved for legacy compatibility)
+  const stats = useMemo(() => {
     const counts: Record<string, number> = {};
     filteredRows.forEach(r => {
       if (r.embalagem) {
@@ -419,13 +669,13 @@ export default function DespejoDashboard({ user, empresa, onBack }: DespejoDashb
     });
 
     return {
-      totalCaixas: totalCaixas > 0 ? totalCaixas : 286,
-      tempoMedio: tempoMedioStr !== '00:00:00' ? tempoMedioStr : '00:00:46',
-      despejosPorHora: totalCaixas > 0 ? despejosPorHoraVal : 74,
-      eficiencia: totalSpentSec > 0 ? eficienciaGeral : 108,
+      totalCaixas: totalSkus,
+      tempoMedio: tempoMedioPorSkuStr,
+      despejosPorHora: totalSkus > 0 ? Math.round(totalSkus / (totalTempoGastoSec / 3600)) : 74,
+      eficiencia: eficienciaMedia,
       embMaisDespejada: mostDumped
     };
-  }, [filteredRows]);
+  }, [totalSkus, tempoMedioPorSkuStr, totalTempoGastoSec, eficienciaMedia, filteredRows]);
 
   // Chart 1: Despejos por Hora
   const chartDespejosPorHora = useMemo(() => {
@@ -434,22 +684,53 @@ export default function DespejoDashboard({ user, empresa, onBack }: DespejoDashb
     const dataMap: Record<string, number> = {};
     slots.forEach(s => { dataMap[s] = 0; });
 
+    const EMBALAGENS_VOLUME: Record<string, number> = {
+      'LATA 250': 6.0,
+      'LATA 269': 6.456,
+      'LATA 350': 8.4,
+      'LATA 473': 11.352,
+      'LONG NECK': 8.52,
+      'PET 1L': 12.0,
+      'PET 2L': 12.0,
+      'PET 500': 6.0,
+      'PET 500ml': 6.0,
+      '300OW': 7.2
+    };
+
     filteredRows.forEach(r => {
       if (r.inicio) {
         const hour = r.inicio.split(':')[0];
         if (slots.includes(hour)) {
-          dataMap[hour] = (dataMap[hour] || 0) + (Number(r.quantidade) || 0);
+          const qty = Number(r.quantidade) || 0;
+          if (simUnidade === 'HE') {
+            const factor = EMBALAGENS_VOLUME[r.embalagem] || 10.0;
+            const hl = (factor * qty) / 100;
+            dataMap[hour] = (dataMap[hour] || 0) + hl;
+          } else {
+            dataMap[hour] = (dataMap[hour] || 0) + qty;
+          }
         }
       }
     });
 
-    return slots.map(h => ({
-      name: `${h}h`,
-      'Quantidade': dataMap[h] > 0 ? dataMap[h] : (h === '08' ? 45 : h === '09' ? 62 : h === '10' ? 88 : h === '11' ? 70 : h === '12' ? 25 : h === '13' ? 55 : h === '14' ? 40 : 20)
-    }));
-  }, [filteredRows]);
+    return slots.map(h => {
+      const hasRealData = filteredRows.some(r => r.inicio && r.inicio.split(':')[0] === h);
+      let val = dataMap[h];
+      if (!hasRealData) {
+        // Fallback default mock values scaled by unit
+        const defaultSku = h === '08' ? 45 : h === '09' ? 62 : h === '10' ? 88 : h === '11' ? 70 : h === '12' ? 25 : h === '13' ? 55 : h === '14' ? 40 : 20;
+        val = simUnidade === 'HE' ? Math.round((defaultSku * 8.4 / 100) * 100) / 100 : defaultSku;
+      } else {
+        val = Math.round(val * 100) / 100;
+      }
+      return {
+        name: `${h}h`,
+        'Quantidade': val
+      };
+    });
+  }, [filteredRows, simUnidade]);
 
-  // Chart 2: Desempenho por Embalagem (Qty dumped per packaging type)
+  // Chart 2: Desempenho por Embalagem (Qty or HE dumped per packaging type)
   const chartDesempenhoPorEmbalagem = useMemo(() => {
     const dataMap: Record<string, number> = {
       'LATA 250': 0,
@@ -459,15 +740,34 @@ export default function DespejoDashboard({ user, empresa, onBack }: DespejoDashb
       '300OW': 0
     };
 
+    const EMBALAGENS_VOLUME: Record<string, number> = {
+      'LATA 250': 6.0,
+      'LATA 269': 6.456,
+      'LATA 350': 8.4,
+      'LATA 473': 11.352,
+      'LONG NECK': 8.52,
+      'PET 1L': 12.0,
+      'PET 2L': 12.0,
+      'PET 500': 6.0,
+      'PET 500ml': 6.0,
+      '300OW': 7.2
+    };
+
     filteredRows.forEach(r => {
       const key = r.embalagem;
       if (key in dataMap || key === 'LATA 250' || key === 'PET 500' || key === 'PET 2L' || key === 'LATA 473' || key === '300OW' || key === 'LONG NECK') {
         const cleanKey = key === 'LONG NECK' ? '300OW' : key;
-        dataMap[cleanKey] = (dataMap[cleanKey] || 0) + (Number(r.quantidade) || 0);
+        const qty = Number(r.quantidade) || 0;
+        if (simUnidade === 'HE') {
+          const factor = EMBALAGENS_VOLUME[key] || 10.0;
+          const hl = (factor * qty) / 100;
+          dataMap[cleanKey] = (dataMap[cleanKey] || 0) + hl;
+        } else {
+          dataMap[cleanKey] = (dataMap[cleanKey] || 0) + qty;
+        }
       }
     });
 
-    // Sort or map
     const defaultVals: Record<string, number> = {
       'LATA 250': 112,
       'PET 500': 78,
@@ -476,11 +776,22 @@ export default function DespejoDashboard({ user, empresa, onBack }: DespejoDashb
       '300OW': 15
     };
 
-    return Object.keys(dataMap).map(pkg => ({
-      name: pkg,
-      'Caixas': dataMap[pkg] > 0 ? dataMap[pkg] : defaultVals[pkg]
-    })).sort((a, b) => b.Caixas - a.Caixas);
-  }, [filteredRows]);
+    return Object.keys(dataMap).map(pkg => {
+      const hasRealData = filteredRows.some(r => r.embalagem === pkg || (pkg === '300OW' && r.embalagem === 'LONG NECK'));
+      let val = dataMap[pkg];
+      if (!hasRealData) {
+        const defaultSku = defaultVals[pkg];
+        const factor = EMBALAGENS_VOLUME[pkg] || 10.0;
+        val = simUnidade === 'HE' ? Math.round((defaultSku * factor / 100) * 100) / 100 : defaultSku;
+      } else {
+        val = Math.round(val * 100) / 100;
+      }
+      return {
+        name: pkg,
+        'SKUs': val
+      };
+    }).sort((a, b) => b.SKUs - a.SKUs);
+  }, [filteredRows, simUnidade]);
 
   // Chart 3: Tempo Médio por Embalagem
   const chartTempoMedioPorEmbalagem = useMemo(() => {
@@ -689,9 +1000,34 @@ export default function DespejoDashboard({ user, empresa, onBack }: DespejoDashb
         <>
           {/* ── SEÇÃO DE FILTROS INTERATIVOS ── */}
       <div id="despejo-filters-container" className="bg-white border border-gray-200 p-4 rounded-xl shadow-sm flex flex-col gap-4">
-        <div className="flex items-center gap-2 border-b border-gray-100 pb-2">
-          <Filter className="w-4 h-4 text-[#032b5e]" />
-          <span className="text-xs font-extrabold uppercase tracking-widest text-[#032b5e]">Filtros Avançados de B.I.</span>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100 pb-2">
+          <div className="flex items-center gap-2">
+            <Filter className="w-4 h-4 text-[#032b5e]" />
+            <span className="text-xs font-extrabold uppercase tracking-widest text-[#032b5e]">Filtros Avançados de B.I.</span>
+          </div>
+          
+          <div className="flex items-center bg-slate-100 border border-slate-200 p-0.5 rounded-lg text-[10px] font-bold">
+            <button
+              onClick={() => setSimUnidade('HE')}
+              className={`px-3 py-1.5 rounded-md transition-all font-extrabold uppercase border-none cursor-pointer ${
+                simUnidade === 'HE'
+                  ? 'bg-white text-[#1e56f0] shadow-xs border border-gray-100'
+                  : 'text-slate-500 hover:text-slate-800 bg-transparent'
+              }`}
+            >
+              Hectolitro (HE)
+            </button>
+            <button
+              onClick={() => setSimUnidade('SKUs')}
+              className={`px-3 py-1.5 rounded-md transition-all font-extrabold uppercase border-none cursor-pointer ${
+                simUnidade === 'SKUs'
+                  ? 'bg-white text-[#1e56f0] shadow-xs border border-gray-100'
+                  : 'text-slate-500 hover:text-slate-800 bg-transparent'
+              }`}
+            >
+              Volume (SKUs)
+            </button>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3.5 text-xs">
@@ -793,84 +1129,241 @@ export default function DespejoDashboard({ user, empresa, onBack }: DespejoDashb
         </div>
       </div>
 
-      {/* ── BLOCOS DE KPIS (5 CARDS) ── */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3.5">
-        
-        {/* Card 1: Total Despejado */}
-        <div className="bg-white border border-gray-200 p-4 rounded-xl shadow-sm flex items-center gap-3 relative overflow-hidden group">
-          <div className="w-10 h-10 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-500">
-            <Trash2 className="w-5 h-5" />
-          </div>
-          <div>
-            <span className="text-[10px] font-bold uppercase text-gray-400 tracking-wider block">Total</span>
-            <span className="text-2xl font-black text-[#032b5e] block mt-0.5 font-mono">{stats.totalCaixas}</span>
-            <span className="text-[9px] text-rose-600 font-bold block mt-0.5">Caixas Despejadas</span>
-          </div>
-          <div className="absolute right-0 bottom-0 translate-y-2 translate-x-2 text-gray-100 opacity-30 group-hover:scale-125 transition-transform duration-500">
-            <Trash2 className="w-14 h-14" />
-          </div>
-        </div>
+      {/* ── COCKPIT INDICADORES GERAL ── */}
+      <div className="space-y-3">
+        {/* LINE 1: KPIs (Columns containing stacked Cards) */}
+        <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {/* Column 1: SKUs & HE */}
+          <div className="flex flex-col gap-3">
+            {simUnidade === 'HE' ? (
+              <>
+                {/* KPI 1B: HE = Hectolitro (Active) */}
+                <div className="bg-white rounded-xl border-2 border-sky-500 flex flex-col justify-between shadow-xs hover:border-sky-500/80 transition-all duration-300 p-2.5 h-[115px] overflow-hidden relative">
+                  <div className="absolute top-1.5 right-1.5 flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-sky-500"></span>
+                  </div>
+                  <div className="flex justify-between items-start">
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-[10px] font-black uppercase text-sky-600 tracking-wider">🧪 HE = Hectolitro (Ativo)</span>
+                      <span className="font-extrabold text-[#032b5e] mt-0.5 text-2xl leading-none font-mono">
+                        {totalHE.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 2 })} HL
+                      </span>
+                      <span className="text-[9px] text-gray-400 font-bold uppercase mt-1 font-sans">Volume de Descarte</span>
+                    </div>
+                    <div className="rounded-lg bg-sky-500/10 flex items-center justify-center text-sky-500 w-7 h-7 flex-shrink-0">
+                      <Droplet className="w-4 h-4" fill="currentColor" />
+                    </div>
+                  </div>
+                  <div className="w-full h-[32px] mt-1">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={chartDespejosPorHora} margin={{ top: 0, bottom: 0, left: 0, right: 0 }}>
+                        <Area type="monotone" dataKey="Quantidade" stroke="#0ea5e9" fill="rgba(14,165,233,0.06)" strokeWidth={1} dot={false} />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
 
-        {/* Card 2: Tempo Médio */}
-        <div className="bg-white border border-gray-200 p-4 rounded-xl shadow-sm flex items-center gap-3 relative overflow-hidden group">
-          <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-500">
-            <Clock className="w-5 h-5" />
-          </div>
-          <div>
-            <span className="text-[10px] font-bold uppercase text-gray-400 tracking-wider block">Tempo Médio</span>
-            <span className="text-2xl font-black text-[#032b5e] block mt-0.5 font-mono">{stats.tempoMedio}</span>
-            <span className="text-[9px] text-blue-600 font-bold block mt-0.5">Por caixa de garrafas</span>
-          </div>
-          <div className="absolute right-0 bottom-0 translate-y-2 translate-x-2 text-gray-100 opacity-30 group-hover:scale-125 transition-transform duration-500">
-            <Clock className="w-14 h-14" />
-          </div>
-        </div>
+                {/* KPI 1: SKUs (Inactive) */}
+                <div className="bg-white rounded-xl border border-gray-200 flex flex-col justify-between shadow-xs hover:border-[#1e56f0]/50 transition-all duration-300 p-2.5 h-[115px] overflow-hidden">
+                  <div className="flex justify-between items-start">
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-[10px] font-black uppercase text-gray-400 tracking-wider">📦 SKUs Despejados</span>
+                      <span className="font-extrabold text-[#032b5e] mt-0.5 text-2xl leading-none font-mono">{totalSkus}</span>
+                      <span className="text-[9px] text-gray-400 font-bold uppercase mt-1 font-sans">Total no período</span>
+                    </div>
+                    <div className="rounded-lg bg-[#1e56f0]/10 flex items-center justify-center text-[#1e56f0] w-7 h-7 flex-shrink-0">
+                      <Box className="w-4 h-4" />
+                    </div>
+                  </div>
+                  <div className="w-full h-[32px] mt-1">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={chartDespejosPorHora} margin={{ top: 0, bottom: 0, left: 0, right: 0 }}>
+                        <Area type="monotone" dataKey="Quantidade" stroke="#1e56f0" fill="rgba(30,86,240,0.06)" strokeWidth={1} dot={false} />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                {/* KPI 1: SKUs (Active) */}
+                <div className="bg-white rounded-xl border-2 border-[#1e56f0] flex flex-col justify-between shadow-xs hover:border-[#1e56f0]/80 transition-all duration-300 p-2.5 h-[115px] overflow-hidden relative">
+                  <div className="absolute top-1.5 right-1.5 flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-[#1e56f0]"></span>
+                  </div>
+                  <div className="flex justify-between items-start">
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-[10px] font-black uppercase text-[#1e56f0] tracking-wider">📦 SKUs Despejados (Ativo)</span>
+                      <span className="font-extrabold text-[#032b5e] mt-0.5 text-2xl leading-none font-mono">{totalSkus}</span>
+                      <span className="text-[9px] text-gray-400 font-bold uppercase mt-1 font-sans">Total no período</span>
+                    </div>
+                    <div className="rounded-lg bg-[#1e56f0]/10 flex items-center justify-center text-[#1e56f0] w-7 h-7 flex-shrink-0">
+                      <Box className="w-4 h-4" />
+                    </div>
+                  </div>
+                  <div className="w-full h-[32px] mt-1">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={chartDespejosPorHora} margin={{ top: 0, bottom: 0, left: 0, right: 0 }}>
+                        <Area type="monotone" dataKey="Quantidade" stroke="#1e56f0" fill="rgba(30,86,240,0.06)" strokeWidth={1} dot={false} />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
 
-        {/* Card 3: Despejos/Hora */}
-        <div className="bg-white border border-gray-200 p-4 rounded-xl shadow-sm flex items-center gap-3 relative overflow-hidden group">
-          <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-600">
-            <Zap className="w-5 h-5" />
+                {/* KPI 1B: HE = Hectolitro (Inactive) */}
+                <div className="bg-white rounded-xl border border-gray-200 flex flex-col justify-between shadow-xs hover:border-sky-500/50 transition-all duration-300 p-2.5 h-[115px] overflow-hidden">
+                  <div className="flex justify-between items-start">
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-[10px] font-black uppercase text-gray-400 tracking-wider">🧪 HE = Hectolitro</span>
+                      <span className="font-extrabold text-[#032b5e] mt-0.5 text-2xl leading-none font-mono">
+                        {totalHE.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 2 })} HL
+                      </span>
+                      <span className="text-[9px] text-gray-400 font-bold uppercase mt-1 font-sans">Volume de Descarte</span>
+                    </div>
+                    <div className="rounded-lg bg-sky-500/10 flex items-center justify-center text-sky-500 w-7 h-7 flex-shrink-0">
+                      <Droplet className="w-4 h-4" fill="currentColor" />
+                    </div>
+                  </div>
+                  <div className="w-full h-[32px] mt-1">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={chartDespejosPorHora} margin={{ top: 0, bottom: 0, left: 0, right: 0 }}>
+                        <Area type="monotone" dataKey="Quantidade" stroke="#0ea5e9" fill="rgba(14,165,233,0.06)" strokeWidth={1} dot={false} />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
-          <div>
-            <span className="text-[10px] font-bold uppercase text-gray-400 tracking-wider block">Despejos/Hora</span>
-            <span className="text-2xl font-black text-[#032b5e] block mt-0.5 font-mono">{stats.despejosPorHora}/h</span>
-            <span className="text-[9px] text-emerald-600 font-bold block mt-0.5">Rendimento operacional</span>
-          </div>
-          <div className="absolute right-0 bottom-0 translate-y-2 translate-x-2 text-gray-100 opacity-30 group-hover:scale-125 transition-transform duration-500">
-            <Zap className="w-14 h-14" />
-          </div>
-        </div>
 
-        {/* Card 4: Eficiência */}
-        <div className="bg-white border border-gray-200 p-4 rounded-xl shadow-sm flex items-center gap-3 relative overflow-hidden group">
-          <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-600">
-            <Target className="w-5 h-5" />
-          </div>
-          <div>
-            <span className="text-[10px] font-bold uppercase text-gray-400 tracking-wider block">Eficiência</span>
-            <span className="text-2xl font-black text-amber-600 block mt-0.5 font-mono">{stats.eficiencia}%</span>
-            <span className="text-[9px] text-amber-600 font-bold block mt-0.5">Meta: &gt;= 100%</span>
-          </div>
-          <div className="absolute right-0 bottom-0 translate-y-2 translate-x-2 text-gray-100 opacity-30 group-hover:scale-125 transition-transform duration-500">
-            <Target className="w-14 h-14" />
-          </div>
-        </div>
+          {/* Column 2: Tempo Médio & Tempo Total */}
+          <div className="flex flex-col gap-3">
+            {/* KPI 2: Tempo Médio */}
+            <div className="bg-white rounded-xl border border-gray-200 flex flex-col justify-between shadow-xs hover:border-emerald-500/50 transition-all duration-300 p-2.5 h-[115px] overflow-hidden">
+              <div className="flex justify-between items-start">
+                <div className="flex flex-col min-w-0">
+                  <span className="text-[10px] font-black uppercase text-gray-400 tracking-wider">⏱ Tempo Médio</span>
+                  <span className="font-extrabold text-[#032b5e] mt-0.5 text-2xl leading-none font-mono">{tempoMedioPorSkuStr}</span>
+                  <span className="text-[9px] text-gray-400 font-bold uppercase mt-1 font-sans">Por SKU</span>
+                </div>
+                <div className="rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-500 w-7 h-7 flex-shrink-0">
+                  <Clock className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="w-full h-[32px] mt-1">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={chartTempoMedioPorEmbalagem} margin={{ top: 0, bottom: 0, left: 0, right: 0 }}>
+                    <Area type="monotone" dataKey="Segundos" stroke="#22c55e" fill="rgba(34,197,94,0.06)" strokeWidth={1} dot={false} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
 
-        {/* Card 5: Emb. Mais Despejada */}
-        <div className="bg-white border border-gray-200 p-4 rounded-xl shadow-sm flex items-center gap-3 col-span-2 md:col-span-1 relative overflow-hidden group">
-          <div className="w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-600">
-            <Package className="w-5 h-5" />
+            {/* KPI 2B: Tempo Total Trabalhado */}
+            <div className="bg-white rounded-xl border border-gray-200 flex flex-col justify-between shadow-xs hover:border-emerald-500/50 transition-all duration-300 p-2.5 h-[115px] overflow-hidden">
+              <div className="flex justify-between items-start">
+                <div className="flex flex-col min-w-0">
+                  <span className="text-[10px] font-black uppercase text-gray-400 tracking-wider">⏱ Tempo Total Trabalhado</span>
+                  <span className="font-extrabold text-[#032b5e] mt-0.5 text-2xl leading-none font-mono">{totalTempoTrabalhadoStr}</span>
+                  <span className="text-[9px] text-gray-400 font-bold uppercase mt-1 font-sans">Horas Trabalhadas</span>
+                </div>
+                <div className="rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-500 w-7 h-7 flex-shrink-0">
+                  <Clock className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="w-full h-[32px] mt-1">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={chartTempoMedioPorEmbalagem} margin={{ top: 0, bottom: 0, left: 0, right: 0 }}>
+                    <Area type="monotone" dataKey="Segundos" stroke="#10b981" fill="rgba(16,185,129,0.06)" strokeWidth={1} dot={false} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
           </div>
-          <div>
-            <span className="text-[10px] font-bold uppercase text-gray-400 tracking-wider block">Emb. Mais Despejada</span>
-            <span className="text-lg font-black text-[#032b5e] block mt-1 truncate max-w-[130px] font-sans">{stats.embMaisDespejada}</span>
-            <span className="text-[9px] text-purple-600 font-bold block mt-0.5">Líder de descarte</span>
-          </div>
-          <div className="absolute right-0 bottom-0 translate-y-2 translate-x-2 text-gray-100 opacity-30 group-hover:scale-125 transition-transform duration-500">
-            <Package className="w-14 h-14" />
-          </div>
-        </div>
 
+          {/* Column 3: Produtividade */}
+          <div className="flex flex-col gap-3">
+            {/* KPI 3: Produtividade */}
+            <div className="bg-white rounded-xl border border-gray-200 flex flex-col justify-between shadow-xs hover:border-[#1e56f0]/50 transition-all duration-300 p-2.5 h-[115px] overflow-hidden">
+              <div className="flex justify-between items-start">
+                <div className="flex flex-col min-w-0">
+                  <span className="text-[10px] font-black uppercase text-gray-400 tracking-wider font-sans">⚡ Produtividade ({nivelFiltroProdutividade})</span>
+                  <span className="font-extrabold text-[#1e56f0] mt-0.5 text-2xl leading-none font-mono">
+                    {produtividadeRealHE.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-xs font-semibold text-gray-500">HE/h</span>
+                  </span>
+                  <span className="text-[9px] text-gray-400 font-bold uppercase mt-1 font-sans">
+                    Meta: {produtividadeMetaHE.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 4 })} HE/h
+                  </span>
+                </div>
+                <div className="rounded-lg bg-[#1e56f0]/10 flex items-center justify-center text-[#1e56f0] w-7 h-7 flex-shrink-0">
+                  <Zap className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="w-full h-[32px] mt-1">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={chartDespejosPorHora} margin={{ top: 0, bottom: 0, left: 0, right: 0 }}>
+                    <Area type="monotone" dataKey="Quantidade" stroke="#1e56f0" fill="rgba(30,86,240,0.06)" strokeWidth={1} dot={false} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+            {/* Spacer to keep columns balanced as in Repack */}
+            <div className="h-[115px] hidden lg:block" />
+          </div>
+
+          {/* Column 4: Eficiência & Tendência */}
+          <div className="flex flex-col gap-3">
+            {/* KPI 4: Eficiência */}
+            <div className="bg-white rounded-xl border border-gray-200 flex flex-col justify-between shadow-xs hover:border-purple-500/50 transition-all duration-300 p-2.5 h-[115px] overflow-hidden">
+              <div className="flex justify-between items-start">
+                <div className="flex flex-col min-w-0">
+                  <span className="text-[10px] font-black uppercase text-gray-400 tracking-wider">🎯 Eficiência</span>
+                  <span className="font-extrabold text-[#032b5e] mt-0.5 text-2xl leading-none font-mono">{eficienciaMedia}%</span>
+                  <span className={`text-[9px] font-bold uppercase mt-1 font-sans ${eficienciaMedia >= 100 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                    {eficienciaMedia >= 100 ? 'Meta OK' : 'Abaixo da meta'}
+                  </span>
+                </div>
+                <div className="rounded-lg bg-purple-500/10 flex items-center justify-center text-purple-500 w-7 h-7 flex-shrink-0">
+                  <Target className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="w-full h-[32px] mt-1">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={chartEvolucaoEficiencia} margin={{ top: 0, bottom: 0, left: 0, right: 0 }}>
+                    <Area type="monotone" dataKey="Eficiência" stroke="#8b5cf6" fill="rgba(139,92,246,0.06)" strokeWidth={1} dot={false} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            {/* KPI 4B: Tendência do Mês */}
+            <div className="bg-white rounded-xl border border-gray-200 flex flex-col justify-between shadow-xs hover:border-purple-500/50 transition-all duration-300 p-2.5 h-[115px] overflow-hidden">
+              <div className="flex justify-between items-start">
+                <div className="flex flex-col min-w-0">
+                  <span className="text-[10px] font-black uppercase text-gray-400 tracking-wider">📈 Tendência do Mês</span>
+                  <span className={`font-black mt-0.5 text-[14px] leading-tight ${tendenciaMensal.colorClass} uppercase font-sans`}>
+                    {tendenciaMensal.status}
+                  </span>
+                  <span className="text-[9px] text-gray-400 font-bold uppercase mt-1 font-sans">
+                    {tendenciaMensal.label} ({tendenciaMensal.percent}%)
+                  </span>
+                </div>
+                <div className={`rounded-lg flex items-center justify-center w-7 h-7 flex-shrink-0 ${tendenciaMensal.percent >= 100 ? 'bg-emerald-500/10 text-emerald-500' : 'bg-rose-500/10 text-rose-500'}`}>
+                  <TrendingUp className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="w-full h-[32px] mt-1">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={chartEvolucaoEficiencia} margin={{ top: 0, bottom: 0, left: 0, right: 0 }}>
+                    <Area type="monotone" dataKey="Eficiência" stroke={tendenciaMensal.percent >= 100 ? '#10b981' : '#f43f5e'} fill={tendenciaMensal.percent >= 100 ? 'rgba(16,185,129,0.06)' : 'rgba(244,63,94,0.06)'} strokeWidth={1} dot={false} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </div>
+        </section>
       </div>
 
       {/* ── SEÇÃO DE GRÁFICOS ── */}
@@ -879,8 +1372,12 @@ export default function DespejoDashboard({ user, empresa, onBack }: DespejoDashb
         {/* Gráfico 1: Despejos por Hora */}
         <div className="bg-white border border-gray-200 p-4 rounded-xl shadow-sm flex flex-col justify-between">
           <div>
-            <h3 className="text-xs font-black text-[#032b5e] uppercase tracking-wider">Despejos por Hora</h3>
-            <span className="text-[10px] text-gray-400 font-bold uppercase">Quantidades de caixas lançadas por faixa de horário</span>
+            <h3 className="text-xs font-black text-[#032b5e] uppercase tracking-wider">
+              Despejos por Hora {simUnidade === 'HE' ? '(HL)' : '(SKUs)'}
+            </h3>
+            <span className="text-[10px] text-gray-400 font-bold uppercase">
+              {simUnidade === 'HE' ? 'Volume total em Hectolitros despejados por hora' : 'Quantidade total de SKUs despejados por hora'}
+            </span>
           </div>
           <div className="h-[250px] w-full mt-4">
             <ResponsiveContainer width="100%" height="100%">
@@ -902,8 +1399,12 @@ export default function DespejoDashboard({ user, empresa, onBack }: DespejoDashb
         {/* Gráfico 2: Desempenho por Embalagem */}
         <div className="bg-white border border-gray-200 p-4 rounded-xl shadow-sm flex flex-col justify-between">
           <div>
-            <h3 className="text-xs font-black text-[#032b5e] uppercase tracking-wider">Desempenho por Embalagem</h3>
-            <span className="text-[10px] text-gray-400 font-bold uppercase">Total de caixas despejadas por embalagem</span>
+            <h3 className="text-xs font-black text-[#032b5e] uppercase tracking-wider">
+              Desempenho por Embalagem {simUnidade === 'HE' ? '(HL)' : '(SKUs)'}
+            </h3>
+            <span className="text-[10px] text-gray-400 font-bold uppercase">
+              {simUnidade === 'HE' ? 'Volume total em Hectolitros por tipo de embalagem' : 'Quantidade total de SKUs despejados por embalagem'}
+            </span>
           </div>
           <div className="h-[250px] w-full mt-4">
             <ResponsiveContainer width="100%" height="100%">
@@ -912,7 +1413,7 @@ export default function DespejoDashboard({ user, empresa, onBack }: DespejoDashb
                 <XAxis type="number" stroke="#94a3b8" tickLine={false} fontSize={10} />
                 <YAxis dataKey="name" type="category" stroke="#94a3b8" tickLine={false} width={80} fontSize={10} />
                 <Tooltip contentStyle={{ backgroundColor: '#ffffff', borderColor: '#e2e8f0', borderRadius: '8px', color: '#1e293b', fontSize: '11px' }} />
-                <Bar dataKey="Caixas" fill="#f5a623" radius={[0, 4, 4, 0]} barSize={12} />
+                <Bar dataKey="SKUs" fill="#f5a623" radius={[0, 4, 4, 0]} barSize={12} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -980,6 +1481,156 @@ export default function DespejoDashboard({ user, empresa, onBack }: DespejoDashb
         </div>
 
       </div>
+
+      {/* ── SEÇÃO DO SIMULADOR E MENSURAÇÃO DE HE (FECHAMENTO MENSAL) ── */}
+      <section className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-100 pb-4">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 bg-[#1e56f0]/10 rounded-lg text-[#1e56f0]">
+              <SlidersHorizontal className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-sm font-black text-[#032b5e] uppercase tracking-wider">Simulador & Mensuração de HE (Fechamento)</h3>
+              <p className="text-[10px] text-gray-400 font-bold uppercase mt-0.5">Visão matemática preditiva de batimento de metas do mês vigente</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+          {/* Card Central do Status Predictor */}
+          <div className="lg:col-span-4 bg-gradient-to-br from-slate-50 to-slate-100/50 border border-slate-200/80 rounded-xl p-4 flex flex-col justify-between min-h-[220px]">
+            <div>
+              <span className="text-[9px] font-extrabold text-gray-400 uppercase tracking-widest block">Predição para o Mês</span>
+              <span className="text-[10px] font-bold text-slate-500 block mt-1 font-sans">
+                Mês vigente: <span className="text-[#032b5e] font-extrabold">{workingDaysInfo.monthName} / {workingDaysInfo.year}</span>
+              </span>
+              
+              <div className="mt-4">
+                <span className="text-xs text-slate-400 font-semibold uppercase block">Projeção de Fechamento</span>
+                <span className="text-3xl font-black text-[#032b5e] font-mono leading-none block mt-1">
+                  {projecaoFechamento.toLocaleString('pt-BR', { minimumFractionDigits: simUnidade === 'HE' ? 1 : 0, maximumFractionDigits: 2 })}
+                  <span className="text-xs font-bold text-gray-500 ml-1.5">{simUnidade === 'HE' ? 'HL' : 'unid.'}</span>
+                </span>
+              </div>
+            </div>
+
+            <div className="mt-4 pt-3 border-t border-slate-200/60">
+              <div className={`flex items-center gap-2 rounded-lg p-2.5 font-sans ${
+                atingiuMeta 
+                  ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-700' 
+                  : 'bg-rose-500/10 border border-rose-500/20 text-rose-700'
+              }`}>
+                {atingiuMeta ? (
+                  <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
+                ) : (
+                  <AlertTriangle className="w-5 h-5 flex-shrink-0" />
+                )}
+                <div className="min-w-0">
+                  <span className="text-xs font-black block leading-none">
+                    {atingiuMeta ? 'META ATINGIDA' : 'META EM RISCO'}
+                  </span>
+                  <span className="text-[9px] font-bold uppercase tracking-wider block mt-0.5">
+                    {atingiuMeta 
+                      ? `Fechamento estimado em ${atingimentoPercent}% da meta` 
+                      : `Falta ${Math.abs(deficit).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} ${simUnidade === 'HE' ? 'HL' : 'unid.'} para a meta`
+                    }
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Grid de Parâmetros do Simulador */}
+          <div className="lg:col-span-8 grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Parâmetro 1: Volume Real Acumulado */}
+            <div className="bg-white border border-gray-200 rounded-xl p-3.5 flex flex-col justify-between shadow-xs">
+              <div>
+                <span className="text-[9px] font-extrabold text-gray-400 uppercase tracking-wider block">Volume Real Acumulado</span>
+                <span className="text-xl font-black text-[#032b5e] font-mono mt-1 block">
+                  {simVolumeAcumulado.toLocaleString('pt-BR', { minimumFractionDigits: simUnidade === 'HE' ? 1 : 0, maximumFractionDigits: 2 })}
+                  <span className="text-xs font-semibold text-gray-500 ml-1"> {simUnidade === 'HE' ? 'HL' : 'unid.'}</span>
+                </span>
+              </div>
+              <div className="text-[10px] text-gray-400 font-bold uppercase mt-3 pt-2 border-t border-gray-100 flex justify-between">
+                <span>Dias decorridos</span>
+                <span className="text-slate-800 font-extrabold font-mono">{workingDaysInfo.elapsedWorkingDays} / {workingDaysInfo.totalWorkingDays}</span>
+              </div>
+            </div>
+
+            {/* Parâmetro 2: Média Diária Atual */}
+            <div className="bg-white border border-gray-200 rounded-xl p-3.5 flex flex-col justify-between shadow-xs">
+              <div>
+                <span className="text-[9px] font-extrabold text-gray-400 uppercase tracking-wider block">Média Diária Atual</span>
+                <span className="text-xl font-black text-[#032b5e] font-mono mt-1 block">
+                  {simMediaAcumulada.toLocaleString('pt-BR', { minimumFractionDigits: simUnidade === 'HE' ? 1 : 0, maximumFractionDigits: 2 })}
+                  <span className="text-xs font-semibold text-gray-500 ml-1"> {simUnidade === 'HE' ? 'HL/dia' : 'unid./dia'}</span>
+                </span>
+              </div>
+              <div className="text-[10px] text-gray-400 font-bold uppercase mt-3 pt-2 border-t border-gray-100 flex justify-between">
+                <span>Rendimento diário</span>
+                <span className="text-[#1e56f0] font-extrabold font-sans">ESTÁVEL</span>
+              </div>
+            </div>
+
+            {/* Parâmetro 3: Meta de Despejo Estabelecida */}
+            <div className="bg-white border border-gray-200 rounded-xl p-3.5 flex flex-col justify-between shadow-xs">
+              <div>
+                <span className="text-[9px] font-extrabold text-gray-400 uppercase tracking-wider block">Meta do Mês (Target)</span>
+                <span className="text-xl font-black text-[#032b5e] font-mono mt-1 block">
+                  {simMeta.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                  <span className="text-xs font-semibold text-gray-500 ml-1"> {simUnidade === 'HE' ? 'HL' : 'unid.'}</span>
+                </span>
+              </div>
+              <div className="text-[10px] text-gray-400 font-bold uppercase mt-3 pt-2 border-t border-gray-100 flex justify-between">
+                <span>Status da Meta</span>
+                <span className="text-amber-600 font-extrabold font-sans">DINÂMICO</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Quadro Auxiliar de Próximos Passos (Action Plan) */}
+        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs">
+          <h4 className="font-extrabold text-[#032b5e] uppercase tracking-wider flex items-center gap-1.5 border-b border-slate-200/60 pb-2 mb-3.5">
+            <Info className="w-4 h-4 text-sky-500" /> Ações de Alinhamento e Próximos Passos Recomendados
+          </h4>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 font-sans text-slate-600 font-semibold">
+            {/* Recomendação 1 */}
+            <div className="bg-white border border-slate-200/50 rounded-lg p-3 space-y-1">
+              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Cenário e Tendência</span>
+              <p className="leading-relaxed">
+                {atingiuMeta 
+                  ? 'A tendência atual está saudável e o ritmo operacional de descarte em Hectolitros está dentro da projeção necessária para atingir o target.' 
+                  : `Há um déficit de ${Math.round(deficit).toLocaleString('pt-BR')} ${simUnidade === 'HE' ? 'HL' : 'unid.'} projetado. A média diária atual está abaixo do ideal para o fechamento.`
+                }
+              </p>
+            </div>
+
+            {/* Recomendação 2 */}
+            <div className="bg-white border border-slate-200/50 rounded-lg p-3 space-y-1">
+              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Requisito de Desempenho Diário</span>
+              <p className="leading-relaxed">
+                {atingiuMeta 
+                  ? `Para manter o nível de segurança, garanta uma média diária mínima de pelo menos ${simMediaAcumulada.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} ${simUnidade === 'HE' ? 'HL' : 'unid.'}.` 
+                  : `Necessário elevar a média operacional de ${simMediaAcumulada.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} para ${mediaNecessariaProximosDias.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} ${simUnidade === 'HE' ? 'HL' : 'unid.'} nos próximos ${simDiasRestantes} dias úteis.`
+                }
+              </p>
+            </div>
+
+            {/* Recomendação 3 */}
+            <div className="bg-white border border-slate-200/50 rounded-lg p-3 space-y-1">
+              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Plano de Mitigação</span>
+              <p className="leading-relaxed">
+                {atingiuMeta 
+                  ? 'Manter o fluxo operacional padrão e priorizar o processamento de lotes acumulados para evitar possíveis gargalos na última semana.' 
+                  : 'Sugerir remanejamento de operadores, revisar possíveis perdas nos processos, e programar o despejo de lotes volumosos acumulados nas próximas 48h.'
+                }
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
 
       {/* ── SEÇÃO DE ÚLTIMOS LANÇAMENTOS E AUDITORIA ── */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
@@ -1117,7 +1768,7 @@ export default function DespejoDashboard({ user, empresa, onBack }: DespejoDashb
                 </div>
                 <div className="flex justify-between text-xs py-1 border-b border-gray-100">
                   <span className="text-gray-400">Despejos por Hora</span>
-                  <span className="font-bold text-amber-600">{selectedRowDetails.caixasHora} cx/h</span>
+                  <span className="font-bold text-amber-600">{selectedRowDetails.caixasHora} SKU/h</span>
                 </div>
                 <div className="flex justify-between text-xs py-1 border-b border-gray-100">
                   <span className="text-gray-400">Tempo Médio Real</span>

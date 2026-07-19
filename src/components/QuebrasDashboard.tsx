@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   BarChart, 
   Bar, 
@@ -36,7 +36,8 @@ import {
 } from 'lucide-react';
 import { Usuario, Empresa, QuebraRow } from '../types';
 import { db, isCustomFirebaseConnected } from '../firebase';
-import { collection, onSnapshot, query, addDoc, deleteDoc, doc } from 'firebase/firestore';
+import { collection, onSnapshot, query, addDoc, deleteDoc, doc, where } from 'firebase/firestore';
+import { generateMockQuebras } from '../mockDataGenerator';
 import A3BoardComponent from './A3BoardComponent';
 
 interface QuebrasDashboardProps {
@@ -98,11 +99,34 @@ const DEFAULT_PLANS: ActionPlan5W2H[] = [
 ];
 
 export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashboardProps) {
-  const [quebras, setQuebras] = useState<QuebraRow[]>([]);
+  const [actualQuebras, setActualQuebras] = useState<QuebraRow[]>([]);
   const [filterPeriodo, setFilterPeriodo] = useState<'7' | '15' | '30' | 'tudo'>('30');
   const [filterArea, setFilterArea] = useState<string>('TODAS');
   const [filterTurno, setFilterTurno] = useState<string>('TODOS');
   const [activeSubTab, setActiveSubTab] = useState<'indicadores' | 'boarda3'>('indicadores');
+  const [viewUnit, setViewUnit] = useState<'cx' | 'he'>('cx');
+
+  const quebras = useMemo(() => {
+    const companyId = empresa?.id || 'demo';
+    const mockRows = generateMockQuebras(companyId);
+    return [...actualQuebras, ...mockRows];
+  }, [actualQuebras, empresa?.id]);
+
+  // Convert physical boxes to HE
+  const convertCxToHE = (quantidade: number, descricao: string = ''): number => {
+    const desc = (descricao || '').toUpperCase();
+    let litersPerCx = 9.0; // default factor
+    if (desc.includes('250')) litersPerCx = 6.0;
+    else if (desc.includes('269')) litersPerCx = 6.456;
+    else if (desc.includes('350')) litersPerCx = 8.4;
+    else if (desc.includes('473')) litersPerCx = 11.352;
+    else if (desc.includes('500')) litersPerCx = 6.0;
+    else if (desc.includes('600')) litersPerCx = 7.2;
+    else if (desc.includes('1L') || desc.includes('1 L')) litersPerCx = 12.0;
+    else if (desc.includes('2L') || desc.includes('2 L')) litersPerCx = 12.0;
+    else if (desc.includes('300')) litersPerCx = 7.2;
+    return (quantidade * litersPerCx) / 100;
+  };
   
   // 5W2H state
   const [planos, setPlanos] = useState<ActionPlan5W2H[]>([]);
@@ -123,17 +147,16 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
   useEffect(() => {
     if (!db || !empresa?.id) {
       const saved = localStorage.getItem(`quebras_${empresa?.id || 'demo'}`);
-      if (saved) setQuebras(JSON.parse(saved));
+      if (saved) setActualQuebras(JSON.parse(saved));
       return;
     }
 
     const companyId = empresa?.id || 'demo';
-    const q = query(collection(db, 'quebras'));
+    const q = query(collection(db, 'quebras'), where('empresaId', '==', companyId));
     const unsub = onSnapshot(q, (snap) => {
       const rows = snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as QuebraRow));
-      const filtered = isCustomFirebaseConnected() ? rows : rows.filter(r => r.empresaId === companyId);
-      filtered.sort((a, b) => (b.dataISO || '').localeCompare(a.dataISO || ''));
-      setQuebras(filtered);
+      rows.sort((a, b) => (b.dataISO || '').localeCompare(a.dataISO || ''));
+      setActualQuebras(rows);
     });
 
     return () => unsub();
@@ -179,39 +202,47 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
   const filteredData = getFilteredQuebras();
 
   // Metric Calculation
-  const totalQuant = filteredData.reduce((acc, curr) => acc + curr.quantidade, 0);
-  const estimatedCost = totalQuant * 5.95; // Average cost factor per SKU unit
+  const totalQuantCx = filteredData.reduce((acc, curr) => acc + curr.quantidade, 0);
+  const totalQuantHE = filteredData.reduce((acc, curr) => acc + convertCxToHE(curr.quantidade, curr.descricao), 0);
+  const totalQuant = viewUnit === 'cx' ? totalQuantCx : Math.round(totalQuantHE * 100) / 100;
+  const estimatedCost = totalQuantCx * 5.95; // Average cost factor per SKU unit
 
   // SKU Pareto computation
-  const skuMap: Record<string, { desc: string, quant: number }> = {};
+  const skuMap: Record<string, { desc: string, quantCx: number, quantHE: number }> = {};
   filteredData.forEach(q => {
     if (!skuMap[q.codProduto]) {
-      skuMap[q.codProduto] = { desc: q.descricao, quant: 0 };
+      skuMap[q.codProduto] = { desc: q.descricao, quantCx: 0, quantHE: 0 };
     }
-    skuMap[q.codProduto].quant += q.quantidade;
+    skuMap[q.codProduto].quantCx += q.quantidade;
+    skuMap[q.codProduto].quantHE += convertCxToHE(q.quantidade, q.descricao);
   });
 
   const sortedSkus = Object.entries(skuMap)
-    .map(([cod, item]) => ({ cod, desc: item.desc, quant: item.quant }))
+    .map(([cod, item]) => ({
+      cod,
+      desc: item.desc,
+      quant: viewUnit === 'cx' ? item.quantCx : Math.round(item.quantHE * 100) / 100,
+      quantCx: item.quantCx
+    }))
     .sort((a, b) => b.quant - a.quant);
 
-  const topSku = sortedSkus[0] || { cod: '-', desc: 'Nenhum', quant: 0 };
-  const topSkuPct = totalQuant > 0 ? ((topSku.quant / totalQuant) * 100).toFixed(1) : '0';
+  const topSku = sortedSkus[0] || { cod: '-', desc: 'Nenhum', quant: 0, quantCx: 0 };
+  const topSkuPct = totalQuantCx > 0 ? ((topSku.quantCx / totalQuantCx) * 100).toFixed(1) : '0';
 
   // Critical Area computation
-  const areaVolumeMap: Record<string, number> = {
-    'ARMAZEM': 0,
-    'ENTREGA': 0,
-    'MERCADO': 0,
-    'PUXADA': 0
-  };
+  const areaVolumeMapCx: Record<string, number> = { 'ARMAZEM': 0, 'ENTREGA': 0, 'MERCADO': 0, 'PUXADA': 0 };
+  const areaVolumeMapHE: Record<string, number> = { 'ARMAZEM': 0, 'ENTREGA': 0, 'MERCADO': 0, 'PUXADA': 0 };
+
   filteredData.forEach(q => {
-    if (areaVolumeMap[q.area] !== undefined) {
-      areaVolumeMap[q.area] += q.quantidade;
+    if (areaVolumeMapCx[q.area] !== undefined) {
+      areaVolumeMapCx[q.area] += q.quantidade;
+      areaVolumeMapHE[q.area] += convertCxToHE(q.quantidade, q.descricao);
     }
   });
 
-  const criticalAreaKey = Object.keys(areaVolumeMap).reduce((a, b) => areaVolumeMap[a] > areaVolumeMap[b] ? a : b, 'ARMAZEM');
+  const areaVolumeMap = viewUnit === 'cx' ? areaVolumeMapCx : areaVolumeMapHE;
+
+  const criticalAreaKey = Object.keys(areaVolumeMapCx).reduce((a, b) => areaVolumeMapCx[a] > areaVolumeMapCx[b] ? a : b, 'ARMAZEM');
   const criticalAreaName = {
     'ARMAZEM': 'Armazém / Depósito',
     'ENTREGA': 'Rota de Entrega',
@@ -226,11 +257,11 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
     if (!motivosMap[key]) {
       motivosMap[key] = { desc: q.motivo, val: 0 };
     }
-    motivosMap[key].val += q.quantidade;
+    motivosMap[key].val += viewUnit === 'cx' ? q.quantidade : convertCxToHE(q.quantidade, q.descricao);
   });
 
   const motivosChartData = Object.entries(motivosMap)
-    .map(([codMotivo, item]) => ({ name: codMotivo, value: item.val }))
+    .map(([codMotivo, item]) => ({ name: codMotivo, value: Math.round(item.val * 100) / 100 }))
     .sort((a, b) => b.value - a.value)
     .slice(0, 7);
 
@@ -243,7 +274,7 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
         'MERCADO': 'Mercado',
         'PUXADA': 'Puxada/Transf'
       }[key] || key;
-      return { name, value };
+      return { name, value: Math.round(value * 100) / 100 };
     })
     .filter(item => item.value > 0);
 
@@ -253,11 +284,11 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
   const daysMap: Record<string, number> = {};
   filteredData.forEach(q => {
     const day = q.data.substring(0, 5); // DD/MM
-    daysMap[day] = (daysMap[day] || 0) + q.quantidade;
+    daysMap[day] = (daysMap[day] || 0) + (viewUnit === 'cx' ? q.quantidade : convertCxToHE(q.quantidade, q.descricao));
   });
 
   const sortedDays = Object.entries(daysMap)
-    .map(([date, value]) => ({ date, quebras: value }))
+    .map(([date, value]) => ({ date, quebras: Math.round(value * 100) / 100 }))
     .sort((a, b) => {
       const [dayA, monthA] = a.date.split('/');
       const [dayB, monthB] = b.date.split('/');
@@ -269,10 +300,10 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
   const turnoMap: Record<string, number> = { 'MANHÃ': 0, 'NOITE / MADRUGADA': 0 };
   filteredData.forEach(q => {
     const norm = q.turno.toUpperCase().includes('MANHÃ') ? 'MANHÃ' : 'NOITE / MADRUGADA';
-    turnoMap[norm] = (turnoMap[norm] || 0) + q.quantidade;
+    turnoMap[norm] = (turnoMap[norm] || 0) + (viewUnit === 'cx' ? q.quantidade : convertCxToHE(q.quantidade, q.descricao));
   });
 
-  const turnoChartData = Object.entries(turnoMap).map(([name, value]) => ({ name, value }));
+  const turnoChartData = Object.entries(turnoMap).map(([name, value]) => ({ name, value: Math.round(value * 100) / 100 }));
 
   // Handle addition of 5W2H Action Plan
   const handleAddPlan = (e: React.FormEvent) => {
@@ -415,6 +446,27 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
                   <option value="NOITE">Noite / Madrugada</option>
                 </select>
               </div>
+
+              {/* Visualização Unit Toggle */}
+              <div className="flex flex-col">
+                <span className="text-[9px] font-bold text-gray-400 uppercase mb-1">Visualização</span>
+                <div className="flex items-center bg-gray-100 p-0.5 rounded-lg border border-gray-200">
+                  <button
+                    type="button"
+                    onClick={() => setViewUnit('cx')}
+                    className={`px-2 py-1 rounded text-[10px] font-bold uppercase transition-all cursor-pointer border-none ${viewUnit === 'cx' ? 'bg-[#032b5e] text-white shadow-xs' : 'text-gray-500 hover:text-[#032b5e] bg-transparent'}`}
+                  >
+                    CX
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewUnit('he')}
+                    className={`px-2 py-1 rounded text-[10px] font-bold uppercase transition-all cursor-pointer border-none ${viewUnit === 'he' ? 'bg-[#032b5e] text-white shadow-xs' : 'text-gray-500 hover:text-[#032b5e] bg-transparent'}`}
+                  >
+                    HE
+                  </button>
+                </div>
+              </div>
             </div>
 
             <div className="text-[10px] text-gray-400 font-bold uppercase hidden md:block">
@@ -433,7 +485,7 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
             </span>
             <div className="flex items-baseline mt-2">
               <span className="text-4xl font-extrabold tracking-tight">{totalQuant}</span>
-              <span className="text-xs font-bold ml-1.5 text-[#fecaca]">unidades</span>
+              <span className="text-xs font-bold ml-1.5 text-[#fecaca]">{viewUnit === 'cx' ? 'unidades' : 'HE'}</span>
             </div>
           </div>
           <p className="text-[10px] text-red-100 font-medium leading-normal mt-2 border-t border-red-500/30 pt-2 flex items-center gap-1">
@@ -473,7 +525,7 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
           </div>
           <div className="mt-2 border-t border-gray-100 pt-2 flex justify-between items-center text-[10px] text-gray-500 font-bold uppercase">
             <span>Volumetria SKU</span>
-            <span className="text-[#ef4444]">{topSku.quant} un ({topSkuPct}%)</span>
+            <span className="text-[#ef4444]">{topSku.quant} {viewUnit === 'cx' ? 'un' : 'HE'} ({topSkuPct}%)</span>
           </div>
         </div>
 
