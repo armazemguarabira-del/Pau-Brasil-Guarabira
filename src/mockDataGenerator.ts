@@ -103,9 +103,9 @@ export function generateMockTarefas(empresaId: string, customOperators?: string[
   const dates = getPastDates(60);
   const tasks: Tarefa[] = [];
   
-  const defaultOperators = ['MARIVALDO ARTHUR', 'RONILDO', 'PAULO PEREIRA', 'ALEXANDRE', 'GABRIEL JOSÉ'];
+  const defaultOperators = ['MARIVALDO', 'RONILDO', 'PAULO PEREIRA'];
   const operators = customOperators && customOperators.length > 0 ? customOperators : defaultOperators;
-  const conferentes = ['GILSON ROSA DA SILVA', 'MATHEUS', 'CARLOS OLIVEIRA'];
+  const conferentes = ['GILSON ROSA DA SILVA', 'MATHEUS'];
   const descriptions = [
     'PREPARAÇÃO ROTA 101 URBANA',
     'SEPARAÇÃO MIX DISTRIBUIÇÃO',
@@ -224,7 +224,7 @@ export function generateMockQuebras(empresaId: string): QuebraRow[] {
   const turnos = ['Turno A', 'Turno B', 'Turno C'];
   const codigosQuebra = ['539', '540', '541'];
   const motivos = ['Avaria Física/Manuseio', 'Quebra em Transporte', 'Choque de Palete'];
-  const colaboradores = ['OZENILDO SILVA', 'MARIVALDO ARTHUR', 'RONILDO', 'PAULO PEREIRA'];
+  const colaboradores = ['MARIVALDO', 'RONILDO', 'PAULO PEREIRA'];
   
   dates.forEach((d, dIdx) => {
     // 1-2 quebras per day
@@ -320,7 +320,7 @@ export function generateMockRepackRows(empresaId: string): RepackRow[] {
   const rows: RepackRow[] = [];
   
   const embalagens = ['LATA 350ML', 'GARRAFA 600ML', 'LATA 269ML', 'LONG NECK 275ML'];
-  const operadores = ['OZENILDO SILVA', 'MARIVALDO ARTHUR', 'RONILDO', 'PAULO PEREIRA'];
+  const operadores = ['MARIVALDO', 'RONILDO', 'PAULO PEREIRA'];
   
   dates.forEach((d, dIdx) => {
     // 1-2 repacks per day
@@ -372,7 +372,7 @@ export function generateMockDespejoRows(empresaId: string): DespejoRow[] {
   const rows: DespejoRow[] = [];
   
   const embalagens = ['SKOL 600ML PET', 'BRAHMA LATA 350ML', 'LONG NECK STELLA'];
-  const operadores = ['OZENILDO SILVA', 'MARIVALDO ARTHUR', 'RONILDO', 'PAULO PEREIRA'];
+  const operadores = ['MARIVALDO', 'RONILDO', 'PAULO PEREIRA'];
   
   dates.forEach((d, dIdx) => {
     // Every 2 days, a Despejo record

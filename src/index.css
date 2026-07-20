@@ -23,7 +23,7 @@
 }
 
 body.light-theme {
-  --ink: #f7f9fc;          /* Light theme background */
+  --ink: #ffffff;          /* Light theme background */
   --surf: #ffffff;         /* Light theme card surface */
   --surf2: #f1f5f9;        /* Light theme secondary surface / inputs */
   --edge: #e5e7eb;         /* Light theme border */

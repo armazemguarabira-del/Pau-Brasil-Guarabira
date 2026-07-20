@@ -773,7 +773,7 @@ export default function App() {
 
       {/* Main workspace arena with smooth tab switching */}
       <div className={`flex-1 flex flex-col min-h-screen max-h-screen overflow-y-auto overflow-x-hidden w-full max-w-full ${
-        theme === 'dark' ? 'bg-[#07090d]' : 'bg-slate-50/50'
+        theme === 'dark' ? 'bg-[#07090d]' : 'bg-white'
       }`}>
         
         {/* Workspace Top Header (Glassmorphic & Premium) */}

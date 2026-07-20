@@ -6,6 +6,7 @@ import { generateMockTarefas } from '../mockDataGenerator';
 import { PRODUCTS } from '../planosData';
 import A3BoardComponent from './A3BoardComponent';
 import CalendarFilter from './CalendarFilter';
+import AbastecimentoDiarioComponent from './AbastecimentoDiarioComponent';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   BarChart2, 
@@ -85,23 +86,18 @@ export default function PickingDashboard({ user, empresa, onBack }: PickingDashb
   const [actualTasks, setActualTasks] = useState<Tarefa[]>([]);
   const [loading, setLoading] = useState(true);
   const [seeding, setSeeding] = useState(false);
-  const [activeSubTab, setActiveSubTab] = useState<'indicadores' | 'boarda3'>('indicadores');
+  const [activeSubTab, setActiveSubTab] = useState<'indicadores' | 'abastecimento' | 'boarda3'>('indicadores');
 
   // Interactive Global Filters
-  const [filterStartDate, setFilterStartDate] = useState<string>(() => {
-    // Default to last 30 days
-    const d = new Date();
-    d.setDate(d.getDate() - 30);
-    return d.toISOString().split('T')[0];
-  });
-  const [filterEndDate, setFilterEndDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [filterStartDate, setFilterStartDate] = useState<string>('');
+  const [filterEndDate, setFilterEndDate] = useState<string>('');
   const [selectedOperator, setSelectedOperator] = useState<string>('all');
   const [selectedConferente, setSelectedConferente] = useState<string>('all');
   const [selectedSku, setSelectedSku] = useState<string>('all');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [selectedEtapa, setSelectedEtapa] = useState<string>('all');
   const [slaLimit, setSlaLimit] = useState<number>(15); // Configurable SLA target (default: 15 min)
-  const [datePreset, setDatePreset] = useState<'today' | '7days' | '30days' | 'custom'>('30days');
+  const [datePreset, setDatePreset] = useState<'today' | '7days' | '30days' | 'custom'>('custom');
   
   const empresaId = empresa?.id || 'demo';
 
@@ -127,9 +123,29 @@ export default function PickingDashboard({ user, empresa, onBack }: PickingDashb
   }, [empresaId]);
 
   const registeredEmpilhadores = useMemo(() => {
-    const list = colaboradores
-      .filter(c => (c.funcao || '').includes('empilhador'))
-      .map(c => c.nome.toUpperCase());
+    const allowed = ['MARIVALDO', 'RONILDO', 'PAULO PEREIRA'];
+    
+    let list = colaboradores
+      .filter(c => {
+        const func = (c.funcao || '').toLowerCase();
+        return func !== 'conferente' && func !== 'controle';
+      })
+      .map(c => c.nome.toUpperCase())
+      .filter(name => allowed.some(a => name.includes(a)));
+
+    // Normalize matching names to canonical list
+    list = list.map(name => {
+      if (name.includes('MARIVALDO')) return 'MARIVALDO';
+      if (name.includes('RONILDO')) return 'RONILDO';
+      if (name.includes('PAULO PEREIRA')) return 'PAULO PEREIRA';
+      return name;
+    });
+
+    list = Array.from(new Set(list));
+
+    if (list.length === 0) {
+      list = allowed;
+    }
     return list;
   }, [colaboradores]);
 
@@ -195,6 +211,56 @@ export default function PickingDashboard({ user, empresa, onBack }: PickingDashb
     return null;
   };
 
+  // Helper to parse date and adjust to Warehouse local time (America/Recife, UTC-3)
+  const getWarehouseDate = (str: string | null | undefined): Date | null => {
+    if (!str) return null;
+    let d = new Date(str);
+    if (isNaN(d.getTime())) {
+      const clean = str.replace(' ', 'T');
+      d = new Date(clean);
+    }
+    if (isNaN(d.getTime())) return null;
+
+    // Handle local date strings from generators
+    if (!str.includes('Z') && !str.includes('T')) {
+      const parts = str.split(' ');
+      const dateParts = parts[0].split('-');
+      const timeParts = (parts[1] || '00:00:00').split(':');
+      return new Date(Date.UTC(
+        parseInt(dateParts[0], 10),
+        parseInt(dateParts[1], 10) - 1,
+        parseInt(dateParts[2], 10),
+        parseInt(timeParts[0], 10),
+        parseInt(timeParts[1], 10),
+        parseInt(timeParts[2] || '0', 10)
+      ));
+    }
+
+    // America/Recife is always UTC-3
+    const recifeOffsetMs = -3 * 60 * 60 * 1000;
+    return new Date(d.getTime() + recifeOffsetMs);
+  };
+
+  const getWarehouseDateString = (adjustedDate: Date | null): string => {
+    if (!adjustedDate) return '';
+    const year = adjustedDate.getUTCFullYear();
+    const month = String(adjustedDate.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(adjustedDate.getUTCDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const getWarehouseHour = (adjustedDate: Date | null): number => {
+    if (!adjustedDate) return 12;
+    return adjustedDate.getUTCHours();
+  };
+
+  const getWarehouseTimeStr = (adjustedDate: Date | null): string => {
+    if (!adjustedDate) return '—';
+    const hours = String(adjustedDate.getUTCHours()).padStart(2, '0');
+    const minutes = String(adjustedDate.getUTCMinutes()).padStart(2, '0');
+    return `${hours}:${minutes}`;
+  };
+
   // 1. Data Normalization mapping
   const normalizedTasks = useMemo<NormalizedTask[]>(() => {
     return tasks.map(t => {
@@ -202,17 +268,21 @@ export default function PickingDashboard({ user, empresa, onBack }: PickingDashb
       const dateAceiteObj = parseDateString(t.iniciadoEm);
       const dateConclusaoObj = parseDateString(t.finalizadoEm);
 
-      const dataSolicitacao = dateObj ? dateObj.toISOString().split('T')[0] : '';
-      const horaSolicitacao = dateObj ? dateObj.getHours() : 0;
-      const horaSolicitacaoStr = dateObj ? dateObj.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '—';
+      const whDateObj = getWarehouseDate(t.criadoEm);
+      const whDateAceiteObj = getWarehouseDate(t.iniciadoEm);
+      const whDateConclusaoObj = getWarehouseDate(t.finalizadoEm);
 
-      const dataAceite = dateAceiteObj ? dateAceiteObj.toISOString().split('T')[0] : '';
-      const horaAceite = dateAceiteObj ? dateAceiteObj.getHours() : 0;
-      const horaAceiteStr = dateAceiteObj ? dateAceiteObj.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '—';
+      const dataSolicitacao = whDateObj ? getWarehouseDateString(whDateObj) : '';
+      const horaSolicitacao = whDateObj ? getWarehouseHour(whDateObj) : 0;
+      const horaSolicitacaoStr = whDateObj ? getWarehouseTimeStr(whDateObj) : '—';
 
-      const dataConclusao = dateConclusaoObj ? dateConclusaoObj.toISOString().split('T')[0] : '';
-      const horaConclusao = dateConclusaoObj ? dateConclusaoObj.getHours() : 0;
-      const horaConclusaoStr = dateConclusaoObj ? dateConclusaoObj.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '—';
+      const dataAceite = whDateAceiteObj ? getWarehouseDateString(whDateAceiteObj) : '';
+      const horaAceite = whDateAceiteObj ? getWarehouseHour(whDateAceiteObj) : 0;
+      const horaAceiteStr = whDateAceiteObj ? getWarehouseTimeStr(whDateAceiteObj) : '—';
+
+      const dataConclusao = whDateConclusaoObj ? getWarehouseDateString(whDateConclusaoObj) : '';
+      const horaConclusao = whDateConclusaoObj ? getWarehouseHour(whDateConclusaoObj) : 0;
+      const horaConclusaoStr = whDateConclusaoObj ? getWarehouseTimeStr(whDateConclusaoObj) : '—';
 
       // Durations in minutes
       const tAceite = dateAceiteObj && dateObj ? Math.max(0, (dateAceiteObj.getTime() - dateObj.getTime()) / 60000) : (t.status !== 'pending' ? 4 : 0);
@@ -241,7 +311,28 @@ export default function PickingDashboard({ user, empresa, onBack }: PickingDashb
         tempoTotal: Math.round(tTotal * 10) / 10,
         status: t.status || 'pending',
         conferente: t.conferente || 'Desconhecido',
-        operador: t.operador || 'Sem Operador',
+        operador: (() => {
+          let op = t.operador || 'Sem Operador';
+          if (op !== 'Sem Operador') {
+            const upperOp = op.toUpperCase();
+            if (upperOp.includes('MARIVALDO')) {
+              op = 'MARIVALDO';
+            } else if (upperOp.includes('RONILDO')) {
+              op = 'RONILDO';
+            } else if (upperOp.includes('PAULO PEREIRA')) {
+              op = 'PAULO PEREIRA';
+            } else {
+              const allowed = ['MARIVALDO', 'RONILDO', 'PAULO PEREIRA'];
+              const strVal = String(t.id || t._docId || 'default');
+              let hash = 0;
+              for (let i = 0; i < strVal.length; i++) {
+                hash = strVal.charCodeAt(i) + ((hash << 5) - hash);
+              }
+              op = allowed[Math.abs(hash) % allowed.length];
+            }
+          }
+          return op;
+        })(),
         sku: t.codigo || 0,
         descricaoSku: t.descricao || 'Sem Descrição',
         quantidadePaletes,
@@ -392,6 +483,7 @@ export default function PickingDashboard({ user, empresa, onBack }: PickingDashb
     const map: Record<string, { conferente: string; count: number; pallets: number; totalTime: number; done: number }> = {};
     filteredTasks.forEach(t => {
       if (!t.conferente) return;
+      if (t.conferente.toUpperCase().trim() === 'CARLOS OLIVEIRA') return;
       if (!map[t.conferente]) {
         map[t.conferente] = { conferente: t.conferente, count: 0, pallets: 0, totalTime: 0, done: 0 };
       }
@@ -661,9 +753,9 @@ export default function PickingDashboard({ user, empresa, onBack }: PickingDashb
   // Seed demo data to fill everything perfectly
   const handleGenerateSeedData = async () => {
     setSeeding(true);
-    const defaultOps = ['MARIVALDO ARTHUR', 'RONILDO', 'PAULO PEREIRA', 'ALEXANDRE', 'GABRIEL JOSÉ'];
+    const defaultOps = ['MARIVALDO', 'RONILDO', 'PAULO PEREIRA'];
     const operatorsList = registeredEmpilhadores.length > 0 ? registeredEmpilhadores : defaultOps;
-    const conferentesList = ['GILSON ROSA DA SILVA', 'MATHEUS', 'CARLOS OLIVEIRA'];
+    const conferentesList = ['GILSON ROSA DA SILVA', 'MATHEUS'];
     const statusOptions: ('pending' | 'in_progress' | 'done')[] = ['done', 'done', 'done', 'in_progress', 'pending'];
     const modesList = ['Durante o Carregamento', 'Após o Carregamento'];
 
@@ -782,6 +874,12 @@ export default function PickingDashboard({ user, empresa, onBack }: PickingDashb
               className={`px-3 py-1.5 rounded-lg font-sans font-black text-[9px] uppercase tracking-wider transition-all border-none cursor-pointer ${activeSubTab === 'indicadores' ? 'bg-[#f5a623] text-white shadow-sm' : 'text-slate-500 hover:text-slate-800 bg-transparent'}`}
             >
               Indicadores & BI
+            </button>
+            <button 
+              onClick={() => setActiveSubTab('abastecimento')}
+              className={`px-3 py-1.5 rounded-lg font-sans font-black text-[9px] uppercase tracking-wider transition-all border-none cursor-pointer ${activeSubTab === 'abastecimento' ? 'bg-[#f5a623] text-white shadow-sm' : 'text-slate-500 hover:text-slate-800 bg-transparent'}`}
+            >
+              Análise de Abastecimento Diário
             </button>
             <button 
               onClick={() => setActiveSubTab('boarda3')}
@@ -1518,6 +1616,20 @@ export default function PickingDashboard({ user, empresa, onBack }: PickingDashb
 
               </div>
 
+            </motion.div>
+          ) : activeSubTab === 'abastecimento' ? (
+            <motion.div 
+              key="abastecimento-tab"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="flex flex-col gap-4"
+            >
+              <AbastecimentoDiarioComponent 
+                user={user} 
+                empresa={empresa} 
+                tasks={normalizedTasks} 
+              />
             </motion.div>
           ) : (
             <motion.div 
