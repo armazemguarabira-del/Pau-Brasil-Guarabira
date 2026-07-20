@@ -1035,6 +1035,21 @@ export default function DespejoDashboard({ user, empresa, onBack }: DespejoDashb
 
         <div className="flex flex-wrap items-center gap-4 text-xs">
           
+          {/* 📅 Filtro Calendário Interativo */}
+          <div className="flex flex-col gap-1 min-w-[180px]">
+            <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">
+              Período (Calendário)
+            </label>
+            <CalendarFilter
+              startDate={startDate}
+              endDate={endDate}
+              onChange={(start, end) => {
+                setStartDate(start);
+                setEndDate(end);
+              }}
+            />
+          </div>
+
           {/* 👤 Colaborador */}
           <div className="flex flex-col gap-1 w-[160px]">
             <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">
@@ -1067,21 +1082,6 @@ export default function DespejoDashboard({ user, empresa, onBack }: DespejoDashb
                 <option key={pkg} value={pkg}>{pkg}</option>
               ))}
             </select>
-          </div>
-
-          {/* 📅 Filtro Calendário Interativo */}
-          <div className="flex flex-col gap-1 min-w-[180px]">
-            <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">
-              Período do Dashboard
-            </label>
-            <CalendarFilter
-              startDate={startDate}
-              endDate={endDate}
-              onChange={(start, end) => {
-                setStartDate(start);
-                setEndDate(end);
-              }}
-            />
           </div>
 
           {/* 🕒 Hora */}

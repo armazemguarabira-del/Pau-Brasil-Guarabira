@@ -2002,22 +2002,42 @@ export default function ControlePanel({ user, empresa }: ControlePanelProps) {
                     </div>
 
                     <div className="flex flex-col gap-1.5">
-                      <label className="text-[10px] font-bold tracking-widest text-[#6a7d92] uppercase">Função Operacional *</label>
-                      <select 
-                        value={paFuncao}
-                        onChange={e => setPaFuncao(e.target.value)}
-                        className="g-select cursor-pointer"
-                      >
-                        <option value="repack">Operador de Repack</option>
-                        <option value="despejo">Operador de Despejo</option>
-                        <option value="armazem">Operador de Armazém Fácil</option>
-                        <option value="quebras">Fiscal de Quebras</option>
-                        <option value="validades">Gestor de Validades (FEFO)</option>
-                        <option value="refugo">Operador Retorno de Rota</option>
-                        <option value="empilhador">Picking / Empilhadeira</option>
-                        <option value="conferente">Conferente Geral</option>
-                        <option value="controle">Controle / Supervisor</option>
-                      </select>
+                      <label className="text-[10px] font-bold tracking-widest text-[#6a7d92] uppercase">Função Operacional / Acessos * (Selecione uma ou mais)</label>
+                      <div className="grid grid-cols-1 gap-1.5 p-3 bg-[#151b23] border border-[#222d3a] rounded-xl max-h-56 overflow-y-auto">
+                        {[
+                          { id: 'repack', label: 'Operação Repack' },
+                          { id: 'despejo', label: 'Operação Despejo' },
+                          { id: 'armazem', label: 'Operação EFC / EFD' },
+                          { id: 'quebras', label: 'Operação Quebras' },
+                          { id: 'validades', label: 'Operação Validade' },
+                          { id: 'refugo', label: 'Operação Retorno de Rota' },
+                          { id: 'empilhador', label: 'Operação Picking' },
+                          { id: 'conferente', label: 'Operação Conferênte' },
+                          { id: 'controle', label: 'Supervisor Controle' }
+                        ].map(op => {
+                          const isChecked = paFuncao.split(',').map(s => s.trim()).includes(op.id);
+                          return (
+                            <label key={op.id} className="flex items-center gap-2 cursor-pointer hover:bg-slate-800/40 p-1.5 rounded-lg text-xs text-snow transition-colors">
+                              <input 
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={e => {
+                                  const currentRoles = paFuncao ? paFuncao.split(',').map(s => s.trim()).filter(Boolean) : [];
+                                  let nextRoles: string[];
+                                  if (e.target.checked) {
+                                    nextRoles = [...currentRoles, op.id];
+                                  } else {
+                                    nextRoles = currentRoles.filter(r => r !== op.id);
+                                  }
+                                  setPaFuncao(nextRoles.join(','));
+                                }}
+                                className="rounded border-[#222d3a] bg-[#0d1117] text-[#f5a623] focus:ring-0 focus:ring-offset-0 w-4 h-4 cursor-pointer"
+                              />
+                              <span>{op.label}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
                     </div>
 
                     {paMsg && (

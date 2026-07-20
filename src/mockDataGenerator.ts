@@ -99,11 +99,12 @@ export function generateMockArmazemRows(empresaId: string): ArmazemRow[] {
 }
 
 // 2. PICKING / TAREFAS (Tarefa) - 2 Months of Fictitious Data
-export function generateMockTarefas(empresaId: string): Tarefa[] {
+export function generateMockTarefas(empresaId: string, customOperators?: string[]): Tarefa[] {
   const dates = getPastDates(60);
   const tasks: Tarefa[] = [];
   
-  const operators = ['MARIVALDO ARTHUR', 'RONILDO', 'PAULO PEREIRA', 'ALEXANDRE', 'GABRIEL JOSÉ'];
+  const defaultOperators = ['MARIVALDO ARTHUR', 'RONILDO', 'PAULO PEREIRA', 'ALEXANDRE', 'GABRIEL JOSÉ'];
+  const operators = customOperators && customOperators.length > 0 ? customOperators : defaultOperators;
   const conferentes = ['GILSON ROSA DA SILVA', 'MATHEUS', 'CARLOS OLIVEIRA'];
   const descriptions = [
     'PREPARAÇÃO ROTA 101 URBANA',

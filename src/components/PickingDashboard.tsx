@@ -105,10 +105,38 @@ export default function PickingDashboard({ user, empresa, onBack }: PickingDashb
   
   const empresaId = empresa?.id || 'demo';
 
+  const [colaboradores, setColaboradores] = useState<any[]>([]);
+
+  // Synchronize colaboradores from Firestore
+  useEffect(() => {
+    if (!db) {
+      const savedColab = localStorage.getItem(`colaboradores_${empresaId}`);
+      if (savedColab) {
+        setColaboradores(JSON.parse(savedColab));
+      }
+      return;
+    }
+    const q = query(collection(db, 'colaboradores'), where('empresaId', '==', empresaId));
+    const unsub = onSnapshot(q, (snap) => {
+      const rows = snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() }));
+      setColaboradores(rows);
+    }, (error) => {
+      console.error("Error reading colaboradores in PickingDashboard:", error);
+    });
+    return () => unsub();
+  }, [empresaId]);
+
+  const registeredEmpilhadores = useMemo(() => {
+    const list = colaboradores
+      .filter(c => (c.funcao || '').includes('empilhador'))
+      .map(c => c.nome.toUpperCase());
+    return list;
+  }, [colaboradores]);
+
   const tasks = useMemo(() => {
-    const mockTasks = generateMockTarefas(empresaId);
+    const mockTasks = generateMockTarefas(empresaId, registeredEmpilhadores);
     return [...actualTasks, ...mockTasks];
-  }, [actualTasks, empresaId]);
+  }, [actualTasks, empresaId, registeredEmpilhadores]);
 
   // Synchronize tasks from Firestore
   useEffect(() => {
@@ -633,7 +661,8 @@ export default function PickingDashboard({ user, empresa, onBack }: PickingDashb
   // Seed demo data to fill everything perfectly
   const handleGenerateSeedData = async () => {
     setSeeding(true);
-    const operatorsList = ['MARIVALDO ARTHUR', 'RONILDO', 'PAULO PEREIRA', 'ALEXANDRE', 'GABRIEL JOSÉ'];
+    const defaultOps = ['MARIVALDO ARTHUR', 'RONILDO', 'PAULO PEREIRA', 'ALEXANDRE', 'GABRIEL JOSÉ'];
+    const operatorsList = registeredEmpilhadores.length > 0 ? registeredEmpilhadores : defaultOps;
     const conferentesList = ['GILSON ROSA DA SILVA', 'MATHEUS', 'CARLOS OLIVEIRA'];
     const statusOptions: ('pending' | 'in_progress' | 'done')[] = ['done', 'done', 'done', 'in_progress', 'pending'];
     const modesList = ['Durante o Carregamento', 'Após o Carregamento'];
@@ -790,39 +819,9 @@ export default function PickingDashboard({ user, empresa, onBack }: PickingDashb
               
               {/* --- DYNAMIC GLOBAL FILTER SECTION --- */}
               <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col gap-4">
-                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
-                  <div className="flex items-center gap-2">
-                    <SlidersHorizontal className="w-4 h-4 text-amber-600" />
-                    <span className="text-xs uppercase font-black tracking-widest text-amber-600">Filtros Globais de Operação</span>
-                  </div>
-                  
-                  {/* Presets buttons */}
-                  <div className="flex gap-1.5 bg-slate-100 p-0.5 rounded-lg border border-slate-200">
-                    <button 
-                      onClick={() => setDatePreset('today')}
-                      className={`px-2.5 py-1 rounded text-[9px] uppercase font-bold transition-all border-none cursor-pointer ${datePreset === 'today' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800 bg-transparent'}`}
-                    >
-                      Hoje
-                    </button>
-                    <button 
-                      onClick={() => setDatePreset('7days')}
-                      className={`px-2.5 py-1 rounded text-[9px] uppercase font-bold transition-all border-none cursor-pointer ${datePreset === '7days' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800 bg-transparent'}`}
-                    >
-                      7 Dias
-                    </button>
-                    <button 
-                      onClick={() => setDatePreset('30days')}
-                      className={`px-2.5 py-1 rounded text-[9px] uppercase font-bold transition-all border-none cursor-pointer ${datePreset === '30days' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800 bg-transparent'}`}
-                    >
-                      30 Dias
-                    </button>
-                    <button 
-                      onClick={() => setDatePreset('custom')}
-                      className={`px-2.5 py-1 rounded text-[9px] uppercase font-bold transition-all border-none cursor-pointer ${datePreset === 'custom' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800 bg-transparent'}`}
-                    >
-                      Período
-                    </button>
-                  </div>
+                <div className="flex items-center gap-2 border-b border-slate-200 pb-3">
+                  <SlidersHorizontal className="w-4 h-4 text-amber-600" />
+                  <span className="text-xs uppercase font-black tracking-widest text-amber-600">Filtros Globais de Operação</span>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-3.5 w-full text-xs">
@@ -865,19 +864,6 @@ export default function PickingDashboard({ user, empresa, onBack }: PickingDashb
                     >
                       <option value="all">Todos Conferentes</option>
                       {uniqueConferentes.map(cf => <option key={cf} value={cf}>{cf}</option>)}
-                    </select>
-                  </div>
-
-                  {/* SKU dropdown */}
-                  <div className="flex flex-col gap-1 w-[180px]">
-                    <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Produto SKU</label>
-                    <select 
-                      value={selectedSku}
-                      onChange={e => setSelectedSku(e.target.value)}
-                      className="w-full bg-white border border-gray-200 text-[#032b5e] font-sans font-bold rounded-lg outline-none px-2.5 py-1 text-[10px] h-[28px] cursor-pointer transition-all hover:border-blue-400 focus:border-[#032b5e]"
-                    >
-                      <option value="all">Todos os SKUs</option>
-                      {uniqueSkus.map(s => <option key={s.sku} value={s.sku}>{s.sku} - {s.desc.substring(0, 15)}...</option>)}
                     </select>
                   </div>
 

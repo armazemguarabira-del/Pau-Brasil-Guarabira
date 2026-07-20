@@ -28,17 +28,41 @@ interface LandingPageProps {
 }
 
 export default function LandingPage({ onEnterApp }: LandingPageProps) {
-  const [dbKpis, setDbKpis] = useState({
-    repackAvg: 780,
-    quebrasTotal: 124,
-    validadesAlertas: 12,
+  const [dbKpis, setDbKpis] = useState(() => {
+    const cached = localStorage.getItem('landing_page_kpis_cache');
+    if (cached) {
+      try {
+        return JSON.parse(cached);
+      } catch (e) {
+        // ignore
+      }
+    }
+    return {
+      repackAvg: 20,
+      quebrasTotal: 124,
+      validadesAlertas: 12,
+    };
   });
+  const [loadingKpis, setLoadingKpis] = useState(false);
 
-  // One-time Firestore KPI calculation for active connection proof
-  useEffect(() => {
+  const fetchKpis = async (force = false) => {
     if (!db) return;
 
-    async function fetchKpis() {
+    if (!force) {
+      const cached = localStorage.getItem('landing_page_kpis_cache');
+      if (cached) {
+        return; // Skip reading Firestore completely on mount
+      }
+    }
+
+    setLoadingKpis(true);
+    try {
+      const newKpis = {
+        repackAvg: dbKpis.repackAvg,
+        quebrasTotal: dbKpis.quebrasTotal,
+        validadesAlertas: dbKpis.validadesAlertas,
+      };
+
       try {
         const qRepack = query(collection(db, 'repack'), limit(300));
         const snapRepack = await getDocs(qRepack);
@@ -58,8 +82,8 @@ export default function LandingPage({ onEnterApp }: LandingPageProps) {
               }
             }
           });
-          const avg = totalMin > 0 ? Math.round((totalQty / totalMin) * 60) : 780;
-          setDbKpis(prev => ({ ...prev, repackAvg: avg > 0 ? avg : 780 }));
+          const avg = totalMin > 0 ? Math.round((totalQty / totalMin) * 60) : 20;
+          newKpis.repackAvg = avg > 0 ? avg : 20;
         }
       } catch (err) {
         console.warn("LandingPage repack fetch error:", err);
@@ -71,7 +95,7 @@ export default function LandingPage({ onEnterApp }: LandingPageProps) {
         const rowsQuebras = snapQuebras.docs.map(doc => doc.data());
         if (rowsQuebras.length > 0) {
           const totalQty = rowsQuebras.reduce((sum: number, r: any) => sum + (Number(r.quantidade) || 0), 0);
-          setDbKpis(prev => ({ ...prev, quebrasTotal: totalQty }));
+          newKpis.quebrasTotal = totalQty;
         }
       } catch (err) {
         console.warn("LandingPage quebras fetch error:", err);
@@ -105,13 +129,22 @@ export default function LandingPage({ onEnterApp }: LandingPageProps) {
               }
             }
           });
-          setDbKpis(prev => ({ ...prev, validadesAlertas: alertCount > 0 ? alertCount : rowsValidades.length }));
+          newKpis.validadesAlertas = alertCount > 0 ? alertCount : rowsValidades.length;
         }
       } catch (err) {
         console.warn("LandingPage validades fetch error:", err);
       }
-    }
 
+      setDbKpis(newKpis);
+      localStorage.setItem('landing_page_kpis_cache', JSON.stringify(newKpis));
+    } catch (err) {
+      console.error("Error fetching LandingPage KPIs:", err);
+    } finally {
+      setLoadingKpis(false);
+    }
+  };
+
+  useEffect(() => {
     fetchKpis();
   }, []);
 
@@ -245,8 +278,24 @@ export default function LandingPage({ onEnterApp }: LandingPageProps) {
           </div>
           <div className="p-6 text-left">
             <div className="mb-4 flex flex-col sm:flex-row sm:items-center justify-between border-b border-blue-50 pb-3 gap-2">
-              <span className="text-xs font-black uppercase tracking-wider text-blue-900">📊 Visão Ativa do Armazém</span>
-              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Mesa de Controle Integrada</span>
+              <span className="text-xs font-black uppercase tracking-wider text-blue-900 flex items-center gap-2">
+                📊 Visão Ativa do Armazém
+                <button
+                  onClick={() => fetchKpis(true)}
+                  disabled={loadingKpis}
+                  title="Sincronizar dados reais do Firestore"
+                  className="p-1.5 rounded hover:bg-blue-50 text-blue-500 transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center border-none bg-transparent"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${loadingKpis ? 'animate-spin' : ''}`} />
+                </button>
+              </span>
+              <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">
+                {loadingKpis ? (
+                  <span className="text-blue-500 animate-pulse">Sincronizando dados reais...</span>
+                ) : (
+                  <span>Dados salvos localmente (clique no 🔄 para atualizar)</span>
+                )}
+              </span>
             </div>
             
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

@@ -473,15 +473,15 @@ export default function QuebrasPanel({ user, empresa }: QuebrasPanelProps) {
                 className="g-input"
               />
               {showDropdown && produtoBusca && filteredProducts.length > 0 && (
-                <div className="absolute top-[103%] left-0 right-0 bg-[#0e1626] border border-[#1c2530] rounded-xl z-50 max-h-48 overflow-y-auto">
+                <div className="absolute top-[103%] left-0 right-0 bg-white border border-slate-200 shadow-xl rounded-xl z-50 max-h-48 overflow-y-auto">
                   {filteredProducts.map(p => (
                     <div 
                       key={p.codigo}
                       onClick={() => handleSelectProd(p)}
-                      className="p-3 border-b border-[#1c2530] hover:bg-[#1a2030] cursor-pointer text-xs flex justify-between"
+                      className="p-3 border-b border-slate-100 hover:bg-slate-50 cursor-pointer text-xs flex justify-between"
                     >
-                      <span className="font-bold text-[#f5a623]">{p.codigo}</span>
-                      <span className="truncate flex-1 ml-4 text-snow text-left">{p.descricao}</span>
+                      <span className="font-bold text-amber-600">{p.codigo}</span>
+                      <span className="truncate flex-1 ml-4 text-slate-800 font-medium text-left">{p.descricao}</span>
                     </div>
                   ))}
                 </div>

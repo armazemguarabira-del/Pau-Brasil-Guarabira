@@ -854,15 +854,15 @@ export default function RepackPanel({ user, empresa }: RepackPanelProps) {
                     className="g-input"
                   />
                   {vShowDropdown && vProdutoBusca && vFilteredProducts.length > 0 && (
-                    <div className="absolute top-[103%] left-0 right-0 bg-[var(--surf)] border border-[var(--edge)] rounded-xl z-50 max-h-48 overflow-y-auto shadow-xl">
+                    <div className="absolute top-[103%] left-0 right-0 bg-white border border-slate-200 shadow-xl rounded-xl z-50 max-h-48 overflow-y-auto">
                       {vFilteredProducts.map(p => (
                         <div 
                           key={p.codigo}
                           onClick={() => handleVSelectProd(p)}
-                          className="p-3 border-b border-[var(--edge)] hover:bg-[var(--surf2)] cursor-pointer text-xs flex justify-between"
+                          className="p-3 border-b border-slate-100 hover:bg-slate-50 cursor-pointer text-xs flex justify-between"
                         >
-                          <span className="font-bold text-[#f5a623]">{p.codigo}</span>
-                          <span className="truncate flex-1 ml-4 text-snow text-left">{p.descricao}</span>
+                          <span className="font-bold text-amber-600">{p.codigo}</span>
+                          <span className="truncate flex-1 ml-4 text-slate-800 font-medium text-left">{p.descricao}</span>
                         </div>
                       ))}
                     </div>
