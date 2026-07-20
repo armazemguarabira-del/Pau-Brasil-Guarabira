@@ -39,6 +39,7 @@ import { db, isCustomFirebaseConnected } from '../firebase';
 import { collection, onSnapshot, query, addDoc, deleteDoc, doc, where } from 'firebase/firestore';
 import { generateMockQuebras } from '../mockDataGenerator';
 import A3BoardComponent from './A3BoardComponent';
+import CalendarFilter from './CalendarFilter';
 
 interface QuebrasDashboardProps {
   user: Usuario;
@@ -100,7 +101,12 @@ const DEFAULT_PLANS: ActionPlan5W2H[] = [
 
 export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashboardProps) {
   const [actualQuebras, setActualQuebras] = useState<QuebraRow[]>([]);
-  const [filterPeriodo, setFilterPeriodo] = useState<'7' | '15' | '30' | 'tudo'>('30');
+  const [startDate, setStartDate] = useState<string>(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 30);
+    return d.toISOString().split('T')[0];
+  });
+  const [endDate, setEndDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
   const [filterArea, setFilterArea] = useState<string>('TODAS');
   const [filterTurno, setFilterTurno] = useState<string>('TODOS');
   const [activeSubTab, setActiveSubTab] = useState<'indicadores' | 'boarda3'>('indicadores');
@@ -187,13 +193,19 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
       // Turno filter
       if (filterTurno !== 'TODOS' && q.turno !== filterTurno) return false;
       
-      // Period filter
-      if (filterPeriodo !== 'tudo') {
-        const daysLimit = parseInt(filterPeriodo);
-        const recordDate = q.dataISO ? new Date(q.dataISO) : new Date();
-        const diffTime = Math.abs(new Date().getTime() - recordDate.getTime());
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        if (diffDays > daysLimit) return false;
+      // Date range filter
+      if (startDate || endDate) {
+        if (q.dataISO) {
+          if (startDate && q.dataISO < startDate) return false;
+          if (endDate && q.dataISO > endDate) return false;
+        } else if (q.data) {
+          const parts = q.data.split('/');
+          if (parts.length === 3) {
+            const rowISO = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+            if (startDate && rowISO < startDate) return false;
+            if (endDate && rowISO > endDate) return false;
+          }
+        }
       }
       return true;
     });
@@ -400,30 +412,28 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
       {activeSubTab === 'indicadores' && (
         <>
           {/* FILTERS BAR */}
-          <div className="flex flex-wrap items-center justify-between gap-4 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-            <div className="flex flex-wrap items-center gap-4">
+          <div className="flex flex-wrap items-center justify-between gap-4 bg-white p-3.5 rounded-xl border border-gray-200 shadow-sm">
+            <div className="flex flex-wrap items-center gap-4 w-full md:w-auto">
               {/* Period selector */}
-              <div className="flex flex-col">
-                <span className="text-[9px] font-bold text-gray-400 uppercase mb-1">Período</span>
-                <select 
-                  value={filterPeriodo} 
-                  onChange={e => setFilterPeriodo(e.target.value as any)} 
-                  className="px-2.5 py-1.5 bg-white border border-gray-300 rounded-lg text-xs font-semibold text-gray-700 shadow-sm outline-none cursor-pointer"
-                >
-                  <option value="7">Últimos 7 Dias</option>
-                  <option value="15">Últimos 15 Dias</option>
-                  <option value="30">Últimos 30 Dias</option>
-                  <option value="tudo">Histórico Completo</option>
-                </select>
+              <div className="flex flex-col gap-1 min-w-[200px]">
+                <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Período</span>
+                <CalendarFilter
+                  startDate={startDate}
+                  endDate={endDate}
+                  onChange={(start, end) => {
+                    setStartDate(start);
+                    setEndDate(end);
+                  }}
+                />
               </div>
 
               {/* Area filter */}
-              <div className="flex flex-col">
-                <span className="text-[9px] font-bold text-gray-400 uppercase mb-1">Área</span>
+              <div className="flex flex-col gap-1 w-[160px]">
+                <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Área</span>
                 <select 
                   value={filterArea} 
                   onChange={e => setFilterArea(e.target.value)} 
-                  className="px-2.5 py-1.5 bg-white border border-gray-300 rounded-lg text-xs font-semibold text-gray-700 shadow-sm outline-none cursor-pointer"
+                  className="w-full bg-white border border-gray-200 text-[#032b5e] font-sans font-bold rounded-lg outline-none px-2.5 py-1 text-[10px] h-[28px] cursor-pointer transition-all hover:border-blue-400 focus:border-[#032b5e]"
                 >
                   <option value="TODAS">Todas as Áreas</option>
                   <option value="ARMAZEM">Armazém / Depósito</option>
@@ -434,12 +444,12 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
               </div>
 
               {/* Turno filter */}
-              <div className="flex flex-col">
-                <span className="text-[9px] font-bold text-gray-400 uppercase mb-1">Turno</span>
+              <div className="flex flex-col gap-1 w-[130px]">
+                <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Turno</span>
                 <select 
                   value={filterTurno} 
                   onChange={e => setFilterTurno(e.target.value)} 
-                  className="px-2.5 py-1.5 bg-white border border-gray-300 rounded-lg text-xs font-semibold text-gray-700 shadow-sm outline-none cursor-pointer"
+                  className="w-full bg-white border border-gray-200 text-[#032b5e] font-sans font-bold rounded-lg outline-none px-2.5 py-1 text-[10px] h-[28px] cursor-pointer transition-all hover:border-blue-400 focus:border-[#032b5e]"
                 >
                   <option value="TODOS">Todos os Turnos</option>
                   <option value="MANHÃ">Manhã</option>
@@ -448,20 +458,20 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
               </div>
 
               {/* Visualização Unit Toggle */}
-              <div className="flex flex-col">
-                <span className="text-[9px] font-bold text-gray-400 uppercase mb-1">Visualização</span>
-                <div className="flex items-center bg-gray-100 p-0.5 rounded-lg border border-gray-200">
+              <div className="flex flex-col gap-1">
+                <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Visualização</span>
+                <div className="flex items-center bg-gray-100 p-0.5 rounded-lg border border-gray-200/60 h-[28px] min-w-[90px]">
                   <button
                     type="button"
                     onClick={() => setViewUnit('cx')}
-                    className={`px-2 py-1 rounded text-[10px] font-bold uppercase transition-all cursor-pointer border-none ${viewUnit === 'cx' ? 'bg-[#032b5e] text-white shadow-xs' : 'text-gray-500 hover:text-[#032b5e] bg-transparent'}`}
+                    className={`flex-1 rounded-md font-sans font-black text-[10px] transition-all border-none cursor-pointer h-full flex items-center justify-center ${viewUnit === 'cx' ? 'bg-[#032b5e] text-white shadow-sm' : 'text-slate-400 hover:text-[#032b5e] bg-transparent'}`}
                   >
                     CX
                   </button>
                   <button
                     type="button"
                     onClick={() => setViewUnit('he')}
-                    className={`px-2 py-1 rounded text-[10px] font-bold uppercase transition-all cursor-pointer border-none ${viewUnit === 'he' ? 'bg-[#032b5e] text-white shadow-xs' : 'text-gray-500 hover:text-[#032b5e] bg-transparent'}`}
+                    className={`flex-1 rounded-md font-sans font-black text-[10px] transition-all border-none cursor-pointer h-full flex items-center justify-center ${viewUnit === 'he' ? 'bg-[#032b5e] text-white shadow-sm' : 'text-slate-400 hover:text-[#032b5e] bg-transparent'}`}
                   >
                     HE
                   </button>

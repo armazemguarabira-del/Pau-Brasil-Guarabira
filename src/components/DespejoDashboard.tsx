@@ -42,6 +42,7 @@ import { db, isCustomFirebaseConnected } from '../firebase';
 import { collection, query, onSnapshot, deleteDoc, doc, where } from 'firebase/firestore';
 import { generateMockDespejoRows } from '../mockDataGenerator';
 import A3BoardComponent from './A3BoardComponent';
+import CalendarFilter from './CalendarFilter';
 
 interface DespejoDashboardProps {
   user: Usuario;
@@ -204,17 +205,25 @@ export default function DespejoDashboard({ user, empresa, onBack }: DespejoDashb
   // Filter UI states
   const [colaboradorVal, setColaboradorVal] = useState('Todos');
   const [embalagemVal, setEmbalagemVal] = useState('Todos');
-  const [periodoVal, setPeriodoVal] = useState('Todos');
-  const [dataVal, setDataVal] = useState('');
   const [horaVal, setHoraVal] = useState('');
+  const [startDate, setStartDate] = useState<string>(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 30);
+    return d.toISOString().split('T')[0];
+  });
+  const [endDate, setEndDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
 
   // Applied filter states
   const [appliedFilters, setAppliedFilters] = useState({
     colaborador: 'Todos',
     embalagem: 'Todos',
-    periodo: 'Todos',
-    data: '',
-    hora: ''
+    hora: '',
+    startDate: (() => {
+      const d = new Date();
+      d.setDate(d.getDate() - 30);
+      return d.toISOString().split('T')[0];
+    })(),
+    endDate: new Date().toISOString().split('T')[0]
   });
 
   // Table search & pagination
@@ -314,9 +323,9 @@ export default function DespejoDashboard({ user, empresa, onBack }: DespejoDashb
     setAppliedFilters({
       colaborador: colaboradorVal,
       embalagem: embalagemVal,
-      periodo: periodoVal,
-      data: dataVal,
-      hora: horaVal
+      hora: horaVal,
+      startDate: startDate,
+      endDate: endDate
     });
     setCurrentPage(1);
     setSelectedRowId(null);
@@ -326,15 +335,21 @@ export default function DespejoDashboard({ user, empresa, onBack }: DespejoDashb
   const handleResetFilters = () => {
     setColaboradorVal('Todos');
     setEmbalagemVal('Todos');
-    setPeriodoVal('Todos');
-    setDataVal('');
     setHoraVal('');
+    const defaultStart = (() => {
+      const d = new Date();
+      d.setDate(d.getDate() - 30);
+      return d.toISOString().split('T')[0];
+    })();
+    const defaultEnd = new Date().toISOString().split('T')[0];
+    setStartDate(defaultStart);
+    setEndDate(defaultEnd);
     setAppliedFilters({
       colaborador: 'Todos',
       embalagem: 'Todos',
-      periodo: 'Todos',
-      data: '',
-      hora: ''
+      hora: '',
+      startDate: defaultStart,
+      endDate: defaultEnd
     });
     setCurrentPage(1);
     setSelectedRowId(null);
@@ -355,36 +370,24 @@ export default function DespejoDashboard({ user, empresa, onBack }: DespejoDashb
       if (appliedFilters.embalagem !== 'Todos' && row.embalagem !== appliedFilters.embalagem) {
         return false;
       }
-      // 3. Data filter (specific)
-      if (appliedFilters.data) {
-        // convert appliedFilters.data (YYYY-MM-DD) to compare
-        const formattedDateInput = appliedFilters.data.split('-').reverse().join('/'); // DD/MM/YYYY
-        if (row.data !== formattedDateInput && row.dataISO !== appliedFilters.data) {
-          return false;
+      // 3. Date range filter
+      if (appliedFilters.startDate || appliedFilters.endDate) {
+        if (row.dataISO) {
+          if (appliedFilters.startDate && row.dataISO < appliedFilters.startDate) return false;
+          if (appliedFilters.endDate && row.dataISO > appliedFilters.endDate) return false;
+        } else if (row.data) {
+          const parts = row.data.split('/');
+          if (parts.length === 3) {
+            const rowISO = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+            if (appliedFilters.startDate && rowISO < appliedFilters.startDate) return false;
+            if (appliedFilters.endDate && rowISO > appliedFilters.endDate) return false;
+          }
         }
       }
       // 4. Hora filter (check if row's start time contains or matches)
       if (appliedFilters.hora) {
         if (!row.inicio?.startsWith(appliedFilters.hora)) {
           return false;
-        }
-      }
-      // 5. Period filter (Today, Week, Month)
-      if (appliedFilters.periodo !== 'Todos') {
-        const rowDate = row.dataISO ? new Date(row.dataISO) : new Date();
-        const now = new Date();
-        
-        if (appliedFilters.periodo === 'Hoje') {
-          const todayISO = now.toISOString().split('T')[0];
-          if (row.dataISO !== todayISO) return false;
-        } else if (appliedFilters.periodo === 'Esta Semana') {
-          const oneWeekAgo = new Date();
-          oneWeekAgo.setDate(now.getDate() - 7);
-          if (rowDate < oneWeekAgo) return false;
-        } else if (appliedFilters.periodo === 'Este Mês') {
-          const oneMonthAgo = new Date();
-          oneMonthAgo.setMonth(now.getMonth() - 1);
-          if (rowDate < oneMonthAgo) return false;
         }
       }
 
@@ -1030,19 +1033,19 @@ export default function DespejoDashboard({ user, empresa, onBack }: DespejoDashb
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3.5 text-xs">
+        <div className="flex flex-wrap items-center gap-4 text-xs">
           
           {/* 👤 Colaborador */}
-          <div className="flex flex-col gap-1.5">
-            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1">
-              <User className="w-3 h-3 text-[#032b5e]" /> Colaborador
+          <div className="flex flex-col gap-1 w-[160px]">
+            <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">
+              Colaborador
             </label>
             <select
               value={colaboradorVal}
               onChange={(e) => setColaboradorVal(e.target.value)}
-              className="bg-slate-50 border border-gray-200 text-slate-700 rounded-lg p-2 focus:border-[#032b5e] outline-none cursor-pointer"
+              className="w-full bg-white border border-gray-200 text-[#032b5e] font-sans font-bold rounded-lg outline-none px-2.5 py-1 text-[10px] h-[28px] cursor-pointer transition-all hover:border-blue-400 focus:border-[#032b5e]"
             >
-              <option value="Todos">👤 Todos os Colaboradores</option>
+              <option value="Todos">Todos os Colaboradores</option>
               {colaboradoresList.map(name => (
                 <option key={name} value={name}>{name}</option>
               ))}
@@ -1050,63 +1053,48 @@ export default function DespejoDashboard({ user, empresa, onBack }: DespejoDashb
           </div>
 
           {/* 📦 Embalagem */}
-          <div className="flex flex-col gap-1.5">
-            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1">
-              <Package className="w-3 h-3 text-[#032b5e]" /> Embalagem
+          <div className="flex flex-col gap-1 w-[160px]">
+            <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">
+              Embalagem
             </label>
             <select
               value={embalagemVal}
               onChange={(e) => setEmbalagemVal(e.target.value)}
-              className="bg-slate-50 border border-gray-200 text-slate-700 rounded-lg p-2 focus:border-[#032b5e] outline-none cursor-pointer"
+              className="w-full bg-white border border-gray-200 text-[#032b5e] font-sans font-bold rounded-lg outline-none px-2.5 py-1 text-[10px] h-[28px] cursor-pointer transition-all hover:border-blue-400 focus:border-[#032b5e]"
             >
-              <option value="Todos">📦 Todas as Embalagens</option>
+              <option value="Todos">Todas as Embalagens</option>
               {embalagensList.map(pkg => (
                 <option key={pkg} value={pkg}>{pkg}</option>
               ))}
             </select>
           </div>
 
-          {/* 📅 Período */}
-          <div className="flex flex-col gap-1.5">
-            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1">
-              <Calendar className="w-3 h-3 text-[#032b5e]" /> Período
+          {/* 📅 Filtro Calendário Interativo */}
+          <div className="flex flex-col gap-1 min-w-[180px]">
+            <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">
+              Período do Dashboard
             </label>
-            <select
-              value={periodoVal}
-              onChange={(e) => setPeriodoVal(e.target.value)}
-              className="bg-slate-50 border border-gray-200 text-slate-700 rounded-lg p-2 focus:border-[#032b5e] outline-none cursor-pointer"
-            >
-              <option value="Todos">📅 Todo o Histórico</option>
-              <option value="Hoje">Hoje</option>
-              <option value="Esta Semana">Esta Semana</option>
-              <option value="Este Mês">Este Mês</option>
-            </select>
-          </div>
-
-          {/* 📆 Data */}
-          <div className="flex flex-col gap-1.5">
-            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1">
-              📆 Data Específica
-            </label>
-            <input
-              type="date"
-              value={dataVal}
-              onChange={(e) => setDataVal(e.target.value)}
-              className="bg-slate-50 border border-gray-200 text-slate-700 rounded-lg p-1.5 focus:border-[#032b5e] outline-none text-xs"
+            <CalendarFilter
+              startDate={startDate}
+              endDate={endDate}
+              onChange={(start, end) => {
+                setStartDate(start);
+                setEndDate(end);
+              }}
             />
           </div>
 
           {/* 🕒 Hora */}
-          <div className="flex flex-col gap-1.5">
-            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1">
-              🕒 Hora Inicial (Ex: 08)
+          <div className="flex flex-col gap-1 w-[100px]">
+            <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">
+              Hora Inicial
             </label>
             <input
               type="text"
               placeholder="Ex: 08"
               value={horaVal}
               onChange={(e) => setHoraVal(e.target.value)}
-              className="bg-slate-50 border border-gray-200 text-slate-700 rounded-lg p-2 focus:border-[#032b5e] outline-none text-xs"
+              className="w-full bg-white border border-gray-200 text-[#032b5e] font-sans font-bold rounded-lg outline-none px-2.5 py-1 text-[10px] h-[28px] transition-all hover:border-blue-400 focus:border-[#032b5e]"
             />
           </div>
 

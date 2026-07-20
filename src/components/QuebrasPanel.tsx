@@ -503,15 +503,10 @@ export default function QuebrasPanel({ user, empresa }: QuebrasPanelProps) {
               <label className="text-[10px] font-bold tracking-[1.5px] uppercase text-[#6a7d92]">Unidades *</label>
               <input 
                 type="number"
-                min={1}
-                value={quantidade === 0 ? '' : quantidade}
+                value={quantidade}
                 onChange={e => {
                   const val = e.target.value;
-                  if (val === '') {
-                    setQuantidade('');
-                  } else {
-                    setQuantidade(Math.max(1, parseInt(val) || 0));
-                  }
+                  setQuantidade(val === '' ? '' : parseInt(val) || '');
                 }}
                 className="g-input text-center"
                 placeholder="Ex: 10"

@@ -54,6 +54,7 @@ import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { generateMockValidades } from '../mockDataGenerator';
 import { PRODUCTS } from '../planosData';
 import A3BoardComponent from './A3BoardComponent';
+import CalendarFilter from './CalendarFilter';
 
 interface FefoDashboardProps {
   user: Usuario;
@@ -1210,303 +1211,67 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
         <div className="flex flex-col gap-6">
           
           {/* PAINEL DE FILTROS DE ESTOQUE x PICKING (IGUAL A FOTO) */}
-          <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex flex-col gap-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 w-full">
+          <div className="bg-white p-3.5 rounded-xl border border-gray-200 shadow-sm flex flex-col gap-4">
+            <div className="flex flex-wrap items-center gap-4 w-full text-xs">
               
               {/* Filtro por Colaborador */}
-              <div className="flex flex-col gap-1.5 w-full">
-                <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">Colaborador</label>
-                <div className="relative w-full">
-                  <select 
-                    value={epColaborador} 
-                    onChange={e => setEpColaborador(e.target.value)}
-                    className="w-full h-10 pl-3.5 pr-10 border border-slate-200 rounded-xl bg-white text-xs font-bold text-slate-700 hover:border-slate-300 hover:bg-slate-50 transition-all cursor-pointer shadow-sm outline-none appearance-none"
-                  >
-                    <option value="todos">Todos</option>
-                    <option value="marcos">Marcos</option>
-                    <option value="thiago">Thiago</option>
-                    <option value="aline">Aline</option>
-                    <option value="cleiton">Cleiton</option>
-                    <option value="carlos">Carlos</option>
-                  </select>
-                  <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
-                    <ChevronDown className="w-4 h-4 text-slate-400" />
-                  </div>
-                </div>
+              <div className="flex flex-col gap-1 w-[160px]">
+                <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Colaborador</label>
+                <select 
+                  value={epColaborador} 
+                  onChange={e => setEpColaborador(e.target.value)}
+                  className="w-full bg-white border border-gray-200 text-[#032b5e] font-sans font-bold rounded-lg outline-none px-2.5 py-1 text-[10px] h-[28px] cursor-pointer transition-all hover:border-blue-400 focus:border-[#032b5e]"
+                >
+                  <option value="todos">Todos</option>
+                  <option value="marcos">Marcos</option>
+                  <option value="thiago">Thiago</option>
+                  <option value="aline">Aline</option>
+                  <option value="cleiton">Cleiton</option>
+                  <option value="carlos">Carlos</option>
+                </select>
               </div>
 
               {/* Filtro por Embalagem */}
-              <div className="flex flex-col gap-1.5 w-full">
-                <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">Embalagem</label>
-                <div className="relative w-full">
-                  <select 
-                    value={epEmbalagem} 
-                    onChange={e => setEpEmbalagem(e.target.value)}
-                    className="w-full h-10 pl-3.5 pr-10 border border-slate-200 rounded-xl bg-white text-xs font-bold text-slate-700 hover:border-slate-300 hover:bg-slate-50 transition-all cursor-pointer shadow-sm outline-none appearance-none"
-                  >
-                    <option value="todos">Todas</option>
-                    <option value="vidro">Garrafa de Vidro (VD)</option>
-                    <option value="lata">Lata (LT)</option>
-                    <option value="pet">Embalagem PET</option>
-                  </select>
-                  <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
-                    <ChevronDown className="w-4 h-4 text-slate-400" />
-                  </div>
-                </div>
+              <div className="flex flex-col gap-1 w-[160px]">
+                <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Embalagem</label>
+                <select 
+                  value={epEmbalagem} 
+                  onChange={e => setEpEmbalagem(e.target.value)}
+                  className="w-full bg-white border border-gray-200 text-[#032b5e] font-sans font-bold rounded-lg outline-none px-2.5 py-1 text-[10px] h-[28px] cursor-pointer transition-all hover:border-blue-400 focus:border-[#032b5e]"
+                >
+                  <option value="todos">Todas</option>
+                  <option value="vidro">Garrafa de Vidro (VD)</option>
+                  <option value="lata">Lata (LT)</option>
+                  <option value="pet">Embalagem PET</option>
+                </select>
               </div>
 
               {/* Filtro por Período (Calendário) */}
-              <div className="flex flex-col gap-1.5 w-full relative">
-                <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">Período (Calendário)</label>
-                <div 
-                  onClick={() => {
-                    const nextVal = !showEpCalendar;
-                    if (nextVal) {
-                      setDraftStartDate(epStartDate);
-                      setDraftEndDate(epEndDate);
-                      const d = epStartDate ? new Date(epStartDate + 'T00:00:00') : new Date('2026-07-18T00:00:00');
-                      setCalMonth(d.getMonth());
-                      setCalYear(d.getFullYear());
-                    }
-                    setShowEpCalendar(nextVal);
+              <div className="flex flex-col gap-1 min-w-[200px]">
+                <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Período (Calendário)</label>
+                <CalendarFilter
+                  startDate={epStartDate}
+                  endDate={epEndDate}
+                  variant="large"
+                  onChange={(start, end) => {
+                    setEpStartDate(start);
+                    setEpEndDate(end);
                   }}
-                  className="w-full h-10 px-3.5 border border-slate-200 rounded-xl bg-white flex items-center justify-between text-xs font-bold hover:border-slate-300 hover:bg-slate-50 transition-all cursor-pointer shadow-sm select-none"
-                >
-                  <div className="flex items-center gap-2">
-                    <Calendar className="w-4 h-4 text-blue-600" />
-                    <span className="text-blue-600 font-extrabold">
-                      {epStartDate || epEndDate ? (
-                        `${epStartDate ? epStartDate.split('-').reverse().slice(0, 2).join('/') : ''} a ${epEndDate ? epEndDate.split('-').reverse().slice(0, 2).join('/') : ''}`
-                      ) : 'Todo o Período'}
-                    </span>
-                  </div>
-                  <ChevronDown className="w-4 h-4 text-slate-400" />
-                </div>
-
-                {showEpCalendar && (
-                  <>
-                    <div 
-                      className="fixed inset-0 z-40" 
-                      onClick={() => setShowEpCalendar(false)} 
-                    />
-                    <div className="absolute top-[45px] left-1/2 -translate-x-1/2 sm:translate-x-0 sm:-left-[240px] mt-1 bg-white border border-slate-200 rounded-2xl shadow-2xl flex flex-col sm:flex-row z-50 overflow-hidden divide-y sm:divide-y-0 sm:divide-x divide-slate-100 w-[95vw] sm:w-[560px] md:w-[600px] select-none animate-in fade-in-50 zoom-in-95 duration-150">
-                      
-                      {/* COLUNA ESQUERDA - ATALHOS */}
-                      <div className="w-full sm:w-[170px] p-4 flex flex-col justify-between bg-slate-50/50">
-                        <div className="flex flex-col gap-1">
-                          <span className="text-[9px] font-black tracking-wider text-slate-400 uppercase mb-3">Atalhos</span>
-                          {[
-                            { label: 'Hoje', id: 'hoje' },
-                            { label: 'Ontem', id: 'ontem' },
-                            { label: 'Últimos 7 dias', id: '7dias' },
-                            { label: 'Últimos 30 dias', id: '30dias' },
-                            { label: 'Este Mês', id: 'esteMes' },
-                            { label: 'Mês Passado', id: 'mesPassado' },
-                            { label: 'Últimos 4 meses', id: '4meses' }
-                          ].map((item) => {
-                            const todayStr = '2026-07-18';
-                            let active = false;
-                            
-                            // Visual active state for shortcuts
-                            if (item.id === 'hoje' && draftStartDate === todayStr && draftEndDate === todayStr) active = true;
-                            if (item.id === 'esteMes' && draftStartDate === '2026-07-01' && draftEndDate === '2026-07-31') active = true;
-                            if (item.id === 'mesPassado' && draftStartDate === '2026-06-01' && draftEndDate === '2026-06-30') active = true;
-                            
-                            return (
-                              <button
-                                key={item.id}
-                                onClick={() => applyShortcut(item.id)}
-                                className={`text-left text-xs px-2.5 py-1.5 rounded-lg font-bold transition-all border-none outline-none cursor-pointer ${
-                                  active 
-                                    ? 'bg-blue-50 text-blue-700 font-extrabold' 
-                                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-800'
-                                }`}
-                              >
-                                {item.label}
-                              </button>
-                            );
-                          })}
-                        </div>
-                        
-                        <button
-                          onClick={() => {
-                            setDraftStartDate('');
-                            setDraftEndDate('');
-                            setEpStartDate('');
-                            setEpEndDate('');
-                            setShowEpCalendar(false);
-                          }}
-                          className="text-left text-[11px] font-extrabold text-rose-600 hover:text-rose-700 transition-all border-none bg-transparent pt-4 uppercase tracking-wider outline-none cursor-pointer mt-4"
-                        >
-                          Limpar Filtro
-                        </button>
-                      </div>
-
-                      {/* COLUNA DIREITA - CALENDÁRIO */}
-                      <div className="flex-1 p-5 flex flex-col gap-4 bg-white">
-                        {/* Navegação de Mês */}
-                        <div className="flex justify-between items-center px-1">
-                          <button 
-                            onClick={() => {
-                              if (calMonth === 0) {
-                                setCalMonth(11);
-                                setCalYear(prev => prev - 1);
-                              } else {
-                                setCalMonth(prev => prev - 1);
-                              }
-                            }}
-                            className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 hover:text-slate-700 transition-all border-none bg-transparent cursor-pointer outline-none"
-                          >
-                            <ChevronLeft className="w-4 h-4" />
-                          </button>
-                          
-                          <span className="text-xs font-black text-[#032b5e] uppercase tracking-widest">
-                            {PORTUGUESE_MONTHS[calMonth]} {calYear}
-                          </span>
-                          
-                          <button 
-                            onClick={() => {
-                              if (calMonth === 11) {
-                                setCalMonth(0);
-                                setCalYear(prev => prev + 1);
-                              } else {
-                                setCalMonth(prev => prev + 1);
-                              }
-                            }}
-                            className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 hover:text-slate-700 transition-all border-none bg-transparent cursor-pointer outline-none"
-                          >
-                            <ChevronRight className="w-4 h-4" />
-                          </button>
-                        </div>
-
-                        {/* Grid Dias da Semana */}
-                        <div className="grid grid-cols-7 gap-1 text-center font-bold text-[9px] text-slate-400 uppercase tracking-wider">
-                          <span>Dom</span>
-                          <span>Seg</span>
-                          <span>Ter</span>
-                          <span>Qua</span>
-                          <span>Qui</span>
-                          <span>Sex</span>
-                          <span>Sáb</span>
-                        </div>
-
-                        {/* Grid Dias */}
-                        <div className="grid grid-cols-7 gap-1">
-                          {calendarDays.map((day, idx) => {
-                            const isToday = day.dateStr === '2026-07-18';
-                            const isSelectedStart = draftStartDate === day.dateStr;
-                            const isSelectedEnd = draftEndDate === day.dateStr;
-                            const isInRange = draftStartDate && draftEndDate && 
-                                              day.dateStr >= draftStartDate && 
-                                              day.dateStr <= draftEndDate;
-                            
-                            // Selection cell styling
-                            let cellClass = "relative h-8 w-8 mx-auto flex flex-col items-center justify-center text-xs font-bold transition-all cursor-pointer select-none border-none outline-none ";
-                            
-                            if (isSelectedStart || isSelectedEnd) {
-                              cellClass += "bg-[#032b5e] text-white rounded-xl z-10 shadow-sm";
-                            } else if (isInRange) {
-                              cellClass += "bg-blue-50/70 text-blue-700 rounded-none w-full";
-                              if (day.dateStr === draftStartDate) cellClass += " rounded-l-xl";
-                              if (day.dateStr === draftEndDate) cellClass += " rounded-r-xl";
-                            } else if (!day.isCurrentMonth) {
-                              cellClass += "text-slate-300 hover:bg-slate-50 rounded-lg";
-                            } else {
-                              cellClass += "text-slate-700 hover:bg-slate-100 rounded-lg";
-                            }
-
-                            return (
-                              <div
-                                key={idx}
-                                onClick={() => {
-                                  if (!draftStartDate || (draftStartDate && draftEndDate)) {
-                                    setDraftStartDate(day.dateStr);
-                                    setDraftEndDate('');
-                                  } else {
-                                    if (day.dateStr >= draftStartDate) {
-                                      setDraftEndDate(day.dateStr);
-                                    } else {
-                                      setDraftStartDate(day.dateStr);
-                                      setDraftEndDate('');
-                                    }
-                                  }
-                                }}
-                                className={cellClass}
-                              >
-                                <span>{day.dayNum}</span>
-                                
-                                {/* Today indicator dot */}
-                                {isToday && (
-                                  <span className={`absolute bottom-1 w-1 h-1 rounded-full ${
-                                    isSelectedStart || isSelectedEnd ? 'bg-white' : 'bg-blue-600'
-                                  }`} />
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-
-                        {/* Rodapé do Calendário */}
-                        <div className="flex justify-between items-center pt-3 border-t border-slate-100 mt-2 text-xs">
-                          <div className="flex flex-col">
-                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-wide">Customizado</span>
-                            <span className="text-[11px] font-bold text-slate-700">
-                              {draftStartDate ? (
-                                draftEndDate ? (
-                                  `${draftStartDate.split('-').reverse().slice(0, 2).join('/')}/${draftStartDate.split('-')[0]} - ${draftEndDate.split('-').reverse().slice(0, 2).join('/')}/${draftEndDate.split('-')[0]}`
-                                ) : `${draftStartDate.split('-').reverse().slice(0, 2).join('/')}/${draftStartDate.split('-')[0]}`
-                              ) : '_'}
-                            </span>
-                          </div>
-
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => {
-                                setDraftStartDate('');
-                                setDraftEndDate('');
-                              }}
-                              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-xs font-bold transition-colors border-none cursor-pointer outline-none uppercase tracking-wide"
-                            >
-                              Limpar
-                            </button>
-                            
-                            <button
-                              onClick={() => {
-                                setEpStartDate(draftStartDate);
-                                setEpEndDate(draftEndDate);
-                                setShowEpCalendar(false);
-                              }}
-                              className="px-4 py-1.5 bg-[#032b5e] hover:bg-[#021d3f] text-white rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5 border-none cursor-pointer outline-none uppercase tracking-wider shadow-sm"
-                            >
-                              <Sparkles className="w-3.5 h-3.5 text-yellow-300 fill-yellow-300" /> Aplicar
-                            </button>
-                          </div>
-                        </div>
-
-                      </div>
-
-                    </div>
-                  </>
-                )}
+                />
               </div>
 
               {/* Filtro por Status da Meta */}
-              <div className="flex flex-col gap-1.5 w-full">
-                <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">Status da Meta</label>
-                <div className="relative w-full">
-                  <select 
-                    value={epMeta} 
-                    onChange={e => setEpMeta(e.target.value)}
-                    className="w-full h-10 pl-3.5 pr-10 border border-slate-200 rounded-xl bg-white text-xs font-bold text-slate-700 hover:border-slate-300 hover:bg-slate-50 transition-all cursor-pointer shadow-sm outline-none appearance-none"
-                  >
-                    <option value="todos">Todos</option>
-                    <option value="dentro">Dentro da Meta</option>
-                    <option value="fora">Fora da Meta</option>
-                  </select>
-                  <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
-                    <ChevronDown className="w-4 h-4 text-slate-400" />
-                  </div>
-                </div>
+              <div className="flex flex-col gap-1 w-[150px]">
+                <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Status da Meta</label>
+                <select 
+                  value={epMeta} 
+                  onChange={e => setEpMeta(e.target.value)}
+                  className="w-full bg-white border border-gray-200 text-[#032b5e] font-sans font-bold rounded-lg outline-none px-2.5 py-1 text-[10px] h-[28px] cursor-pointer transition-all hover:border-blue-400 focus:border-[#032b5e]"
+                >
+                  <option value="todos">Todos</option>
+                  <option value="dentro">Dentro da Meta</option>
+                  <option value="fora">Fora da Meta</option>
+                </select>
               </div>
 
             </div>

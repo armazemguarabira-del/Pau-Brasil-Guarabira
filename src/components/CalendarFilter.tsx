@@ -1,14 +1,21 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Calendar, ChevronLeft, ChevronRight, X, Sparkles } from 'lucide-react';
+import { Calendar, ChevronLeft, ChevronRight, X, Sparkles, ChevronDown } from 'lucide-react';
 
 interface CalendarFilterProps {
   startDate: string; // YYYY-MM-DD
   endDate: string;   // YYYY-MM-DD
   onChange: (start: string, end: string) => void;
   className?: string;
+  variant?: 'default' | 'large';
 }
 
-export default function CalendarFilter({ startDate, endDate, onChange, className = '' }: CalendarFilterProps) {
+export default function CalendarFilter({ 
+  startDate, 
+  endDate, 
+  onChange, 
+  className = '',
+  variant = 'default'
+}: CalendarFilterProps) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -290,14 +297,28 @@ export default function CalendarFilter({ startDate, endDate, onChange, className
 
   return (
     <div className={`relative ${className}`} ref={containerRef}>
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-1.5 px-3 py-1 bg-white border border-gray-200 hover:border-amber-400 text-[#032b5e] hover:text-[#032b5e] font-sans font-bold rounded-lg text-[10px] h-[26px] cursor-pointer transition-all shadow-xs"
-        type="button"
-      >
-        <Calendar className="w-3.5 h-3.5 text-amber-500" />
-        <span className="truncate max-w-[130px]">{getButtonLabel()}</span>
-      </button>
+      {variant === 'large' ? (
+        <button
+          onClick={() => setIsOpen(!isOpen)}
+          className="flex items-center justify-between h-10 px-3.5 border border-slate-200 rounded-xl bg-white flex items-center text-xs font-bold hover:border-slate-300 hover:bg-slate-50 transition-all cursor-pointer shadow-sm outline-none w-full"
+          type="button"
+        >
+          <div className="flex items-center gap-2">
+            <Calendar className="w-4 h-4 text-blue-600" />
+            <span className="text-blue-600 font-extrabold">{getButtonLabel()}</span>
+          </div>
+          <ChevronDown className="w-4 h-4 text-slate-400" />
+        </button>
+      ) : (
+        <button
+          onClick={() => setIsOpen(!isOpen)}
+          className="flex items-center gap-1.5 px-3 py-1 bg-white border border-gray-200 hover:border-blue-400 text-[#032b5e] hover:text-[#032b5e] font-sans font-bold rounded-lg text-[10px] h-[26px] cursor-pointer transition-all shadow-xs"
+          type="button"
+        >
+          <Calendar className="w-3.5 h-3.5 text-blue-600" />
+          <span className="truncate max-w-[130px]">{getButtonLabel()}</span>
+        </button>
+      )}
 
       {isOpen && (
         <div className="absolute left-0 mt-1.5 w-[380px] bg-white border border-gray-200/95 shadow-lg rounded-xl z-50 p-3 flex gap-3 text-slate-800 animate-in fade-in slide-in-from-top-1 duration-150">

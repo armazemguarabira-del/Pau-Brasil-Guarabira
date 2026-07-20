@@ -5,6 +5,7 @@ import { Usuario, Empresa, Tarefa } from '../types';
 import { generateMockTarefas } from '../mockDataGenerator';
 import { PRODUCTS } from '../planosData';
 import A3BoardComponent from './A3BoardComponent';
+import CalendarFilter from './CalendarFilter';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   BarChart2, 
@@ -30,7 +31,8 @@ import {
   Gauge as GaugeIcon,
   Flame,
   Clock3,
-  ChevronRight
+  ChevronRight,
+  ChevronDown
 } from 'lucide-react';
 import { 
   ResponsiveContainer, 
@@ -271,6 +273,7 @@ export default function PickingDashboard({ user, empresa, onBack }: PickingDashb
 
     const totalPaletes = filteredTasks.reduce((sum, t) => sum + t.quantidadePaletes, 0);
     const operadoresAtivos = new Set(filteredTasks.filter(t => t.status !== 'pending').map(t => t.operador)).size;
+    const paletesMovimentados = completedTasks.reduce((sum, t) => sum + t.quantidadePaletes, 0);
 
     return {
       solicHoje,
@@ -280,7 +283,8 @@ export default function PickingDashboard({ user, empresa, onBack }: PickingDashb
       tempoMedioAtendimento,
       slaHoje,
       totalPaletes,
-      operadoresAtivos
+      operadoresAtivos,
+      paletesMovimentados
     };
   }, [filteredTasks, completedTasks, slaLimit]);
 
@@ -821,43 +825,30 @@ export default function PickingDashboard({ user, empresa, onBack }: PickingDashb
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3 items-end">
+                <div className="flex flex-wrap items-center gap-3.5 w-full text-xs">
                   
-                  {/* Data Inicial */}
-                  <div className="flex flex-col gap-1">
-                    <label className="text-[8px] uppercase tracking-wider font-black text-slate-500">Data Inicial</label>
-                    <input 
-                      type="date" 
-                      value={filterStartDate} 
-                      onChange={e => {
-                        setFilterStartDate(e.target.value);
+                  {/* Período Calendário */}
+                  <div className="flex flex-col gap-1 min-w-[200px]">
+                    <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Período Calendário</label>
+                    <CalendarFilter 
+                      startDate={filterStartDate}
+                      endDate={filterEndDate}
+                      variant="large"
+                      onChange={(start, end) => {
+                        setFilterStartDate(start);
+                        setFilterEndDate(end);
                         setDatePreset('custom');
                       }}
-                      className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2 text-slate-800 outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-sm"
-                    />
-                  </div>
-
-                  {/* Data Final */}
-                  <div className="flex flex-col gap-1">
-                    <label className="text-[8px] uppercase tracking-wider font-black text-slate-500">Data Final</label>
-                    <input 
-                      type="date" 
-                      value={filterEndDate} 
-                      onChange={e => {
-                        setFilterEndDate(e.target.value);
-                        setDatePreset('custom');
-                      }}
-                      className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2 text-slate-800 outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-sm"
                     />
                   </div>
 
                   {/* Operador dropdown */}
-                  <div className="flex flex-col gap-1">
-                    <label className="text-[8px] uppercase tracking-wider font-black text-slate-500">Operador</label>
+                  <div className="flex flex-col gap-1 w-[130px]">
+                    <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Operador</label>
                     <select 
                       value={selectedOperator}
                       onChange={e => setSelectedOperator(e.target.value)}
-                      className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2 text-slate-800 outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-sm"
+                      className="w-full bg-white border border-gray-200 text-[#032b5e] font-sans font-bold rounded-lg outline-none px-2.5 py-1 text-[10px] h-[28px] cursor-pointer transition-all hover:border-blue-400 focus:border-[#032b5e]"
                     >
                       <option value="all">Todos Operadores</option>
                       {uniqueOperators.map(op => <option key={op} value={op}>{op}</option>)}
@@ -865,12 +856,12 @@ export default function PickingDashboard({ user, empresa, onBack }: PickingDashb
                   </div>
 
                   {/* Conferente dropdown */}
-                  <div className="flex flex-col gap-1">
-                    <label className="text-[8px] uppercase tracking-wider font-black text-slate-500">Conferente</label>
+                  <div className="flex flex-col gap-1 w-[130px]">
+                    <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Conferente</label>
                     <select 
                       value={selectedConferente}
                       onChange={e => setSelectedConferente(e.target.value)}
-                      className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2 text-slate-800 outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-sm"
+                      className="w-full bg-white border border-gray-200 text-[#032b5e] font-sans font-bold rounded-lg outline-none px-2.5 py-1 text-[10px] h-[28px] cursor-pointer transition-all hover:border-blue-400 focus:border-[#032b5e]"
                     >
                       <option value="all">Todos Conferentes</option>
                       {uniqueConferentes.map(cf => <option key={cf} value={cf}>{cf}</option>)}
@@ -878,12 +869,12 @@ export default function PickingDashboard({ user, empresa, onBack }: PickingDashb
                   </div>
 
                   {/* SKU dropdown */}
-                  <div className="flex flex-col gap-1">
-                    <label className="text-[8px] uppercase tracking-wider font-black text-slate-500">Produto SKU</label>
+                  <div className="flex flex-col gap-1 w-[180px]">
+                    <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Produto SKU</label>
                     <select 
                       value={selectedSku}
                       onChange={e => setSelectedSku(e.target.value)}
-                      className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2 text-slate-800 outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-sm"
+                      className="w-full bg-white border border-gray-200 text-[#032b5e] font-sans font-bold rounded-lg outline-none px-2.5 py-1 text-[10px] h-[28px] cursor-pointer transition-all hover:border-blue-400 focus:border-[#032b5e]"
                     >
                       <option value="all">Todos os SKUs</option>
                       {uniqueSkus.map(s => <option key={s.sku} value={s.sku}>{s.sku} - {s.desc.substring(0, 15)}...</option>)}
@@ -891,12 +882,12 @@ export default function PickingDashboard({ user, empresa, onBack }: PickingDashb
                   </div>
 
                   {/* Status dropdown */}
-                  <div className="flex flex-col gap-1">
-                    <label className="text-[8px] uppercase tracking-wider font-black text-slate-500">Status</label>
+                  <div className="flex flex-col gap-1 w-[120px]">
+                    <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Status</label>
                     <select 
                       value={selectedStatus}
                       onChange={e => setSelectedStatus(e.target.value)}
-                      className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2 text-slate-800 outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-sm"
+                      className="w-full bg-white border border-gray-200 text-[#032b5e] font-sans font-bold rounded-lg outline-none px-2.5 py-1 text-[10px] h-[28px] cursor-pointer transition-all hover:border-blue-400 focus:border-[#032b5e]"
                     >
                       <option value="all">Todos Status</option>
                       <option value="pending">Pendente (Fila)</option>
@@ -907,12 +898,12 @@ export default function PickingDashboard({ user, empresa, onBack }: PickingDashb
                   </div>
 
                   {/* Durante/Após Carregamento dropdown */}
-                  <div className="flex flex-col gap-1">
-                    <label className="text-[8px] uppercase tracking-wider font-black text-slate-500">Momento Carga</label>
+                  <div className="flex flex-col gap-1 w-[140px]">
+                    <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Momento Carga</label>
                     <select 
                       value={selectedEtapa}
                       onChange={e => setSelectedEtapa(e.target.value)}
-                      className="w-full text-xs bg-white border border-slate-200 rounded-lg p-2 text-slate-800 outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-sm"
+                      className="w-full bg-white border border-gray-200 text-[#032b5e] font-sans font-bold rounded-lg outline-none px-2.5 py-1 text-[10px] h-[28px] cursor-pointer transition-all hover:border-blue-400 focus:border-[#032b5e]"
                     >
                       <option value="all">Durante/Após</option>
                       <option value="Durante o Carregamento">Durante Carregamento</option>
@@ -921,12 +912,12 @@ export default function PickingDashboard({ user, empresa, onBack }: PickingDashb
                   </div>
 
                   {/* Configurable SLA target limit in minutes */}
-                  <div className="flex flex-col gap-1">
-                    <div className="flex justify-between items-center">
-                      <label className="text-[8px] uppercase tracking-wider font-black text-slate-500">Meta SLA</label>
-                      <span className="text-[10px] font-bold text-amber-600">{slaLimit}m</span>
+                  <div className="flex flex-col gap-1 w-[120px]">
+                    <div className="flex justify-between items-center w-full">
+                      <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Meta SLA</label>
+                      <span className="text-[10px] font-bold text-[#032b5e]">{slaLimit}m</span>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center h-[28px] w-full px-2 bg-white border border-gray-200 rounded-lg">
                       <input 
                         type="range" 
                         min="5" 
@@ -934,7 +925,7 @@ export default function PickingDashboard({ user, empresa, onBack }: PickingDashb
                         step="5"
                         value={slaLimit} 
                         onChange={e => setSlaLimit(Number(e.target.value))}
-                        className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-amber-500"
+                        className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
                       />
                     </div>
                   </div>
@@ -942,154 +933,70 @@ export default function PickingDashboard({ user, empresa, onBack }: PickingDashb
                 </div>
               </div>
 
-              {/* --- 15. COCKPIT EXECUTIVO SUMMARY (SNEAK PEEK SUMMARY) --- */}
-              <div className="p-2 px-3 bg-gradient-to-r from-slate-50 to-slate-100/50 border border-slate-200 rounded-xl">
-                <span className="text-[9px] uppercase font-black text-slate-500 tracking-widest block mb-2 flex items-center gap-1 border-b border-slate-200 pb-1">
-                  <Award className="w-3.5 h-3.5" />
-                  COCKPIT EXECUTIVO DE FLUXO & RESSUPRIMENTO
-                </span>
+              {/* --- 4 PRINCIPAIS CARDS DE DESEMPENHO --- */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 
-                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2 text-center">
-                  
-                  <div className="p-1.5 px-2 bg-white border border-slate-200 rounded-lg shadow-xs">
-                    <span className="text-[8px] text-slate-500 font-bold block uppercase">Solicitações</span>
-                    <span className="text-base font-mono font-black text-slate-800 block mt-0.5">{executiveCockpit.totalSolicitacoes}</span>
-                  </div>
-
-                  <div className="p-1.5 px-2 bg-white border border-slate-200 rounded-lg shadow-xs">
-                    <span className="text-[8px] text-slate-500 font-bold block uppercase">Concluídas</span>
-                    <span className="text-base font-mono font-black text-emerald-600 block mt-0.5">{executiveCockpit.totalConcluidas}</span>
-                  </div>
-
-                  <div className="p-1.5 px-2 bg-white border border-slate-200 rounded-lg shadow-xs">
-                    <span className="text-[8px] text-slate-500 font-bold block uppercase">Tempo Médio</span>
-                    <span className="text-base font-mono font-black text-amber-600 block mt-0.5">{executiveCockpit.tempoMedio} min</span>
-                  </div>
-
-                  <div className="p-1.5 px-2 bg-white border border-slate-200 rounded-lg shadow-xs">
-                    <span className="text-[8px] text-slate-500 font-bold block uppercase">SLA Global</span>
-                    <span className="text-base font-mono font-black text-emerald-600 block mt-0.5">{executiveCockpit.sla}%</span>
-                  </div>
-
-                  <div className="p-1.5 px-2 bg-white border border-slate-200 rounded-lg shadow-xs">
-                    <span className="text-[8px] text-slate-500 font-bold block uppercase">Paletes Movimentados</span>
-                    <span className="text-base font-mono font-black text-blue-600 block mt-0.5">{executiveCockpit.paletesMovimentados} PL</span>
-                  </div>
-
-                  <div className="p-1.5 px-2 bg-white border border-slate-200 rounded-lg shadow-xs">
-                    <span className="text-[8px] text-slate-500 font-bold block uppercase">Operador Destaque</span>
-                    <span className="text-[10px] font-black text-emerald-600 block mt-1.5 truncate" title={executiveCockpit.operadorDestaque}>{executiveCockpit.operadorDestaque}</span>
-                  </div>
-
-                  <div className="p-1.5 px-2 bg-white border border-slate-200 rounded-lg shadow-xs">
-                    <span className="text-[8px] text-slate-500 font-bold block uppercase">Conferente Destaque</span>
-                    <span className="text-[10px] font-black text-blue-600 block mt-1.5 truncate" title={executiveCockpit.conferenteDestaque}>{executiveCockpit.conferenteDestaque}</span>
-                  </div>
-
-                  <div className="p-1.5 px-2 bg-white border border-slate-200 rounded-lg shadow-xs">
-                    <span className="text-[8px] text-slate-500 font-bold block uppercase">SKU mais solicitado</span>
-                    <span className="text-[9px] font-black text-amber-600 block mt-1.5 truncate" title={executiveCockpit.skuDestaque}>{executiveCockpit.skuDestaque}</span>
-                  </div>
-
-                </div>
-              </div>
-
-              {/* --- 1. CARDS SUPERIORES (8 CARDS) --- */}
-              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2">
-                
-                {/* 1. Solicitações Hoje */}
-                <div className="bg-white border border-slate-200 p-1.5 px-2.5 rounded-xl relative overflow-hidden flex flex-col justify-between shadow-xs hover:shadow-sm transition-all">
+                {/* 1. Solicitações */}
+                <div className="bg-white border border-gray-200 p-4 rounded-xl relative overflow-hidden flex flex-col justify-between shadow-xs hover:shadow-sm transition-all h-[110px]">
                   <div>
-                    <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest block">Solicitações Hoje</span>
-                    <span className="text-base font-black font-mono text-amber-600 mt-0.5 block">{statsCards.solicHoje}</span>
+                    <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest block">Solicitações</span>
+                    <span className="text-3xl font-black font-mono text-[#032b5e] mt-1 block">
+                      {filteredTasks.length}
+                    </span>
                   </div>
-                  <span className="text-[7px] text-slate-400 block mt-1 font-bold">Criadas no dia atual</span>
-                  <div className="absolute top-1.5 right-1.5 bg-amber-50 p-0.5 rounded text-amber-500">
-                    <Calendar className="w-3 h-3" />
+                  <span className="text-[10px] text-slate-500 block font-medium mt-1">
+                    {statsCards.pendentes} pendentes • {statsCards.emAtendimento} em andamento
+                  </span>
+                  <div className="absolute top-4 right-4 bg-blue-50 p-2 rounded-lg text-[#032b5e]">
+                    <FileSpreadsheet className="w-5 h-5" />
                   </div>
                 </div>
 
-                {/* 2. Solicitações Pendentes */}
-                <div className="bg-white border border-slate-200 p-1.5 px-2.5 rounded-xl relative overflow-hidden flex flex-col justify-between shadow-xs hover:shadow-sm transition-all">
+                {/* 2. Paletes Movimentados */}
+                <div className="bg-white border border-gray-200 p-4 rounded-xl relative overflow-hidden flex flex-col justify-between shadow-xs hover:shadow-sm transition-all h-[110px]">
                   <div>
-                    <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest block">Pendentes</span>
-                    <span className="text-base font-black font-mono text-amber-600 mt-0.5 block">{statsCards.pendentes}</span>
+                    <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest block">Paletes Movimentados</span>
+                    <span className="text-3xl font-black font-mono text-emerald-600 mt-1 block">
+                      {statsCards.paletesMovimentados} <span className="text-sm font-sans font-extrabold text-emerald-500">PL</span>
+                    </span>
                   </div>
-                  <span className="text-[7px] text-slate-400 block mt-1 font-bold">Na fila de aguardo</span>
-                  <div className="absolute top-1.5 right-1.5 bg-amber-50 p-0.5 rounded text-amber-500">
-                    <Clock3 className="w-3 h-3" />
+                  <span className="text-[10px] text-slate-500 block font-medium mt-1">
+                    {statsCards.concluidas} concluídas de {filteredTasks.length} solicitadas
+                  </span>
+                  <div className="absolute top-4 right-4 bg-emerald-50 p-2 rounded-lg text-emerald-600">
+                    <Layers className="w-5 h-5" />
                   </div>
                 </div>
 
-                {/* 3. Em Atendimento */}
-                <div className="bg-white border border-slate-200 p-1.5 px-2.5 rounded-xl relative overflow-hidden flex flex-col justify-between shadow-xs hover:shadow-sm transition-all">
+                {/* 3. Tempo Médio */}
+                <div className="bg-white border border-gray-200 p-4 rounded-xl relative overflow-hidden flex flex-col justify-between shadow-xs hover:shadow-sm transition-all h-[110px]">
                   <div>
-                    <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest block">Em Atendimento</span>
-                    <span className="text-base font-black font-mono text-blue-600 mt-0.5 block">{statsCards.emAtendimento}</span>
+                    <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest block">Tempo Médio</span>
+                    <span className="text-3xl font-black font-mono text-amber-600 mt-1 block">
+                      {statsCards.tempoMedioAtendimento} <span className="text-sm font-sans font-extrabold text-amber-500">min</span>
+                    </span>
                   </div>
-                  <span className="text-[7px] text-slate-400 block mt-1 font-bold">Aceitas e em execução</span>
-                  <div className="absolute top-1.5 right-1.5 bg-blue-50 p-0.5 rounded text-blue-500">
-                    <Truck className="w-3 h-3" />
+                  <span className="text-[10px] text-slate-500 block font-medium mt-1">
+                    Média de ciclo total do processo
+                  </span>
+                  <div className="absolute top-4 right-4 bg-amber-50 p-2 rounded-lg text-amber-600">
+                    <Clock3 className="w-5 h-5" />
                   </div>
                 </div>
 
-                {/* 4. Solicitações Concluídas */}
-                <div className="bg-white border border-slate-200 p-1.5 px-2.5 rounded-xl relative overflow-hidden flex flex-col justify-between shadow-xs hover:shadow-sm transition-all">
+                {/* 4. SLA Global */}
+                <div className="bg-white border border-gray-200 p-4 rounded-xl relative overflow-hidden flex flex-col justify-between shadow-xs hover:shadow-sm transition-all h-[110px]">
                   <div>
-                    <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest block">Concluídas</span>
-                    <span className="text-base font-black font-mono text-emerald-600 mt-0.5 block">{statsCards.concluidas}</span>
+                    <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest block">SLA Global</span>
+                    <span className="text-3xl font-black font-mono text-blue-600 mt-1 block">
+                      {slaStats.pctWithin}%
+                    </span>
                   </div>
-                  <span className="text-[7px] text-slate-400 block mt-1 font-bold">Abastecimentos efetuados</span>
-                  <div className="absolute top-1.5 right-1.5 bg-emerald-50 p-0.5 rounded text-emerald-500">
-                    <CheckCircle2 className="w-3 h-3" />
-                  </div>
-                </div>
-
-                {/* 5. Tempo Médio de Atendimento */}
-                <div className="bg-white border border-slate-200 p-1.5 px-2.5 rounded-xl relative overflow-hidden flex flex-col justify-between shadow-xs hover:shadow-sm transition-all">
-                  <div>
-                    <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest block">TMA (Lead Time)</span>
-                    <span className="text-base font-black font-mono text-amber-600 mt-0.5 block">{statsCards.tempoMedioAtendimento}m</span>
-                  </div>
-                  <span className="text-[7px] text-slate-400 block mt-1 font-bold">Média desde a emissão</span>
-                  <div className="absolute top-1.5 right-1.5 bg-amber-50 p-0.5 rounded text-amber-500">
-                    <Clock className="w-3 h-3" />
-                  </div>
-                </div>
-
-                {/* 6. SLA do Dia */}
-                <div className="bg-white border border-slate-200 p-1.5 px-2.5 rounded-xl relative overflow-hidden flex flex-col justify-between shadow-xs hover:shadow-sm transition-all">
-                  <div>
-                    <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest block">SLA do Dia</span>
-                    <span className="text-base font-black font-mono text-emerald-600 mt-0.5 block">{statsCards.slaHoje}%</span>
-                  </div>
-                  <span className="text-[7px] text-slate-400 block mt-1 font-bold">Dentro da meta de {slaLimit}m</span>
-                  <div className="absolute top-1.5 right-1.5 bg-emerald-50 p-0.5 rounded text-emerald-500">
-                    <GaugeIcon className="w-3 h-3" />
-                  </div>
-                </div>
-
-                {/* 7. Total de Paletes Movimentados */}
-                <div className="bg-white border border-slate-200 p-1.5 px-2.5 rounded-xl relative overflow-hidden flex flex-col justify-between shadow-xs hover:shadow-sm transition-all">
-                  <div>
-                    <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest block">Total Paletes</span>
-                    <span className="text-base font-black font-mono text-slate-800 mt-0.5 block">{statsCards.totalPaletes}</span>
-                  </div>
-                  <span className="text-[7px] text-slate-400 block mt-1 font-bold">Capacidade consolidada</span>
-                  <div className="absolute top-1.5 right-1.5 bg-slate-50 p-0.5 rounded text-slate-500">
-                    <Package className="w-3 h-3" />
-                  </div>
-                </div>
-
-                {/* 8. Operadores Ativos */}
-                <div className="bg-white border border-slate-200 p-1.5 px-2.5 rounded-xl relative overflow-hidden flex flex-col justify-between shadow-xs hover:shadow-sm transition-all">
-                  <div>
-                    <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest block">Op Ativos</span>
-                    <span className="text-base font-black font-mono text-blue-600 mt-0.5 block">{statsCards.operadoresAtivos}</span>
-                  </div>
-                  <span className="text-[7px] text-slate-400 block mt-1 font-bold">Logados na plataforma</span>
-                  <div className="absolute top-1.5 right-1.5 bg-blue-50 p-0.5 rounded text-blue-500">
-                    <User className="w-3 h-3" />
+                  <span className="text-[10px] text-slate-500 block font-medium mt-1">
+                    Dentro da meta limite de {slaLimit}m
+                  </span>
+                  <div className="absolute top-4 right-4 bg-blue-50 p-2 rounded-lg text-blue-600">
+                    <Award className="w-5 h-5" />
                   </div>
                 </div>
 
@@ -1097,81 +1004,59 @@ export default function PickingDashboard({ user, empresa, onBack }: PickingDashb
 
               {/* --- CHARTS GRID SECTION (BENTO GRID STYLE) --- */}
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-                
-                {/* 12. SLA Speedometer & 8. Process Flow Timeline (Merged beautifully in 4 columns) */}
-                <div className="lg:col-span-4 bg-white border border-slate-200 p-4 rounded-2xl flex flex-col justify-between gap-4 shadow-sm">
+
+                {/* Top 5 SKUs mais Solicitados */}
+                <div className="lg:col-span-4 bg-white border border-slate-200 p-4 rounded-2xl flex flex-col justify-between gap-3 shadow-sm">
                   <div>
-                    <span className="text-[10px] uppercase font-black text-slate-500 tracking-wider block mb-2 flex items-center gap-1.5">
-                      <GaugeIcon className="w-4 h-4 text-emerald-500" />
-                      12. SLA do Dia & 8. Tempos do Processo
+                    <span className="text-[10px] uppercase font-black text-slate-500 tracking-wider block mb-1 flex items-center gap-1.5">
+                      <Sparkles className="w-4 h-4 text-[#032b5e]" />
+                      Ranking: Top 5 SKUs mais Solicitados
                     </span>
-                    
-                    {/* Gauge Visual representation */}
-                    <div className="flex flex-col items-center justify-center p-3 bg-slate-50 rounded-xl border border-slate-200">
-                      <div className="relative w-32 h-20 flex items-center justify-center overflow-hidden">
-                        {/* Gauge Arc Background */}
-                        <div className="absolute bottom-0 w-32 h-32 rounded-full border-[10px] border-slate-200" />
-                        {/* Gauge Arc Fill (Using dynamic clip-path/conic-gradient style representation) */}
-                        <div className="absolute bottom-0 w-32 h-32 rounded-full border-[10px] border-emerald-500 border-b-transparent border-r-transparent rotate-45 transform origin-center transition-all duration-1000" style={{ transform: `rotate(${(slaStats.pctWithin / 100) * 180 - 45}deg)` }} />
+                    <span className="text-[8px] text-slate-400 uppercase block font-bold mb-3">Volume de solicitações e paletes por produto</span>
+
+                    <div className="flex flex-col gap-3">
+                      {skuRanking.slice(0, 5).map((item, index) => {
+                        const maxRequests = Math.max(...skuRanking.map(r => r.requests)) || 1;
+                        const pct = Math.round((item.requests / maxRequests) * 100);
                         
-                        <div className="absolute bottom-0 flex flex-col items-center justify-center">
-                          <span className="text-2xl font-black font-mono text-emerald-600">{slaStats.pctWithin}%</span>
-                          <span className="text-[8px] text-slate-500 font-bold uppercase">Dentro SLA</span>
+                        return (
+                          <div key={item.sku} className="flex flex-col gap-1">
+                            <div className="flex items-center justify-between text-xs">
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                <span className="w-4 h-4 rounded-full bg-[#032b5e]/10 text-[#032b5e] flex items-center justify-center text-[10px] font-black shrink-0">
+                                  {index + 1}
+                                </span>
+                                <span className="font-bold text-[#032b5e] shrink-0">{item.sku}</span>
+                                <span className="text-slate-500 font-medium truncate" title={item.desc}>
+                                  - {item.desc}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2 text-[10px] font-mono font-bold text-slate-600 shrink-0">
+                                <span>{item.requests} Sol.</span>
+                                <span className="text-slate-300">|</span>
+                                <span className="text-emerald-600">{item.pallets} PL</span>
+                              </div>
+                            </div>
+                            <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                              <div 
+                                className="bg-[#032b5e] h-full rounded-full transition-all duration-1000" 
+                                style={{ width: `${pct}%` }} 
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                      {skuRanking.length === 0 && (
+                        <div className="text-center py-10 text-xs font-mono uppercase text-slate-400">
+                          Nenhum produto movimentado no período.
                         </div>
-                      </div>
-                      
-                      <div className="flex justify-between w-full mt-3 text-[10px] font-black uppercase text-slate-500 border-t border-slate-200 pt-2">
-                        <span className="text-emerald-600">{slaStats.pctWithin}% No Prazo</span>
-                        <span className="text-red-500">{slaStats.pctOutside}% Atrasado</span>
-                      </div>
+                      )}
                     </div>
                   </div>
 
-                  {/* 8. Process Flow Visual Chevron Cards */}
-                  <div className="flex flex-col gap-2.5">
-                    <span className="text-[9px] uppercase font-bold text-slate-500 block tracking-widest border-b border-slate-200 pb-1">Ciclo Médio de Atendimento</span>
-                    
-                    <div className="flex items-center justify-between p-2.5 bg-blue-50/50 border border-blue-100 rounded-xl">
-                      <div className="flex items-center gap-2">
-                        <span className="w-5 h-5 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-[10px] font-black">1</span>
-                        <div>
-                          <span className="text-[9px] text-slate-500 block uppercase font-bold">Aviso → Aceite</span>
-                          <span className="text-xs font-black text-blue-600">{processStages.aceite} min</span>
-                        </div>
-                      </div>
-                      <ChevronRight className="w-4 h-4 text-slate-400" />
-                      <div>
-                        <span className="text-[8px] text-blue-600 font-bold block uppercase bg-blue-50 px-1 py-0.5 rounded border border-blue-100">TMA Reação</span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between p-2.5 bg-emerald-50/50 border border-emerald-100 rounded-xl">
-                      <div className="flex items-center gap-2">
-                        <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center text-[10px] font-black">2</span>
-                        <div>
-                          <span className="text-[9px] text-slate-500 block uppercase font-bold">Aceite → Conclusão</span>
-                          <span className="text-xs font-black text-emerald-600">{processStages.execucao} min</span>
-                        </div>
-                      </div>
-                      <ChevronRight className="w-4 h-4 text-slate-400" />
-                      <div>
-                        <span className="text-[8px] text-emerald-600 font-bold block uppercase bg-emerald-50 px-1 py-0.5 rounded border border-emerald-100">TMA Trajeto</span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between p-2.5 bg-amber-50/50 border border-amber-100 rounded-xl">
-                      <div className="flex items-center gap-2">
-                        <span className="w-5 h-5 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center text-[10px] font-black">3</span>
-                        <div>
-                          <span className="text-[9px] text-slate-500 block uppercase font-bold">Tempo Total do Processo</span>
-                          <span className="text-xs font-black text-amber-600">{processStages.total} min</span>
-                        </div>
-                      </div>
-                      <div>
-                        <span className="text-[8px] text-amber-600 font-bold block uppercase bg-amber-50 px-1 py-0.5 rounded border border-amber-100">Lead Time</span>
-                      </div>
-                    </div>
-
+                  <div className="border-t border-slate-100 pt-2 flex items-center justify-between text-[8px] font-black uppercase text-slate-500">
+                    <span>Total de SKUs Ativos: {skuRanking.length}</span>
+                    <span className="text-[#032b5e]">Abastecimento de Giro</span>
                   </div>
                 </div>
 

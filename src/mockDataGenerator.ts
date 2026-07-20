@@ -27,7 +27,7 @@ export function generateMockArmazemRows(empresaId: string): ArmazemRow[] {
   const dates = getPastDates(120); // 4 months
   const rows: ArmazemRow[] = [];
   
-  const empilhadores = ['OZENILDO SILVA', 'VICTOR RAMOS', 'MARCELO SOUZA', 'GABRIEL JOSÉ', 'ALEXANDRE SILVA'];
+  const empilhadores = ['MARIVALDO', 'RONILDO', 'PAULO PEREIRA'];
   const placas = ['NPT-4821', 'OET-1290', 'MOU-5531', 'KGT-0982', 'QYF-9921'];
   const tipos = ['Puxada', 'Rota', 'Recarga', 'Terceiro'];
   const turnos = ['Turno A', 'Turno B', 'Turno C'];

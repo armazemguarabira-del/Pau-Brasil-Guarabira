@@ -38,12 +38,12 @@ export default function ArmazemPanel({ user, empresa }: ArmazemPanelProps) {
   const [empilhadorSelection, setEmpilhadorSelection] = useState<string>(() => {
     const val = getDraftValue('empilhador', '');
     if (!val) return '';
-    if (['VICTOR RAMOS', 'ALEXANDRE SILVA', 'OZENILDO SILVA', 'MARCELO SOUZA', 'GABRIEL JOSÉ'].includes(val)) return val;
+    if (['MARIVALDO', 'RONILDO', 'PAULO PEREIRA'].includes(val)) return val;
     return 'Outro';
   });
   const [empilhadorOutro, setEmpilhadorOutro] = useState<string>(() => {
     const val = getDraftValue('empilhador', '');
-    if (['VICTOR RAMOS', 'ALEXANDRE SILVA', 'OZENILDO SILVA', 'MARCELO SOUZA', 'GABRIEL JOSÉ'].includes(val)) return '';
+    if (['MARIVALDO', 'RONILDO', 'PAULO PEREIRA'].includes(val)) return '';
     return val;
   });
 
@@ -105,7 +105,7 @@ export default function ArmazemPanel({ user, empresa }: ArmazemPanelProps) {
         setOperacao(parsed.operacao || 'Carregamento');
         
         const empVal = parsed.empilhador || '';
-        if (['VICTOR RAMOS', 'ALEXANDRE SILVA', 'OZENILDO SILVA', 'MARCELO SOUZA', 'GABRIEL JOSÉ'].includes(empVal)) {
+        if (['MARIVALDO', 'RONILDO', 'PAULO PEREIRA'].includes(empVal)) {
           setEmpilhadorSelection(empVal);
           setEmpilhadorOutro('');
         } else if (empVal) {
@@ -269,7 +269,7 @@ export default function ArmazemPanel({ user, empresa }: ArmazemPanelProps) {
       placa: finalPlaca,
       tipo,
       palhete: Number(palhete),
-      pernoite: operacao === 'Descarregamento' ? pernoiteSelection : undefined,
+      pernoite: operacao === 'Descarregamento' ? pernoiteSelection : "",
       obs: obs.trim()
     };
 
@@ -551,9 +551,9 @@ export default function ArmazemPanel({ user, empresa }: ArmazemPanelProps) {
                   if (val !== 'Outro') {
                     setEmpilhadorOutro('');
                   }
-                  if (val === 'MARCELO SOUZA' || val === 'GABRIEL JOSÉ') {
+                  if (val === 'PAULO PEREIRA') {
                     setTurno('Noturno');
-                  } else if (val === 'VICTOR RAMOS' || val === 'ALEXANDRE SILVA' || val === 'OZENILDO SILVA') {
+                  } else if (val === 'MARIVALDO' || val === 'RONILDO') {
                     setTurno('Diurno');
                   }
                 }} 
@@ -561,11 +561,9 @@ export default function ArmazemPanel({ user, empresa }: ArmazemPanelProps) {
                 required
               >
                 <option value="">Selecione o empilhador...</option>
-                <option value="VICTOR RAMOS">VICTOR RAMOS</option>
-                <option value="ALEXANDRE SILVA">ALEXANDRE SILVA</option>
-                <option value="OZENILDO SILVA">OZENILDO SILVA</option>
-                <option value="MARCELO SOUZA">MARCELO SOUZA</option>
-                <option value="GABRIEL JOSÉ">GABRIEL JOSÉ</option>
+                <option value="MARIVALDO">MARIVALDO</option>
+                <option value="RONILDO">RONILDO</option>
+                <option value="PAULO PEREIRA">PAULO PEREIRA</option>
                 <option value="Outro">Outro...</option>
               </select>
               {empilhadorSelection === 'Outro' && (
@@ -694,7 +692,7 @@ export default function ArmazemPanel({ user, empresa }: ArmazemPanelProps) {
             )}
             <div className="flex flex-col gap-1.5">
               <label className="text-[10px] font-bold tracking-[1.5px] uppercase text-[#6a7d92]">
-                {empilhadorSelection === 'Paulo' ? 'Status de Faturamento (21:00 → 06:30)' : 'Status de Faturamento (07:00 → 21:00)'}
+                {empilhadorSelection === 'PAULO PEREIRA' ? 'Status de Faturamento (21:00 → 06:30)' : 'Status de Faturamento (07:00 → 21:00)'}
               </label>
               <div className={`py-3 px-4 rounded-xl border border-[#222d3a] text-xs font-bold font-sans tracking-wide text-center bg-[#07090d] ${statusChip.includes('DENTRO') ? 'text-[#22c55e]' : statusChip === '—' ? 'text-[#6a7d92]' : 'text-[#f5a623]'}`}>
                 {statusChip}

@@ -261,7 +261,7 @@ export default function RepackPanel({ user, empresa }: RepackPanelProps) {
       meta: activeMeta,
       resultado: statusMeta,
       operador: user.nome,
-      motivoNaoBaterMeta: isAboveMeta ? motivoNaoBaterMeta.trim() : undefined,
+      motivoNaoBaterMeta: isAboveMeta ? motivoNaoBaterMeta.trim() : "",
     };
 
     try {

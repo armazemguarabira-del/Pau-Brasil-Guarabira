@@ -1119,7 +1119,7 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
       meta: formatSecToHMS(totalMetaSec),
       resultado: result,
       operador: formOperador,
-      motivoNaoBaterMeta: isAboveMeta ? formMotivoNaoBaterMeta.trim() : undefined,
+      motivoNaoBaterMeta: isAboveMeta ? formMotivoNaoBaterMeta.trim() : "",
       _criadoEm: today.toISOString()
     };
 
@@ -1480,11 +1480,11 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
         <div className="space-y-3">
           
           {/* ── LINHA DE FILTROS COMPACTA ── */}
-          <section className="bg-white border border-gray-200 rounded-xl flex flex-wrap items-center justify-between p-2 gap-2 shadow-xs">
-            <div className="flex flex-wrap items-center gap-2">
+          <section className="bg-white border border-gray-200 rounded-xl flex flex-wrap items-center justify-between p-3 gap-3 shadow-xs">
+            <div className="flex flex-wrap items-center gap-4">
               {/* Período (Calendário) */}
-              <div className="flex flex-col gap-0.5 min-w-[150px]">
-                <label className="text-[8px] font-bold text-gray-400 uppercase tracking-wider">Período (Calendário)</label>
+              <div className="flex flex-col gap-1 min-w-[200px]">
+                <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Período (Calendário)</label>
                 <CalendarFilter
                   startDate={filterStartDate}
                   endDate={filterEndDate}
@@ -1496,12 +1496,12 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
               </div>
 
               {/* Colaborador */}
-              <div className="flex flex-col gap-0.5 w-[120px]">
-                <label className="text-[8px] font-bold text-gray-400 uppercase tracking-wider">Colaborador</label>
+              <div className="flex flex-col gap-1 w-[130px]">
+                <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Colaborador</label>
                 <select
                   value={filterColaborador}
                   onChange={(e) => setFilterColaborador(e.target.value)}
-                  className="bg-white border border-gray-200 text-slate-800 rounded-lg outline-none px-2 py-1 text-[10px] h-[26px]"
+                  className="w-full bg-white border border-gray-200 text-[#032b5e] font-sans font-bold rounded-lg outline-none px-2.5 py-1 text-[10px] h-[28px] cursor-pointer transition-all hover:border-blue-400 focus:border-[#032b5e]"
                 >
                   <option value="todos">Todos</option>
                   {distinctOperadores.map(op => (
@@ -1511,12 +1511,12 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
               </div>
 
               {/* Embalagem */}
-              <div className="flex flex-col gap-0.5 w-[120px]">
-                <label className="text-[8px] font-bold text-gray-400 uppercase tracking-wider">Embalagem</label>
+              <div className="flex flex-col gap-1 w-[130px]">
+                <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Embalagem</label>
                 <select
                   value={filterEmbalagem}
                   onChange={(e) => setFilterEmbalagem(e.target.value)}
-                  className="bg-white border border-gray-200 text-slate-800 rounded-lg outline-none px-2 py-1 text-[10px] h-[26px]"
+                  className="w-full bg-white border border-gray-200 text-[#032b5e] font-sans font-bold rounded-lg outline-none px-2.5 py-1 text-[10px] h-[28px] cursor-pointer transition-all hover:border-blue-400 focus:border-[#032b5e]"
                 >
                   <option value="todos">Todas</option>
                   {Object.keys(EMBALAGENS_CONFIG).map(k => (
@@ -1526,12 +1526,12 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
               </div>
 
               {/* Status da Meta */}
-              <div className="flex flex-col gap-0.5 w-[140px]">
-                <label className="text-[8px] font-bold text-gray-400 uppercase tracking-wider">Status da Meta</label>
+              <div className="flex flex-col gap-1 w-[150px]">
+                <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Status da Meta</label>
                 <select
                   value={filterMeta}
                   onChange={(e) => setFilterMeta(e.target.value as any)}
-                  className="bg-white border border-gray-200 text-slate-800 rounded-lg outline-none px-2 py-1 text-[10px] h-[26px]"
+                  className="w-full bg-white border border-gray-200 text-[#032b5e] font-sans font-bold rounded-lg outline-none px-2.5 py-1 text-[10px] h-[28px] cursor-pointer transition-all hover:border-blue-400 focus:border-[#032b5e]"
                 >
                   <option value="todos">Todos</option>
                   <option value="dentro">Dentro da Meta</option>

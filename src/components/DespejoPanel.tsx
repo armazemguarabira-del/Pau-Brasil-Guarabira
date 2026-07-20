@@ -410,15 +410,10 @@ export default function DespejoPanel({ user, empresa }: DespejoPanelProps) {
               <label className="text-[10px] font-bold tracking-widest text-[#6a7d92] uppercase">Quantidade Despejada (SKUs) *</label>
               <input 
                 type="number"
-                min={1}
-                value={quantidade === 0 ? '' : quantidade}
+                value={quantidade}
                 onChange={e => {
                   const val = e.target.value;
-                  if (val === '') {
-                    setQuantidade('');
-                  } else {
-                    setQuantidade(Math.max(1, parseInt(val) || 0));
-                  }
+                  setQuantidade(val === '' ? '' : parseInt(val) || '');
                 }}
                 className="g-input"
                 placeholder="Digite a quantidade..."
