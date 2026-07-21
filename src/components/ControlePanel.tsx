@@ -1499,7 +1499,7 @@ export default function ControlePanel({ user, empresa }: ControlePanelProps) {
                         </div>
                         <div className="text-[10px] text-gray-400 leading-normal flex flex-col gap-1.5 border-t border-[#222d3a] pt-2">
                           <div>• <strong>Critério do Dashboard:</strong> Calcula o percentual agrupando todos os registros filtrados pelo tipo operacional de "Descarregamento".</div>
-                          <div>• <strong>Tempo de Permanência:</strong> Alvo ideal menor que 45 minutos em doca de entrada para recepção física de carga.</div>
+                          <div>• <strong>Tempo de Permanência:</strong> Alvo ideal menor que 10 minutos em doca de entrada para recepção física de carga.</div>
                         </div>
                       </div>
                     </div>

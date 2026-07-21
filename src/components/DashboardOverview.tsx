@@ -137,6 +137,7 @@ export default function DashboardOverview({
   const [creatingAction, setCreatingAction] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+  const [alertFilter, setAlertFilter] = useState<'all' | 'pending' | 'treated'>('pending');
 
   // Local derived dynamic KPI stats
   const [liveKpiStats, setLiveKpiStats] = useState({
@@ -198,9 +199,34 @@ export default function DashboardOverview({
 
   // 1. Establish the Firestore Real-time Listeners
   useEffect(() => {
-    if (!db) return;
+    const companyId = empresa?.id || 'demo';
+    if (!db) {
+      const localRepack = localStorage.getItem(`repack_rows_${companyId}`);
+      if (localRepack) setRepackList(JSON.parse(localRepack));
 
-    const companyId = empresa?.id || '';
+      const localDespejo = localStorage.getItem(`despejo_rows_${companyId}`);
+      if (localDespejo) setDespejoList(JSON.parse(localDespejo));
+
+      const localQuebras = localStorage.getItem(`quebras_rows_${companyId}`) || localStorage.getItem(`quebras_list_${companyId}`);
+      if (localQuebras) setQuebrasList(JSON.parse(localQuebras));
+
+      const localValidades = localStorage.getItem(`validades_rows_${companyId}`);
+      if (localValidades) setValidadesList(JSON.parse(localValidades));
+
+      const localArmazem = localStorage.getItem(`armazem_rows_${companyId}`);
+      if (localArmazem) setArmazemList(JSON.parse(localArmazem));
+
+      const localBlitz = localStorage.getItem(`blitz_rows_${companyId}`);
+      if (localBlitz) setBlitzList(JSON.parse(localBlitz));
+
+      const localTarefas = localStorage.getItem(`tarefas_rows_${companyId}`);
+      if (localTarefas) setTarefasList(JSON.parse(localTarefas));
+
+      const localAcoes = localStorage.getItem(`acoes_rows_${companyId}`);
+      if (localAcoes) setAcoesList(JSON.parse(localAcoes));
+      return;
+    }
+
     // Não assina nenhum listener sem empresaId definido: evita cair num
     // fallback que buscaria as coleções inteiras sem filtro.
     if (!companyId) return;
@@ -548,6 +574,70 @@ export default function DashboardOverview({
     }
   };
 
+  const handleSaveTratativa = async (type: 'repack' | 'despejo', docId: string, text: string) => {
+    if (!text.trim()) {
+      alert('Por favor, digite uma descrição para a tratativa.');
+      return;
+    }
+    const companyId = empresa?.id || 'demo';
+    try {
+      if (db) {
+        await updateDoc(doc(db, type, docId), {
+          tratativaGestor: text.trim(),
+          tratativaData: new Date().toISOString(),
+          tratativaResponsavel: user.nome || 'Gestor'
+        });
+      } else {
+        // standalone fallback
+        if (type === 'repack') {
+          const updated = repackList.map(r => r._docId === docId ? {
+            ...r,
+            tratativaGestor: text.trim(),
+            tratativaData: new Date().toISOString(),
+            tratativaResponsavel: user.nome || 'Gestor'
+          } : r);
+          setRepackList(updated);
+          localStorage.setItem(`repack_rows_${companyId}`, JSON.stringify(updated));
+        } else {
+          const updated = despejoList.map(d => d._docId === docId ? {
+            ...d,
+            tratativaGestor: text.trim(),
+            tratativaData: new Date().toISOString(),
+            tratativaResponsavel: user.nome || 'Gestor'
+          } : d);
+          setDespejoList(updated);
+          localStorage.setItem(`despejo_rows_${companyId}`, JSON.stringify(updated));
+        }
+      }
+    } catch (e: any) {
+      alert('Erro ao salvar tratativa: ' + e.message);
+    }
+  };
+
+  const repackAlerts = repackList
+    .filter(r => r.resultado && r.resultado.includes('ACIMA'))
+    .map(r => ({ ...r, _type: 'repack' as const }));
+
+  const despejoAlerts = despejoList
+    .filter(d => d.resultado && d.resultado.includes('ACIMA'))
+    .map(d => ({ ...d, _type: 'despejo' as const }));
+
+  const allUnmetGoals = [...repackAlerts, ...despejoAlerts].sort((a, b) => {
+    const dateA = a._criadoEm ? new Date(a._criadoEm).getTime() : (a.dataISO ? new Date(a.dataISO + 'T00:00:00').getTime() : 0);
+    const dateB = b._criadoEm ? new Date(b._criadoEm).getTime() : (b.dataISO ? new Date(b.dataISO + 'T00:00:00').getTime() : 0);
+    return dateB - dateA;
+  });
+
+  const unmetGoalsCount = allUnmetGoals.length;
+  const unmetGoalsPendingCount = allUnmetGoals.filter(a => !a.tratativaGestor).length;
+  const unmetGoalsTreatedCount = allUnmetGoals.filter(a => !!a.tratativaGestor).length;
+
+  const filteredAlerts = allUnmetGoals.filter(alert => {
+    if (alertFilter === 'pending') return !alert.tratativaGestor;
+    if (alertFilter === 'treated') return !!alert.tratativaGestor;
+    return true;
+  });
+
   const [showSyncBanner, setShowSyncBanner] = useState(true);
 
   return (
@@ -771,6 +861,219 @@ export default function DashboardOverview({
         </div>
 
       </div>
+
+      {/* ── SEÇÃO GESTÃO DE ALERTAS E TRATATIVAS (Only for Gestores/Controle) ── */}
+      {user.isControle && (
+        <div className="bg-white border border-[#ef4444]/20 rounded-2xl p-6 shadow-xs flex flex-col gap-6" id="alertas-e-tratativas-secao">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-5">
+            <div>
+              <h2 className="text-base font-black text-slate-800 flex items-center gap-2 uppercase tracking-wide">
+                <span className="p-1.5 bg-[#ef4444]/10 text-[#ef4444] rounded-lg">⚠️</span>
+                Gestão de Alertas e Tratativas de Produtividade
+              </h2>
+              <p className="text-xs text-slate-500 mt-1">
+                Visualização de alertas gerados em tempo real quando as metas operacionais de Repack ou Despejo não são batidas. Aplique medidas de tratativa imediatas.
+              </p>
+            </div>
+            
+            {/* Filter controls */}
+            <div className="flex bg-slate-100 p-1 rounded-xl self-start md:self-auto text-xs">
+              <button
+                type="button"
+                onClick={() => setAlertFilter('all')}
+                className={`px-3 py-1.5 font-bold rounded-lg uppercase tracking-wider transition-all cursor-pointer ${
+                  alertFilter === 'all' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                Todos ({unmetGoalsCount})
+              </button>
+              <button
+                type="button"
+                onClick={() => setAlertFilter('pending')}
+                className={`px-3 py-1.5 font-bold rounded-lg uppercase tracking-wider transition-all cursor-pointer ${
+                  alertFilter === 'pending' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                Pendentes ({unmetGoalsPendingCount})
+              </button>
+              <button
+                type="button"
+                onClick={() => setAlertFilter('treated')}
+                className={`px-3 py-1.5 font-bold rounded-lg uppercase tracking-wider transition-all cursor-pointer ${
+                  alertFilter === 'treated' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                Tratados ({unmetGoalsTreatedCount})
+              </button>
+            </div>
+          </div>
+
+          {filteredAlerts.length === 0 ? (
+            <div className="p-8 text-center border border-dashed border-slate-200 rounded-2xl text-slate-400 flex flex-col items-center justify-center gap-2">
+              <span className="text-2xl">🎉</span>
+              <span className="text-xs font-bold uppercase tracking-wider">Nenhum alerta pendente</span>
+              <p className="text-[10px] text-slate-400">Excelente! Todas as metas operacionais do turno foram batidas com sucesso.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {filteredAlerts.map((alert) => {
+                const isTreated = !!alert.tratativaGestor;
+                const isRepack = alert._type === 'repack';
+                
+                return (
+                  <div 
+                    key={`${alert._type}-${alert._docId}`}
+                    className={`g-card p-4 flex flex-col justify-between border-l-4 transition-all ${
+                      isTreated 
+                        ? 'border-l-[#22c55e] bg-slate-50/50 border-slate-200' 
+                        : 'border-l-[#ef4444] bg-[#ef4444]/[0.02] border-[#ef4444]/10 hover:bg-[#ef4444]/[0.04]'
+                    }`}
+                  >
+                    <div>
+                      {/* Header row */}
+                      <div className="flex items-center justify-between mb-2 gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
+                            isRepack 
+                              ? 'bg-[#f5a623]/10 text-[#f5a623] border border-[#f5a623]/20' 
+                              : 'bg-[#ef4444]/10 text-[#ef4444] border border-[#ef4444]/20'
+                          }`}>
+                            {isRepack ? '🔄 Repack' : '🗑 Despejo'}
+                          </span>
+                          <span className="text-[10px] text-slate-400 font-mono font-bold">
+                            {alert.data}
+                          </span>
+                        </div>
+                        
+                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full flex items-center gap-1 ${
+                          isTreated 
+                            ? 'bg-[#22c55e]/10 text-[#22c55e]' 
+                            : 'bg-[#ef4444]/10 text-[#ef4444]'
+                        }`}>
+                          <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                          {isTreated ? 'TRATADO' : 'PENDENTE'}
+                        </span>
+                      </div>
+
+                      {/* Details */}
+                      <div className="grid grid-cols-2 gap-y-1 gap-x-2 text-xs text-slate-600 mb-3">
+                        <div>
+                          <span className="text-[9px] text-slate-400 uppercase font-bold block">Colaborador</span>
+                          <span className="font-bold text-slate-800">{alert.operador || 'Não informado'}</span>
+                        </div>
+                        <div>
+                          <span className="text-[9px] text-slate-400 uppercase font-bold block">Embalagem</span>
+                          <span className="font-bold text-slate-800">{alert.embalagem}</span>
+                        </div>
+                        <div className="mt-1.5">
+                          <span className="text-[9px] text-slate-400 uppercase font-bold block">Qtd / Tempo Gasto</span>
+                          <span className="font-mono font-bold text-slate-800">
+                            {alert.quantidade} cx • {isRepack ? alert.duracao : alert.tempo}
+                          </span>
+                        </div>
+                        <div className="mt-1.5">
+                          <span className="text-[9px] text-slate-400 uppercase font-bold block">Meta Unitária</span>
+                          <span className="font-mono font-bold text-slate-800">
+                            {alert.meta}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Operator's explanation */}
+                      {alert.motivoNaoBaterMeta && (
+                        <div className="bg-slate-100 p-2.5 rounded-lg text-xs text-slate-600 border border-slate-200/50 mb-3 italic">
+                          <span className="text-[9px] font-bold text-slate-500 uppercase not-italic block mb-0.5">Motivo relatado pelo operador:</span>
+                          "{alert.motivoNaoBaterMeta}"
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Treatment display or action form */}
+                    {isTreated ? (
+                      <div className="mt-2 pt-2.5 border-t border-slate-200/60 bg-[#22c55e]/[0.02] p-2 rounded-xl border border-[#22c55e]/20">
+                        <span className="text-[9px] font-bold text-[#22c55e] uppercase tracking-wider block mb-1 flex items-center gap-1">
+                          ✅ MEDIDA DE TRATATIVA APLICADA por {alert.tratativaResponsavel}
+                        </span>
+                        <p className="text-xs text-slate-700 font-semibold">{alert.tratativaGestor}</p>
+                        <span className="text-[9px] text-slate-400 block mt-1">
+                          Tratado em {alert.tratativaData ? new Date(alert.tratativaData).toLocaleString('pt-BR') : ''}
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="mt-3 pt-3 border-t border-slate-200/60 flex flex-col gap-2">
+                        <div className="flex gap-1.5">
+                          <input 
+                            type="text"
+                            placeholder="Descreva a ação de tratativa tomada..."
+                            id={`input-tratativa-${alert._type}-${alert._docId}`}
+                            className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium text-slate-700 focus:outline-none focus:ring-1 focus:ring-[#ef4444] placeholder:text-slate-400"
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                const val = (e.currentTarget as HTMLInputElement).value;
+                                handleSaveTratativa(alert._type, alert._docId || '', val);
+                              }
+                            }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const inputEl = document.getElementById(`input-tratativa-${alert._type}-${alert._docId}`) as HTMLInputElement;
+                              if (inputEl) {
+                                handleSaveTratativa(alert._type, alert._docId || '', inputEl.value);
+                              }
+                            }}
+                            className="px-3 py-2 bg-[#ef4444] hover:bg-red-600 text-white rounded-xl text-xs font-bold uppercase transition-all cursor-pointer shrink-0"
+                          >
+                            Tratar
+                          </button>
+                        </div>
+                        
+                        <button
+                          type="button"
+                          onClick={() => {
+                            // Automatically switch tab and fill the action plan form below
+                            setActiveActionTab('colaborador');
+                            
+                            // Find matching operator ID or name
+                            let matchingId = '';
+                            const operatorNameLower = (alert.operador || '').toLowerCase().trim();
+                            
+                            const foundUser = usuariosList.find(u => (u.nome || '').toLowerCase().trim() === operatorNameLower);
+                            if (foundUser) {
+                              matchingId = foundUser._docId || foundUser.uid;
+                            } else {
+                              const foundColab = colaboradoresList.find(c => (c.nome || '').toLowerCase().trim() === operatorNameLower);
+                              if (foundColab) {
+                                matchingId = foundColab.id || foundColab.uid;
+                              }
+                            }
+                            
+                            if (matchingId) {
+                              setSelectedColabId(matchingId);
+                            }
+                            
+                            setNewActionTitle(`Tratativa de Produtividade - Meta não batida (${alert.embalagem})`);
+                            setNewActionDesc(`Medida corretiva após o operador não bater a meta de ${alert.meta} na embalagem ${alert.embalagem}. Quantidade executada: ${alert.quantidade} caixas em ${isRepack ? alert.duracao : alert.tempo}. Motivo relatado: ${alert.motivoNaoBaterMeta || 'Não especificado'}.`);
+                            
+                            // Scroll to action plan form
+                            const formSec = document.getElementById('acoes-e-melhorias-secao');
+                            if (formSec) {
+                              formSec.scrollIntoView({ behavior: 'smooth' });
+                            }
+                          }}
+                          className="text-left text-[10px] text-blue-600 hover:text-blue-800 font-bold uppercase tracking-wider flex items-center gap-1 cursor-pointer w-fit mt-1"
+                        >
+                          🚀 Elaborar Plano de Ação Oficial para este Operador
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── SEÇÃO PLANOS DE AÇÃO & MELHORIAS OPERACIONAIS ── */}
       <div className="bg-white border border-slate-150 rounded-2xl p-6 shadow-xs flex flex-col gap-6" id="acoes-e-melhorias-secao">

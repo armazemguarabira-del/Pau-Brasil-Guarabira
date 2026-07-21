@@ -202,7 +202,7 @@ export default function LogisticaDashboard({ user, empresa, onBack }: LogisticaD
   const uniqueEmpilhadores = useMemo(() => {
     const names = new Set<string>();
     armazemRows.forEach(r => {
-      if (r.empilhador) names.add(r.empilhador.trim());
+      if (r.empilhador) names.add(r.empilhador.trim().toUpperCase());
     });
     return Array.from(names).sort();
   }, [armazemRows]);
@@ -564,15 +564,15 @@ export default function LogisticaDashboard({ user, empresa, onBack }: LogisticaD
     const minTimeD = countD > 0 ? minD : 0;
     const maxTimeD = countD > 0 ? maxD : 0;
 
-    // Atrasos are defined as operations with "FORA DA JANELA" or duration > 60 min for carregamento / > 45 min for descarregamento
+    // Atrasos are defined as operations with "FORA DA JANELA" or duration > 15 min for carregamento / > 10 min for descarregamento
     let atrasosCount = 0;
     filteredRows.forEach(r => {
       if (r.status?.toUpperCase().includes('FORA')) {
         atrasosCount++;
       } else if (r.inicio && r.fim) {
         const diff = timeToMinutes(r.fim) - timeToMinutes(r.inicio);
-        if (r.operacao === 'Carregamento' && diff > 60) atrasosCount++;
-        if (r.operacao === 'Descarregamento' && diff > 45) atrasosCount++;
+        if (r.operacao === 'Carregamento' && diff > 15) atrasosCount++;
+        if (r.operacao === 'Descarregamento' && diff > 10) atrasosCount++;
       }
     });
 
@@ -1320,7 +1320,7 @@ export default function LogisticaDashboard({ user, empresa, onBack }: LogisticaD
       const isAtrasado = r.status?.toUpperCase().includes('FORA') || (() => {
         if (r.inicio && r.fim) {
           const diff = timeToMinutes(r.fim) - timeToMinutes(r.inicio);
-          return (r.operacao === 'Carregamento' && diff > 60) || (r.operacao === 'Descarregamento' && diff > 45);
+          return (r.operacao === 'Carregamento' && diff > 15) || (r.operacao === 'Descarregamento' && diff > 10);
         }
         return false;
       })();
@@ -1422,11 +1422,11 @@ export default function LogisticaDashboard({ user, empresa, onBack }: LogisticaD
     if (efdValue < 85) {
       list.push(`⚠️ EFD abaixo do limite corporativo (${efdValue}% vs Meta 85%). Lentidão identificada na descarga.`);
     }
-    if (tempoMedioCarregamento > 60) {
-      list.push(`⏳ Tempo médio de carregamento elevado (${tempoMedioCarregamento} min). Meta ideal é < 60 minutos.`);
+    if (tempoMedioCarregamento > 15) {
+      list.push(`⏳ Tempo médio de carregamento elevado (${tempoMedioCarregamento} min). Meta ideal é < 15 minutos.`);
     }
-    if (tempoMedioDescarga > 45) {
-      list.push(`⏳ Tempo médio de descarga elevado (${tempoMedioDescarga} min). Meta ideal é < 45 minutos.`);
+    if (tempoMedioDescarga > 10) {
+      list.push(`⏳ Tempo médio de descarga elevado (${tempoMedioDescarga} min). Meta ideal é < 10 minutos.`);
     }
     
     const lowEfficiencyOperator = rotasPerformanceData.find(o => o.dentroMeta < 85);
@@ -1875,8 +1875,8 @@ export default function LogisticaDashboard({ user, empresa, onBack }: LogisticaD
     const minimo = total > 0 ? Math.min(...durations) : 0;
     const maximo = total > 0 ? Math.max(...durations) : 0;
     
-    // Meta do tempo de carregamento ideal: <= 60 minutos
-    const dentroMeta = total > 0 ? durations.filter(d => d <= 60).length : 0;
+    // Meta do tempo de carregamento ideal: <= 15 minutos
+    const dentroMeta = total > 0 ? durations.filter(d => d <= 15).length : 0;
     const pctMeta = total > 0 ? parseFloat(((dentroMeta / total) * 100).toFixed(1)) : 100.0;
 
     return {
@@ -2190,12 +2190,12 @@ export default function LogisticaDashboard({ user, empresa, onBack }: LogisticaD
               </span>
               <span className="text-[10px] font-bold text-gray-400">min</span>
             </div>
-            <span className={`text-[9px] font-bold block mt-1 ${tempoMedioCarregamento <= 60 ? 'text-emerald-500' : 'text-rose-500'}`}>
-              {tempoMedioCarregamento <= 60 ? 'Dentro do limite' : 'Abaixo da meta'}
+            <span className={`text-[9px] font-bold block mt-1 ${tempoMedioCarregamento <= 15 ? 'text-emerald-500' : 'text-rose-500'}`}>
+              {tempoMedioCarregamento <= 15 ? 'Dentro do limite' : 'Fora da meta'}
             </span>
           </div>
           <div className="mt-2 border-t border-gray-100 pt-1.5 text-[9px] text-gray-400 font-medium">
-            Meta: &lt; 60 min
+            Meta: &lt; 15 min
           </div>
         </div>
 
@@ -2215,12 +2215,12 @@ export default function LogisticaDashboard({ user, empresa, onBack }: LogisticaD
               </span>
               <span className="text-[10px] font-bold text-gray-400">min</span>
             </div>
-            <span className={`text-[9px] font-bold block mt-1 ${tempoMedioDescarga <= 45 ? 'text-emerald-500' : 'text-rose-500'}`}>
-              {tempoMedioDescarga <= 45 ? 'Dentro do limite' : 'Acima da meta'}
+            <span className={`text-[9px] font-bold block mt-1 ${tempoMedioDescarga <= 10 ? 'text-emerald-500' : 'text-rose-500'}`}>
+              {tempoMedioDescarga <= 10 ? 'Dentro do limite' : 'Fora da meta'}
             </span>
           </div>
           <div className="mt-2 border-t border-gray-100 pt-1.5 text-[9px] text-gray-400 font-medium">
-            Meta: &lt; 45 min
+            Meta: &lt; 10 min
           </div>
         </div>
 
@@ -2408,7 +2408,7 @@ export default function LogisticaDashboard({ user, empresa, onBack }: LogisticaD
               </div>
               <div className="flex items-center gap-1.5">
                 <span className="w-5 h-0 border-t border-dashed border-[#032b5e] border-2"></span>
-                <span className="text-gray-400">Meta: ≤ 60 min</span>
+                <span className="text-gray-400">Meta: ≤ 15 min</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <span className="w-5 h-1 bg-[#f97316] rounded-full"></span>
@@ -2416,7 +2416,7 @@ export default function LogisticaDashboard({ user, empresa, onBack }: LogisticaD
               </div>
               <div className="flex items-center gap-1.5">
                 <span className="w-5 h-0 border-t border-dashed border-[#f97316] border-2"></span>
-                <span className="text-gray-400">Meta: ≤ 45 min</span>
+                <span className="text-gray-400">Meta: ≤ 10 min</span>
               </div>
             </div>
           </div>
@@ -2435,22 +2435,22 @@ export default function LogisticaDashboard({ user, empresa, onBack }: LogisticaD
                 />
                 <Tooltip contentStyle={{ backgroundColor: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px' }} />
                 
-                {/* Reference line at 60 min */}
+                {/* Reference line at 15 min */}
                 <ReferenceLine 
-                  y={60} 
+                  y={15} 
                   stroke="#032b5e" 
                   strokeDasharray="4 4" 
                   strokeWidth={1.5} 
-                  label={{ value: 'Meta: ≤ 60 min', fill: '#032b5e', position: 'right', fontSize: 10, fontWeight: 'black', offset: 8 }} 
+                  label={{ value: 'Meta: ≤ 15 min', fill: '#032b5e', position: 'right', fontSize: 10, fontWeight: 'black', offset: 8 }} 
                 />
 
-                {/* Reference line at 45 min */}
+                {/* Reference line at 10 min */}
                 <ReferenceLine 
-                  y={45} 
+                  y={10} 
                   stroke="#f97316" 
                   strokeDasharray="4 4" 
                   strokeWidth={1.5} 
-                  label={{ value: 'Meta: ≤ 45 min', fill: '#f97316', position: 'right', fontSize: 10, fontWeight: 'black', offset: 8 }} 
+                  label={{ value: 'Meta: ≤ 10 min', fill: '#f97316', position: 'right', fontSize: 10, fontWeight: 'black', offset: 8 }} 
                 />
 
                 <Line 

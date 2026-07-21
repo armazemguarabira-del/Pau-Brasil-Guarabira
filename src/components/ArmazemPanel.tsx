@@ -196,6 +196,52 @@ export default function ArmazemPanel({ user, empresa }: ArmazemPanelProps) {
     }
   }, []);
 
+  const timeToMinutes = (t: string) => {
+    if (!t) return 0;
+    const [h, m] = t.split(':').map(Number);
+    return (isNaN(h) ? 0 : h * 60) + (isNaN(m) ? 0 : m);
+  };
+
+  const getLimitInfo = () => {
+    if (!inicio || !fim) return { exceeded: false, reason: '', duration: 0 };
+    const minInicio = timeToMinutes(inicio);
+    const minFim = timeToMinutes(fim);
+    const duracaoMin = (minFim - minInicio + 1440) % 1440;
+
+    let exceeded = false;
+    let reason = '';
+    let target = 0;
+
+    if (tipo === 'rota' || tipo === 'recarga') {
+      if (operacao === 'Descarregamento' && duracaoMin > 10) {
+        exceeded = true;
+        target = 10;
+        reason = `O descarregamento de ${tipo === 'rota' ? 'rota' : 'recarga'} levou ${duracaoMin} min, ultrapassando a meta de ${target} min`;
+      } else if (operacao === 'Carregamento' && duracaoMin > 15) {
+        exceeded = true;
+        target = 15;
+        reason = `O carregamento de ${tipo === 'rota' ? 'rota' : 'recarga'} levou ${duracaoMin} min, ultrapassando a meta de ${target} min`;
+      }
+    } else if (tipo === 'puxada') {
+      if (operacao === 'Descarregamento' && duracaoMin > 70) {
+        exceeded = true;
+        target = 70;
+        reason = `O descarregamento de puxada levou ${duracaoMin} min, ultrapassando o limite de ${target} min`;
+      }
+    }
+
+    return { exceeded, reason, duration: duracaoMin };
+  };
+
+  const limitInfo = getLimitInfo();
+
+  const isNightShift = turno === 'Noturno';
+  const isOk = !inicio || !fim
+    ? true
+    : isNightShift
+    ? (inicio >= '21:00' || inicio <= '06:30') && (fim >= '21:00' || fim <= '06:30')
+    : (inicio >= '07:00' && fim <= '21:00');
+
   useEffect(() => {
     calcWindowStatus();
   }, [inicio, fim, empilhadorSelection]);
@@ -239,13 +285,14 @@ export default function ArmazemPanel({ user, empresa }: ArmazemPanelProps) {
       return;
     }
 
-    const isNightShift = turno === 'Noturno';
-    const isOk = isNightShift
-      ? (inicio >= '21:00' || inicio <= '06:30') && (fim >= '21:00' || fim <= '06:30')
-      : (inicio >= '07:00' && fim <= '21:00');
     if (!isOk && !obs.trim()) {
       const windowStr = isNightShift ? '21:00 – 06:30' : '07:00 – 21:00';
       setErrorMsg(`Observação obrigatória ao lançar registros FORA da janela de faturamento (${windowStr}).`);
+      return;
+    }
+
+    if (limitInfo.exceeded && !obs.trim()) {
+      setErrorMsg(`Observação obrigatória: ${limitInfo.reason}.`);
       return;
     }
 
@@ -701,12 +748,26 @@ export default function ArmazemPanel({ user, empresa }: ArmazemPanelProps) {
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <label className="text-[10px] font-bold tracking-[1.5px] uppercase text-[#6a7d92]">Observação (Obrigatória se fora da janela regular de faturamento)</label>
+            <label className="text-[10px] font-bold tracking-[1.5px] uppercase text-[#6a7d92]">
+              Observação {(!isOk || limitInfo.exceeded) ? '(OBRIGATÓRIA)' : '(Opcional)'}
+            </label>
+            {limitInfo.exceeded && (
+              <div className="bg-[#ef4444]/10 border border-[#ef4444]/25 rounded-xl p-3 text-xs text-[#fca5a5] flex flex-col gap-1 font-sans">
+                <span className="font-extrabold uppercase tracking-wide">⚠️ ALERTA DE META OPERACIONAL EXCEDIDA:</span>
+                <span>{limitInfo.reason}. É obrigatório informar a justificativa do operador / motivo do não batimento da meta.</span>
+              </div>
+            )}
             <textarea 
               value={obs}
               onChange={e => setObs(e.target.value)}
-              placeholder="Justifique o faturamento ou descarregamento tardio / adiantado nesta área..."
-              className={`g-input h-20 resize-none ${statusChip.includes('FORA') && !obs ? 'border-[#f5a623]' : ''}`}
+              placeholder={
+                limitInfo.exceeded
+                  ? "Justifique o motivo de ter excedido a meta de tempo operacional..."
+                  : !isOk
+                  ? "Justifique o faturamento ou descarregamento tardio / adiantado nesta área..."
+                  : "Digite observações adicionais sobre esta operação, se houver..."
+              }
+              className={`g-input h-20 resize-none ${((!isOk || limitInfo.exceeded) && !obs) ? 'border-[#f5a623] shadow-[0_0_8px_rgba(245,166,35,0.25)]' : ''}`}
             />
           </div>
 

@@ -101,6 +101,11 @@ export default function PickingDashboard({ user, empresa, onBack }: PickingDashb
   
   const empresaId = empresa?.id || 'demo';
 
+  const [enableDemoData, setEnableDemoData] = useState<boolean>(() => {
+    const stored = localStorage.getItem(`enable_demo_data_${empresaId}`);
+    return stored !== null ? stored === 'true' : false;
+  });
+
   const [colaboradores, setColaboradores] = useState<any[]>([]);
 
   // Synchronize colaboradores from Firestore
@@ -150,9 +155,10 @@ export default function PickingDashboard({ user, empresa, onBack }: PickingDashb
   }, [colaboradores]);
 
   const tasks = useMemo(() => {
+    if (!enableDemoData) return actualTasks;
     const mockTasks = generateMockTarefas(empresaId, registeredEmpilhadores);
     return [...actualTasks, ...mockTasks];
-  }, [actualTasks, empresaId, registeredEmpilhadores]);
+  }, [actualTasks, empresaId, registeredEmpilhadores, enableDemoData]);
 
   // Synchronize tasks from Firestore
   useEffect(() => {
@@ -343,8 +349,8 @@ export default function PickingDashboard({ user, empresa, onBack }: PickingDashb
   }, [tasks]);
 
   // Unique filters lists extracted from live data
-  const uniqueOperators = useMemo(() => Array.from(new Set(normalizedTasks.map(t => t.operador).filter(Boolean))).sort(), [normalizedTasks]);
-  const uniqueConferentes = useMemo(() => Array.from(new Set(normalizedTasks.map(t => t.conferente).filter(Boolean))).sort(), [normalizedTasks]);
+  const uniqueOperators = useMemo(() => Array.from(new Set(normalizedTasks.map(t => t.operador?.trim().toUpperCase()).filter(Boolean))).sort(), [normalizedTasks]);
+  const uniqueConferentes = useMemo(() => Array.from(new Set(normalizedTasks.map(t => t.conferente?.trim().toUpperCase()).filter(Boolean))).sort(), [normalizedTasks]);
   const uniqueSkus = useMemo(() => {
     const list = new Map<string, string>();
     normalizedTasks.forEach(t => { if (t.sku) list.set(String(t.sku), t.descricaoSku); });
@@ -356,8 +362,8 @@ export default function PickingDashboard({ user, empresa, onBack }: PickingDashb
     return normalizedTasks.filter(t => {
       if (filterStartDate && t.dataSolicitacao && t.dataSolicitacao < filterStartDate) return false;
       if (filterEndDate && t.dataSolicitacao && t.dataSolicitacao > filterEndDate) return false;
-      if (selectedOperator !== 'all' && t.operador !== selectedOperator) return false;
-      if (selectedConferente !== 'all' && t.conferente !== selectedConferente) return false;
+      if (selectedOperator !== 'all' && t.operador?.trim().toUpperCase() !== selectedOperator.toUpperCase()) return false;
+      if (selectedConferente !== 'all' && t.conferente?.trim().toUpperCase() !== selectedConferente.toUpperCase()) return false;
       if (selectedSku !== 'all' && String(t.sku) !== selectedSku) return false;
       if (selectedStatus !== 'all' && t.status !== selectedStatus) return false;
       if (selectedEtapa !== 'all' && t.etapa !== selectedEtapa) return false;
@@ -917,9 +923,24 @@ export default function PickingDashboard({ user, empresa, onBack }: PickingDashb
               
               {/* --- DYNAMIC GLOBAL FILTER SECTION --- */}
               <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col gap-4">
-                <div className="flex items-center gap-2 border-b border-slate-200 pb-3">
-                  <SlidersHorizontal className="w-4 h-4 text-amber-600" />
-                  <span className="text-xs uppercase font-black tracking-widest text-amber-600">Filtros Globais de Operação</span>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-3">
+                  <div className="flex items-center gap-2">
+                    <SlidersHorizontal className="w-4 h-4 text-amber-600" />
+                    <span className="text-xs uppercase font-black tracking-widest text-amber-600">Filtros Globais de Operação</span>
+                  </div>
+                  <label className="flex items-center gap-2 cursor-pointer select-none bg-white py-1 px-2.5 rounded-lg border border-slate-200 shadow-sm hover:bg-slate-50 transition-colors">
+                    <input 
+                      type="checkbox" 
+                      checked={enableDemoData} 
+                      onChange={e => {
+                        const val = e.target.checked;
+                        setEnableDemoData(val);
+                        localStorage.setItem(`enable_demo_data_${empresaId}`, String(val));
+                      }}
+                      className="rounded text-[#f5a623] focus:ring-[#f5a623] border-slate-300 w-3.5 h-3.5 accent-[#f5a623] cursor-pointer"
+                    />
+                    <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">Simular Dados de Demonstração</span>
+                  </label>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-3.5 w-full text-xs">
@@ -995,24 +1016,7 @@ export default function PickingDashboard({ user, empresa, onBack }: PickingDashb
                     </select>
                   </div>
 
-                  {/* Configurable SLA target limit in minutes */}
-                  <div className="flex flex-col gap-1 w-[120px]">
-                    <div className="flex justify-between items-center w-full">
-                      <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Meta SLA</label>
-                      <span className="text-[10px] font-bold text-[#032b5e]">{slaLimit}m</span>
-                    </div>
-                    <div className="flex items-center h-[28px] w-full px-2 bg-white border border-gray-200 rounded-lg">
-                      <input 
-                        type="range" 
-                        min="5" 
-                        max="60" 
-                        step="5"
-                        value={slaLimit} 
-                        onChange={e => setSlaLimit(Number(e.target.value))}
-                        className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
-                      />
-                    </div>
-                  </div>
+
 
                 </div>
               </div>
@@ -1090,38 +1094,38 @@ export default function PickingDashboard({ user, empresa, onBack }: PickingDashb
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
 
                 {/* Top 5 SKUs mais Solicitados */}
-                <div className="lg:col-span-4 bg-white border border-slate-200 p-4 rounded-2xl flex flex-col justify-between gap-3 shadow-sm">
+                <div className="lg:col-span-4 bg-white border border-slate-200 p-5 rounded-2xl flex flex-col justify-between gap-4 shadow-sm">
                   <div>
-                    <span className="text-[10px] uppercase font-black text-slate-500 tracking-wider block mb-1 flex items-center gap-1.5">
+                    <span className="text-xs uppercase font-black text-slate-700 tracking-wider flex items-center gap-2 mb-1">
                       <Sparkles className="w-4 h-4 text-[#032b5e]" />
                       Ranking: Top 5 SKUs mais Solicitados
                     </span>
-                    <span className="text-[8px] text-slate-400 uppercase block font-bold mb-3">Volume de solicitações e paletes por produto</span>
+                    <span className="text-[10px] text-slate-400 uppercase block font-bold mb-4 mt-0.5">Volume de solicitações e paletes por produto</span>
 
-                    <div className="flex flex-col gap-3">
+                    <div className="flex flex-col gap-4">
                       {skuRanking.slice(0, 5).map((item, index) => {
                         const maxRequests = Math.max(...skuRanking.map(r => r.requests)) || 1;
                         const pct = Math.round((item.requests / maxRequests) * 100);
                         
                         return (
-                          <div key={item.sku} className="flex flex-col gap-1">
-                            <div className="flex items-center justify-between text-xs">
-                              <div className="flex items-center gap-1.5 min-w-0">
-                                <span className="w-4 h-4 rounded-full bg-[#032b5e]/10 text-[#032b5e] flex items-center justify-center text-[10px] font-black shrink-0">
+                          <div key={item.sku} className="flex flex-col gap-1.5">
+                            <div className="flex items-center justify-between text-sm">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span className="w-5 h-5 rounded-full bg-[#032b5e]/10 text-[#032b5e] flex items-center justify-center text-[11px] font-black shrink-0">
                                   {index + 1}
                                 </span>
-                                <span className="font-bold text-[#032b5e] shrink-0">{item.sku}</span>
-                                <span className="text-slate-500 font-medium truncate" title={item.desc}>
+                                <span className="font-extrabold text-[#032b5e] shrink-0 text-sm">{item.sku}</span>
+                                <span className="text-slate-500 font-semibold truncate text-xs" title={item.desc}>
                                   - {item.desc}
                                 </span>
                               </div>
-                              <div className="flex items-center gap-2 text-[10px] font-mono font-bold text-slate-600 shrink-0">
+                              <div className="flex items-center gap-2 text-xs font-mono font-bold text-slate-600 shrink-0">
                                 <span>{item.requests} Sol.</span>
                                 <span className="text-slate-300">|</span>
-                                <span className="text-emerald-600">{item.pallets} PL</span>
+                                <span className="text-emerald-600 font-extrabold">{item.pallets} PL</span>
                               </div>
                             </div>
-                            <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                            <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden shadow-inner border border-slate-200/40">
                               <div 
                                 className="bg-[#032b5e] h-full rounded-full transition-all duration-1000" 
                                 style={{ width: `${pct}%` }} 
@@ -1138,7 +1142,7 @@ export default function PickingDashboard({ user, empresa, onBack }: PickingDashb
                     </div>
                   </div>
 
-                  <div className="border-t border-slate-100 pt-2 flex items-center justify-between text-[8px] font-black uppercase text-slate-500">
+                  <div className="border-t border-slate-100 pt-3 flex items-center justify-between text-[10px] font-black uppercase text-slate-500">
                     <span>Total de SKUs Ativos: {skuRanking.length}</span>
                     <span className="text-[#032b5e]">Abastecimento de Giro</span>
                   </div>

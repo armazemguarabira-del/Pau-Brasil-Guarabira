@@ -106,8 +106,8 @@ export default function LogisticaDrilldown({ metric, rawRows, onBack }: Logistic
 
       // Determine if really delayed based on status or duration
       const isAtrasado = r.status?.toUpperCase().includes('FORA') || 
-        (r.operacao === 'Carregamento' && duracaoMin > 60) || 
-        (r.operacao === 'Descarregamento' && duracaoMin > 45);
+        (r.operacao === 'Carregamento' && duracaoMin > 15) || 
+        (r.operacao === 'Descarregamento' && duracaoMin > 10);
 
       let tempoAtrasoMin = 0;
       let motivoAtraso = '—';
@@ -370,7 +370,7 @@ export default function LogisticaDrilldown({ metric, rawRows, onBack }: Logistic
       case 'T.M. Descarga':
         anomalias = `Tempo médio operacional atual é de ${analysisStats.avgDuracao} minutos. Registramos picos pontuais com mais de 75 minutos nas docas centrais.`;
         possiveisCausas = 'Atraso na liberação da portaria de triagem pátio e lentidão no encerramento de turno de conferentes de pátio.';
-        sugestoes = `1. Estabelecer controle eletrônico automatizado de tempo de estadia (Check-in/Check-out de portaria integrada).\n2. Criar painel Kanban de alertas visuais para qualquer veículo que ultrapassar 45 minutos em doca de descarga.`;
+        sugestoes = `1. Estabelecer controle eletrônico automatizado de tempo de estadia (Check-in/Check-out de portaria integrada).\n2. Criar painel Kanban de alertas visuais para qualquer veículo que ultrapassar 10 minutos em doca de descarga.`;
         break;
       case 'Paletes Movimentados':
         anomalias = `Total de ${analysisStats.totalPallets} paletes movimentados com uma eficiência média de ${analysisStats.avgPallets} paletes por operação realizada.`;

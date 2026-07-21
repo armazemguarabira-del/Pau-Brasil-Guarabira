@@ -301,7 +301,7 @@ export default function DespejoDashboard({ user, empresa, onBack }: DespejoDashb
     const names = new Set<string>();
     activeRows.forEach(r => {
       if (r.operador) {
-        const cleanName = r.operador.split('(')[0].trim();
+        const cleanName = r.operador.split('(')[0].trim().toUpperCase();
         if (cleanName) {
           names.add(cleanName);
         }
@@ -360,9 +360,9 @@ export default function DespejoDashboard({ user, empresa, onBack }: DespejoDashb
     return activeRows.filter(row => {
       // 1. Colaborador filter
       if (appliedFilters.colaborador !== 'Todos') {
-        const rowOpClean = row.operador?.split('(')[0].trim().toLowerCase() || '';
-        const filterOpClean = appliedFilters.colaborador.toLowerCase();
-        if (rowOpClean !== filterOpClean && !row.operador?.toLowerCase().includes(filterOpClean)) {
+        const rowOpClean = row.operador?.split('(')[0].trim().toUpperCase() || '';
+        const filterOpClean = appliedFilters.colaborador.toUpperCase();
+        if (rowOpClean !== filterOpClean && !row.operador?.toUpperCase().includes(filterOpClean)) {
           return false;
         }
       }

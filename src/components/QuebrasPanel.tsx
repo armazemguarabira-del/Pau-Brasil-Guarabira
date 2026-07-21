@@ -91,6 +91,24 @@ const QB_TIPOS: Record<string, Array<{ cod: number; motivo: string }>> = {
   ],
 };
 
+export const COLABORADORES_QUEBRA = [
+  "DEJEAN SILVA DE OLIVEIRA",
+  "PAULO PEREIRA DA SILVA",
+  "DIOGENES PEREIRA DA SILVA",
+  "MARIVALDO ARTUR ALVES",
+  "GILSON ROSA DA SILVA",
+  "JOSE RONILDO DA SILVA",
+  "CICERO MATHEU DE OLIVEIRA SILVA",
+  "NATANAEL LUIZ DA SILVA",
+  "ELDENKLEBER MAURICIO DA SILVA",
+  "OZENILDO SOUSA SILVA",
+  "GLADSON LISBOA DOS SANTOS",
+  "LUIS ANTONIO FREIRE MOREIRA",
+  "EDILSON VIEIRA DA SILVA",
+  "ADMILTON HERMINIO DOS SANTOS MARCELINO",
+  "DIMAS EMANUEL MISSIAS DA SILVA"
+];
+
 export default function QuebrasPanel({ user, empresa }: QuebrasPanelProps) {
   const empresaId = empresa?.id || 'demo';
   const draftKey = `quebras_draft_${empresaId}_${user.nome || 'guest'}`;
@@ -117,6 +135,17 @@ export default function QuebrasPanel({ user, empresa }: QuebrasPanelProps) {
   const [turno, setTurno] = useState<string>(() => getDraftValue('turno', 'MANHÃ'));
   const [motivoCod, setMotivoCod] = useState<number>(() => getDraftValue('motivoCod', 0));
   const [colaboradorQuebrou, setColaboradorQuebrou] = useState<string>(() => getDraftValue('colaboradorQuebrou', ''));
+  const [showCustomInput, setShowCustomInput] = useState<boolean>(() => {
+    const initial = getDraftValue('colaboradorQuebrou', '');
+    return initial !== '' && !COLABORADORES_QUEBRA.includes(initial);
+  });
+
+  // Sync custom input state if colaboradorQuebrou updates with a valid custom name
+  useEffect(() => {
+    if (colaboradorQuebrou && !COLABORADORES_QUEBRA.includes(colaboradorQuebrou)) {
+      setShowCustomInput(true);
+    }
+  }, [colaboradorQuebrou]);
   
   const [activeTab, setActiveTab] = useState<'form' | 'stats' | 'hist'>('form');
   const [quebras, setQuebras] = useState<QuebraRow[]>([]);
@@ -180,7 +209,9 @@ export default function QuebrasPanel({ user, empresa }: QuebrasPanelProps) {
         setArea(parsed.area || 'ARMAZEM');
         setTurno(parsed.turno || 'MANHÃ');
         setMotivoCod(parsed.motivoCod || 0);
-        setColaboradorQuebrou(parsed.colaboradorQuebrou || '');
+        const colabVal = parsed.colaboradorQuebrou || '';
+        setColaboradorQuebrou(colabVal);
+        setShowCustomInput(colabVal !== '' && !COLABORADORES_QUEBRA.includes(colabVal));
         setDraftRestored(!!(parsed.produtoBusca || parsed.selectedProd || (parsed.quantidade !== undefined && parsed.quantidade !== '') || parsed.area !== 'ARMAZEM' || parsed.turno !== 'MANHÃ' || parsed.colaboradorQuebrou));
       } else {
         setProdutoBusca('');
@@ -190,6 +221,7 @@ export default function QuebrasPanel({ user, empresa }: QuebrasPanelProps) {
         setTurno('MANHÃ');
         setMotivoCod(0);
         setColaboradorQuebrou('');
+        setShowCustomInput(false);
         setDraftRestored(false);
       }
     } catch (e) {
@@ -269,6 +301,7 @@ export default function QuebrasPanel({ user, empresa }: QuebrasPanelProps) {
       setSelectedProd(null);
       setQuantidade('');
       setColaboradorQuebrou('');
+      setShowCustomInput(false);
       setDraftRestored(false);
       localStorage.removeItem(draftKey);
       setActiveTab('hist');
@@ -443,6 +476,7 @@ export default function QuebrasPanel({ user, empresa }: QuebrasPanelProps) {
                   setArea('ARMAZEM');
                   setTurno('MANHÃ');
                   setColaboradorQuebrou('');
+                  setShowCustomInput(false);
                   setDraftRestored(false);
                   localStorage.removeItem(draftKey);
                 }}
@@ -553,14 +587,42 @@ export default function QuebrasPanel({ user, empresa }: QuebrasPanelProps) {
           {isQuebraMovimentacao && (
             <div className="flex flex-col gap-1.5 bg-[#ef4444]/5 border border-[#ef4444]/15 rounded-xl p-4 animate-fadeIn">
               <label className="text-[10px] font-bold tracking-[1.5px] uppercase text-[#ef4444]">Nome do Colaborador que Quebrou *</label>
-              <input 
-                type="text"
-                placeholder="Digite o nome completo do colaborador responsável..."
-                value={colaboradorQuebrou}
-                onChange={e => setColaboradorQuebrou(e.target.value)}
-                className="g-input border-[#ef4444]/30 focus:border-[#ef4444]"
+              <select
+                value={
+                  showCustomInput 
+                    ? 'OUTRO' 
+                    : (colaboradorQuebrou === '' ? '' : (COLABORADORES_QUEBRA.includes(colaboradorQuebrou) ? colaboradorQuebrou : 'OUTRO'))
+                }
+                onChange={e => {
+                  const val = e.target.value;
+                  if (val === 'OUTRO') {
+                    setShowCustomInput(true);
+                    setColaboradorQuebrou('');
+                  } else {
+                    setShowCustomInput(false);
+                    setColaboradorQuebrou(val);
+                  }
+                }}
+                className="g-input border-[#ef4444]/30 focus:border-[#ef4444] bg-[#151b23] text-white"
                 required
-              />
+              >
+                <option value="">Selecione o colaborador...</option>
+                {COLABORADORES_QUEBRA.map(name => (
+                  <option key={name} value={name}>{name}</option>
+                ))}
+                <option value="OUTRO">OUTRO / NÃO LISTADO (Digitar manualmente)...</option>
+              </select>
+
+              {showCustomInput && (
+                <input 
+                  type="text"
+                  placeholder="Digite o nome completo do colaborador responsável..."
+                  value={colaboradorQuebrou}
+                  onChange={e => setColaboradorQuebrou(e.target.value)}
+                  className="g-input border-[#ef4444]/30 focus:border-[#ef4444] mt-1.5 animate-fadeIn bg-[#151b23] text-white"
+                  required
+                />
+              )}
               <span className="text-[9px] text-[#ef4444]/60 font-semibold uppercase tracking-wider">Identificação obrigatória para quebras com movimentação.</span>
             </div>
           )}

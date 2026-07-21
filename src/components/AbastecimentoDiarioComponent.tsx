@@ -69,7 +69,7 @@ export default function AbastecimentoDiarioComponent({ user, empresa, tasks }: A
   const [nightStrategy, setNightStrategy] = useState<'repor_vendas' | 'completar_1pl' | 'completar_2pl' | 'deficit'>('deficit');
 
   // Edit Mode & Database States
-  const [isEditMode, setIsEditMode] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(true);
   const [saving, setSaving] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [savedAnalyses, setSavedAnalyses] = useState<any[]>([]);
@@ -77,6 +77,15 @@ export default function AbastecimentoDiarioComponent({ user, empresa, tasks }: A
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [isHistoricalLoaded, setIsHistoricalLoaded] = useState(false);
   const [loadedHistoryMeta, setLoadedHistoryMeta] = useState<any | null>(null);
+
+  // States for importing sales/venda files (Rotina 020304) and picking stock (Rotina 021101)
+  const [importing021101, setImporting021101] = useState(false);
+  const [fileName021101, setFileName021101] = useState('');
+  const [importing020304, setImporting020304] = useState(false);
+  const [fileName020304, setFileName020304] = useState('');
+
+  // Customizable products list initialized with default baseline values
+  const [productsList, setProductsList] = useState<BaseSkuData[]>(ABASTECIMENTO_PRODUCTS_DATA);
 
   // Customizable product data state initialized with default baseline values
   const [customProductData, setCustomProductData] = useState<Record<number, { estoqueInicialCaixas: number; vendaCaixas: number }>>(() => {
@@ -111,13 +120,25 @@ export default function AbastecimentoDiarioComponent({ user, empresa, tasks }: A
         const productDetails = docData.productDetails || [];
         
         const loadedData: Record<number, { estoqueInicialCaixas: number; vendaCaixas: number }> = {};
+        const loadedProductsList: BaseSkuData[] = [];
+        
         productDetails.forEach((p: any) => {
           loadedData[p.sku] = {
             estoqueInicialCaixas: p.estoqueInicialCaixas,
             vendaCaixas: p.vendaCaixas
           };
+          loadedProductsList.push({
+            sku: Number(p.sku),
+            descricao: p.descricao || `PRODUTO ${p.sku}`,
+            unidade: p.unidade || 'cx',
+            embalagem: p.embalagem || 1,
+            qtdPallet: p.qtdPallet || 100,
+            estoqueInicialCaixas: p.estoqueInicialCaixas,
+            vendaCaixas: p.vendaCaixas
+          });
         });
         
+        setProductsList(loadedProductsList.length > 0 ? loadedProductsList : ABASTECIMENTO_PRODUCTS_DATA);
         setCustomProductData(loadedData);
         setIsHistoricalLoaded(true);
         setLoadedHistoryMeta({
@@ -135,6 +156,7 @@ export default function AbastecimentoDiarioComponent({ user, empresa, tasks }: A
             vendaCaixas: p.vendaCaixas
           };
         });
+        setProductsList(ABASTECIMENTO_PRODUCTS_DATA);
         setCustomProductData(initial);
         setIsHistoricalLoaded(false);
         setLoadedHistoryMeta(null);
@@ -186,7 +208,7 @@ export default function AbastecimentoDiarioComponent({ user, empresa, tasks }: A
     const map = new Map<number, { boxes: number; pallets: number; operators: Set<string>; hourlyCounts: Record<number, number> }>();
     
     // Initialize map with 0s for all products
-    ABASTECIMENTO_PRODUCTS_DATA.forEach(p => {
+    productsList.forEach(p => {
       map.set(p.sku, {
         boxes: 0,
         pallets: 0,
@@ -247,8 +269,12 @@ export default function AbastecimentoDiarioComponent({ user, empresa, tasks }: A
 
       const entry = map.get(targetSku);
       if (entry) {
-        const qtyBoxes = Number(t.rawTask?.quantidade || t.quantidade || 30);
-        const qtyPallets = Number(t.quantidadePaletes || Math.ceil(qtyBoxes / 30));
+        const productInfo = productsList.find(p => p.sku === targetSku);
+        const boxesPerPallet = productInfo?.qtdPallet || 100;
+
+        // Since tasks are dispatched in Pallets, t.quantidade is the count of pallets
+        const qtyPallets = Number(t.quantidadePaletes || t.quantidade || 1);
+        const qtyBoxes = qtyPallets * boxesPerPallet;
         
         entry.boxes += qtyBoxes;
         entry.pallets += qtyPallets;
@@ -261,11 +287,11 @@ export default function AbastecimentoDiarioComponent({ user, empresa, tasks }: A
     });
 
     return { map, excludedCount };
-  }, [tasks, selectedAnalysisDate]);
+  }, [tasks, selectedAnalysisDate, productsList]);
 
   // 4. Combine baseline or custom values with active replenishment data
   const processedSkus = useMemo(() => {
-    return ABASTECIMENTO_PRODUCTS_DATA.map(p => {
+    return productsList.map(p => {
       const replData = replenishmentMap.map.get(p.sku) || { boxes: 0, pallets: 0, operators: new Set<string>() };
       
       const customData = customProductData[p.sku] || { estoqueInicialCaixas: p.estoqueInicialCaixas, vendaCaixas: p.vendaCaixas };
@@ -319,7 +345,7 @@ export default function AbastecimentoDiarioComponent({ user, empresa, tasks }: A
   }, [replenishmentMap, customProductData, nightStrategy]);
 
   // 5. Totals calculations
-  const totalSkusChecked = processedSkus.length;
+  const totalSkusChecked = useMemo(() => processedSkus.filter(p => p.estoqueInicialCaixas > 0).length, [processedSkus]);
   const totalInitialBoxes = useMemo(() => processedSkus.reduce((acc, curr) => acc + curr.estoqueInicialCaixas, 0), [processedSkus]);
   const totalInitialPallets = useMemo(() => {
     return Math.round(processedSkus.reduce((acc, curr) => acc + (curr.estoqueInicialCaixas / curr.qtdPallet), 0) * 10) / 10;
@@ -598,9 +624,9 @@ export default function AbastecimentoDiarioComponent({ user, empresa, tasks }: A
   const handleResetSales = () => {
     setCustomProductData(prev => {
       const updated = { ...prev };
-      Object.keys(updated).forEach(k => {
-        const sku = Number(k);
-        updated[sku] = { ...updated[sku], vendaCaixas: 0 };
+      productsList.forEach(p => {
+        const current = updated[p.sku] || { estoqueInicialCaixas: p.estoqueInicialCaixas, vendaCaixas: p.vendaCaixas };
+        updated[p.sku] = { ...current, vendaCaixas: 0 };
       });
       return updated;
     });
@@ -610,9 +636,9 @@ export default function AbastecimentoDiarioComponent({ user, empresa, tasks }: A
   const handleResetInitial = () => {
     setCustomProductData(prev => {
       const updated = { ...prev };
-      Object.keys(updated).forEach(k => {
-        const sku = Number(k);
-        updated[sku] = { ...updated[sku], estoqueInicialCaixas: 0 };
+      productsList.forEach(p => {
+        const current = updated[p.sku] || { estoqueInicialCaixas: p.estoqueInicialCaixas, vendaCaixas: p.vendaCaixas };
+        updated[p.sku] = { ...current, estoqueInicialCaixas: 0 };
       });
       return updated;
     });
@@ -627,50 +653,438 @@ export default function AbastecimentoDiarioComponent({ user, empresa, tasks }: A
         vendaCaixas: p.vendaCaixas
       };
     });
+    setProductsList(ABASTECIMENTO_PRODUCTS_DATA);
     setCustomProductData(initial);
     showToast("Valores padrões restaurados com sucesso!", "success");
+  };
+
+  const handleClear021101 = () => {
+    setFileName021101('');
+    setCustomProductData(prev => {
+      const updated = { ...prev };
+      productsList.forEach(p => {
+        const current = updated[p.sku] || { estoqueInicialCaixas: p.estoqueInicialCaixas, vendaCaixas: p.vendaCaixas };
+        updated[p.sku] = { ...current, estoqueInicialCaixas: 0 };
+      });
+      return updated;
+    });
+    showToast("Arquivo de Contagem Inicial desvinculado e valores zerados.", "success");
+  };
+
+  const handleClear020304 = () => {
+    setFileName020304('');
+    setCustomProductData(prev => {
+      const updated = { ...prev };
+      productsList.forEach(p => {
+        const current = updated[p.sku] || { estoqueInicialCaixas: p.estoqueInicialCaixas, vendaCaixas: p.vendaCaixas };
+        updated[p.sku] = { ...current, vendaCaixas: 0 };
+      });
+      return updated;
+    });
+    showToast("Arquivo de Saídas/Vendas desvinculado e valores zerados.", "success");
+  };
+
+  const handleImport021101 = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setImporting021101(true);
+    setFileName021101(file.name);
+
+    const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls');
+
+    if (isExcel) {
+      const xlsxReader = new FileReader();
+      xlsxReader.onload = (e) => {
+        try {
+          const data = new Uint8Array(e.target?.result as ArrayBuffer);
+          const workbook = XLSX.read(data, { type: 'array' });
+          const firstSheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[firstSheetName];
+          const jsonData = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1 });
+
+          const importedItems: Array<{ sku: number; descricao: string; embalagem: number; unidade: string; qtdPallet: number; estoqueInicialCaixas: number }> = [];
+          let totalQty = 0;
+
+          for (let i = 0; i < jsonData.length; i++) {
+            const row = jsonData[i];
+            if (!row || row.length < 10) continue;
+
+            // Skip header if first row has string indicators
+            if (i === 0) {
+              const cellC = String(row[2] || '').toLowerCase();
+              if (cellC.includes('produto') || cellC.includes('código') || cellC.includes('codigo') || cellC.includes('deposito')) {
+                continue;
+              }
+            }
+
+            const skuVal = parseInt(String(row[2] || '').trim(), 10);
+            const descVal = String(row[3] || '').trim();
+            const embVal = parseInt(String(row[4] || '').trim(), 10) || 1;
+            const uniVal = String(row[5] || 'cx').trim();
+            const palVal = parseInt(String(row[7] || '').trim(), 10) || 100;
+            const qtyVal = parseInt(String(row[9] || '').trim().replace(/\s/g, '').replace(/\./g, ''), 10);
+
+            if (!isNaN(skuVal) && !isNaN(qtyVal)) {
+              importedItems.push({
+                sku: skuVal,
+                descricao: descVal || `PRODUTO ${skuVal}`,
+                embalagem: embVal,
+                unidade: uniVal,
+                qtdPallet: palVal,
+                estoqueInicialCaixas: qtyVal
+              });
+              totalQty += qtyVal;
+            }
+          }
+
+          if (importedItems.length === 0) {
+            showToast("Nenhum código de produto (SKU) válido encontrado nas colunas C e J da planilha de Contagem.", "error");
+            setImporting021101(false);
+            return;
+          }
+
+          // Merge data
+          merge021101Data(importedItems);
+          showToast(`Sucesso! Importados ${importedItems.length} SKUs da rotina 021101. Total inicial: ${totalQty} caixas.`, "success");
+        } catch (err) {
+          console.error("Erro ao ler planilha Excel 021101:", err);
+          showToast("Erro ao processar planilha Excel da rotina 021101.", "error");
+        } finally {
+          setImporting021101(false);
+          event.target.value = '';
+        }
+      };
+      xlsxReader.readAsArrayBuffer(file);
+      return;
+    }
+
+    // Default: text / csv parsing
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const text = e.target?.result as string;
+        if (!text) {
+          showToast("O arquivo está vazio.", "error");
+          setImporting021101(false);
+          return;
+        }
+
+        const lines = text.split('\n');
+        const importedItems: Array<{ sku: number; descricao: string; embalagem: number; unidade: string; qtdPallet: number; estoqueInicialCaixas: number }> = [];
+        let totalQty = 0;
+
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i].trim();
+          if (!line) continue;
+
+          // Skip header row if it contains text like "Deposito" or "Produto"
+          if (i === 0 && (line.toLowerCase().includes('deposito') || line.toLowerCase().includes('produto') || line.toLowerCase().includes('descricao'))) {
+            continue;
+          }
+
+          let delimiter = ';';
+          if (line.includes(';')) {
+            delimiter = ';';
+          } else if (line.includes(',')) {
+            delimiter = ',';
+          } else if (line.includes('\t')) {
+            delimiter = '\t';
+          }
+
+          const parts = line.split(delimiter);
+          if (parts.length < 10) continue;
+
+          const skuRaw = parts[2]?.trim(); // Coluna C is index 2
+          const descVal = parts[3]?.trim() || '';
+          const embRaw = parts[4]?.trim();
+          const uniVal = parts[5]?.trim() || 'cx';
+          const palRaw = parts[7]?.trim();
+          const qtyRaw = parts[9]?.trim(); // Coluna J is index 9
+
+          if (!skuRaw || !qtyRaw) continue;
+
+          const sku = parseInt(skuRaw, 10);
+          const emb = parseInt(embRaw || '1', 10) || 1;
+          const pal = parseInt(palRaw || '100', 10) || 100;
+          const cleanQty = qtyRaw.replace(/\s/g, '').replace(/\./g, '');
+          const qty = parseInt(cleanQty, 10);
+
+          if (!isNaN(sku) && !isNaN(qty)) {
+            importedItems.push({
+              sku,
+              descricao: descVal || `PRODUTO ${sku}`,
+              embalagem: emb,
+              unidade: uniVal,
+              qtdPallet: pal,
+              estoqueInicialCaixas: qty
+            });
+            totalQty += qty;
+          }
+        }
+
+        if (importedItems.length === 0) {
+          showToast("Nenhum código de produto ou quantidade válidos encontrados na Coluna C e J (Rotina 021101).", "error");
+          setImporting021101(false);
+          return;
+        }
+
+        merge021101Data(importedItems);
+        showToast(`Sucesso! Importados ${importedItems.length} SKUs de Contagem Inicial. Total de estoque: ${totalQty} caixas.`, "success");
+      } catch (err) {
+        console.error("Erro ao ler arquivo 021101:", err);
+        showToast("Erro ao processar o arquivo de importação 021101.", "error");
+      } finally {
+        setImporting021101(false);
+        event.target.value = '';
+      }
+    };
+
+    reader.onerror = () => {
+      showToast("Erro ao ler o arquivo físico 021101.", "error");
+      setImporting021101(false);
+    };
+
+    reader.readAsText(file, 'utf-8');
+  };
+
+  const merge021101Data = (importedItems: Array<{ sku: number; descricao: string; embalagem: number; unidade: string; qtdPallet: number; estoqueInicialCaixas: number }>) => {
+    setProductsList(prevProducts => {
+      const updatedProducts = [...prevProducts];
+      importedItems.forEach(item => {
+        const existingIdx = updatedProducts.findIndex(p => p.sku === item.sku);
+        if (existingIdx !== -1) {
+          updatedProducts[existingIdx] = {
+            ...updatedProducts[existingIdx],
+            descricao: item.descricao || updatedProducts[existingIdx].descricao,
+            embalagem: item.embalagem || updatedProducts[existingIdx].embalagem,
+            unidade: item.unidade || updatedProducts[existingIdx].unidade,
+            qtdPallet: item.qtdPallet || updatedProducts[existingIdx].qtdPallet,
+          };
+        } else {
+          updatedProducts.push({
+            sku: item.sku,
+            descricao: item.descricao || `PRODUTO ${item.sku}`,
+            unidade: item.unidade,
+            embalagem: item.embalagem,
+            qtdPallet: item.qtdPallet,
+            estoqueInicialCaixas: item.estoqueInicialCaixas,
+            vendaCaixas: 0
+          });
+        }
+      });
+      return updatedProducts;
+    });
+
+    setCustomProductData(prevCustom => {
+      const updatedCustom = { ...prevCustom };
+      importedItems.forEach(item => {
+        updatedCustom[item.sku] = {
+          estoqueInicialCaixas: item.estoqueInicialCaixas,
+          vendaCaixas: prevCustom[item.sku]?.vendaCaixas || 0
+        };
+      });
+      return updatedCustom;
+    });
+  };
+
+  const handleImport020304 = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setImporting020304(true);
+    setFileName020304(file.name);
+
+    const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls');
+
+    if (isExcel) {
+      const xlsxReader = new FileReader();
+      xlsxReader.onload = (e) => {
+        try {
+          const data = new Uint8Array(e.target?.result as ArrayBuffer);
+          const workbook = XLSX.read(data, { type: 'array' });
+          const firstSheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[firstSheetName];
+          const jsonData = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1 });
+
+          const importedItems: Array<{ sku: number; descricao: string; unidade: string; vendaCaixas: number }> = [];
+          let totalSales = 0;
+
+          for (let i = 0; i < jsonData.length; i++) {
+            const row = jsonData[i];
+            if (!row || row.length < 10) continue;
+
+            // Skip header if first row has string indicators
+            if (i === 0) {
+              const cellB = String(row[1] || '').toLowerCase();
+              if (cellB.includes('cod') || cellB.includes('produto') || cellB.includes('grade')) {
+                continue;
+              }
+            }
+
+            const skuVal = parseInt(String(row[1] || '').trim(), 10);
+            const descVal = String(row[2] || '').trim();
+            const uniVal = String(row[3] || 'cx').trim();
+            const qtyVal = parseInt(String(row[9] || '').trim().replace(/\s/g, '').replace(/\./g, ''), 10);
+
+            if (!isNaN(skuVal) && !isNaN(qtyVal)) {
+              importedItems.push({
+                sku: skuVal,
+                descricao: descVal || `PRODUTO ${skuVal}`,
+                unidade: uniVal,
+                vendaCaixas: qtyVal
+              });
+              totalSales += qtyVal;
+            }
+          }
+
+          if (importedItems.length === 0) {
+            showToast("Nenhum código de produto (SKU) válido encontrado nas colunas B e J da planilha de Saídas.", "error");
+            setImporting020304(false);
+            return;
+          }
+
+          // Merge data
+          merge020304Data(importedItems);
+          showToast(`Sucesso! Importados ${importedItems.length} SKUs da rotina 020304. Total de saídas: ${totalSales} caixas.`, "success");
+        } catch (err) {
+          console.error("Erro ao ler planilha Excel 020304:", err);
+          showToast("Erro ao processar planilha Excel da rotina 020304.", "error");
+        } finally {
+          setImporting020304(false);
+          event.target.value = '';
+        }
+      };
+      xlsxReader.readAsArrayBuffer(file);
+      return;
+    }
+
+    // Default: text / csv parsing
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const text = e.target?.result as string;
+        if (!text) {
+          showToast("O arquivo está vazio.", "error");
+          setImporting020304(false);
+          return;
+        }
+
+        const lines = text.split('\n');
+        const importedItems: Array<{ sku: number; descricao: string; unidade: string; vendaCaixas: number }> = [];
+        let totalSales = 0;
+
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i].trim();
+          if (!line) continue;
+
+          // Skip header row if it contains text like "Grade" or "Cod" or "Saidas"
+          if (i === 0 && (line.toLowerCase().includes('grade') || line.toLowerCase().includes('cod') || line.toLowerCase().includes('saidas'))) {
+            continue;
+          }
+
+          let delimiter = ';';
+          if (line.includes(';')) {
+            delimiter = ';';
+          } else if (line.includes(',')) {
+            delimiter = ',';
+          } else if (line.includes('\t')) {
+            delimiter = '\t';
+          }
+
+          const parts = line.split(delimiter);
+          if (parts.length < 10) continue;
+
+          const skuRaw = parts[1]?.trim(); // Coluna B is index 1
+          const descVal = parts[2]?.trim() || '';
+          const uniVal = parts[3]?.trim() || 'cx';
+          const qtyRaw = parts[9]?.trim(); // Coluna J is index 9
+
+          if (!skuRaw || !qtyRaw) continue;
+
+          const sku = parseInt(skuRaw, 10);
+          const cleanQty = qtyRaw.replace(/\s/g, '').replace(/\./g, '');
+          const qty = parseInt(cleanQty, 10);
+
+          if (!isNaN(sku) && !isNaN(qty)) {
+            importedItems.push({
+              sku,
+              descricao: descVal || `PRODUTO ${sku}`,
+              unidade: uniVal,
+              vendaCaixas: qty
+            });
+            totalSales += qty;
+          }
+        }
+
+        if (importedItems.length === 0) {
+          showToast("Nenhum código de produto ou quantidade válidos encontrados na Coluna B e J (Rotina 020304).", "error");
+          setImporting020304(false);
+          return;
+        }
+
+        merge020304Data(importedItems);
+        showToast(`Sucesso! Importados ${importedItems.length} SKUs de Saídas/Vendas. Total de saídas: ${totalSales} caixas.`, "success");
+      } catch (err) {
+        console.error("Erro ao ler arquivo 020304:", err);
+        showToast("Erro ao processar o arquivo de importação 020304.", "error");
+      } finally {
+        setImporting020304(false);
+        event.target.value = '';
+      }
+    };
+
+    reader.onerror = () => {
+      showToast("Erro ao ler o arquivo físico 020304.", "error");
+      setImporting020304(false);
+    };
+
+    reader.readAsText(file, 'utf-8');
+  };
+
+  const merge020304Data = (importedItems: Array<{ sku: number; descricao: string; unidade?: string; vendaCaixas: number }>) => {
+    setProductsList(prevProducts => {
+      const updatedProducts = [...prevProducts];
+      importedItems.forEach(item => {
+        const existingIdx = updatedProducts.findIndex(p => p.sku === item.sku);
+        if (existingIdx !== -1) {
+          updatedProducts[existingIdx] = {
+            ...updatedProducts[existingIdx],
+            descricao: item.descricao || updatedProducts[existingIdx].descricao,
+            unidade: item.unidade || updatedProducts[existingIdx].unidade,
+          };
+        } else {
+          updatedProducts.push({
+            sku: item.sku,
+            descricao: item.descricao || `PRODUTO ${item.sku}`,
+            unidade: item.unidade || 'cx',
+            embalagem: 1,
+            qtdPallet: 100,
+            estoqueInicialCaixas: 0,
+            vendaCaixas: item.vendaCaixas
+          });
+        }
+      });
+      return updatedProducts;
+    });
+
+    setCustomProductData(prevCustom => {
+      const updatedCustom = { ...prevCustom };
+      importedItems.forEach(item => {
+        updatedCustom[item.sku] = {
+          estoqueInicialCaixas: prevCustom[item.sku]?.estoqueInicialCaixas || 0,
+          vendaCaixas: item.vendaCaixas
+        };
+      });
+      return updatedCustom;
+    });
   };
 
   return (
     <div className="flex flex-col gap-6 relative">
       
-      {/* HEADER BANNER */}
-      <div className="p-5 bg-white border border-slate-200 rounded-2xl text-slate-800 shadow-xs relative overflow-hidden flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-start gap-3.5 z-10">
-          <div className="p-2.5 bg-amber-50 rounded-xl border border-amber-200">
-            <Activity className="w-6 h-6 text-amber-500 animate-pulse" />
-          </div>
-          <div>
-            <h2 className="font-sans font-black text-base tracking-wide uppercase text-slate-900">Análise de Abastecimento Diário do Picking</h2>
-            <p className="text-xs text-slate-500 font-medium max-w-xl">
-              Consolidação integrada de 3 processos operacionais (Contagem Inicial 021101, Abastecimento Diurno e Vendas do Dia 020304) para monitorar em tempo real a cobertura do picking.
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2 z-10 self-start md:self-center">
-          <span className="px-3 py-1 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-mono tracking-wider font-bold text-slate-600">
-            ROTINAS: 021101 & 020304
-          </span>
-          <button 
-            onClick={handleExportExcel}
-            className="px-3 py-1.5 bg-white hover:bg-slate-50 text-emerald-700 border border-slate-200 font-sans font-black text-xs rounded-lg transition-all shadow-3xs flex items-center gap-1.5 cursor-pointer animate-none"
-          >
-            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-            Excel
-          </button>
-          <button 
-            onClick={handleExportNightExcel}
-            className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-sans font-black text-xs rounded-lg transition-all shadow-3xs flex items-center gap-1.5 cursor-pointer border border-indigo-200"
-            title="Exportar apenas itens com necessidade de abastecimento noturno"
-          >
-            <Moon className="w-3.5 h-3.5 text-indigo-500 fill-indigo-500/15 animate-none" />
-            Excel Noturno
-          </button>
-        </div>
-      </div>
-
       {/* DUAL SUB-TABS SELECTOR */}
-      <div className="flex items-center justify-between border-b border-slate-200 pb-0.5">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-200 pb-2 sm:pb-0.5 gap-2">
         <div className="flex gap-2">
           <button 
             onClick={() => setActivePanel('analise')}
@@ -686,18 +1100,36 @@ export default function AbastecimentoDiarioComponent({ user, empresa, tasks }: A
           </button>
         </div>
         
-        {/* Date Selector Quick Integration */}
-        <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-xl border border-slate-200">
-          <Calendar className="w-3.5 h-3.5 text-slate-500 ml-1.5" />
-          <input 
-            type="date"
-            value={selectedAnalysisDate}
-            onChange={(e) => {
-              setSelectedAnalysisDate(e.target.value);
-              setActivePanel('analise');
-            }}
-            className="bg-transparent border-none text-xs font-black font-mono text-slate-800 focus:outline-none p-1 cursor-pointer"
-          />
+        <div className="flex items-center flex-wrap gap-2">
+          <button 
+            onClick={handleExportExcel}
+            className="px-2.5 py-1 bg-white hover:bg-slate-50 text-emerald-700 border border-slate-200 font-sans font-black text-[10px] uppercase tracking-wider rounded-lg transition-all shadow-3xs flex items-center gap-1.5 cursor-pointer"
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+            Excel
+          </button>
+          <button 
+            onClick={handleExportNightExcel}
+            className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-sans font-black text-[10px] uppercase tracking-wider rounded-lg transition-all shadow-3xs flex items-center gap-1.5 cursor-pointer border border-indigo-200"
+            title="Exportar apenas itens com necessidade de abastecimento noturno"
+          >
+            <Moon className="w-3.5 h-3.5 text-indigo-500 fill-indigo-500/15" />
+            Excel Noturno
+          </button>
+
+          {/* Date Selector Quick Integration */}
+          <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg border border-slate-200">
+            <Calendar className="w-3.5 h-3.5 text-slate-500 ml-1.5" />
+            <input 
+              type="date"
+              value={selectedAnalysisDate}
+              onChange={(e) => {
+                setSelectedAnalysisDate(e.target.value);
+                setActivePanel('analise');
+              }}
+              className="bg-transparent border-none text-[10px] font-black font-mono text-slate-800 focus:outline-none p-0.5 cursor-pointer"
+            />
+          </div>
         </div>
       </div>
 
@@ -859,86 +1291,193 @@ export default function AbastecimentoDiarioComponent({ user, empresa, tasks }: A
 
             <div className="flex items-center gap-2.5">
               <button 
-                onClick={() => setIsEditMode(!isEditMode)}
-                className={`px-3.5 py-2 font-sans font-black text-xs uppercase tracking-wider rounded-xl transition-all cursor-pointer flex items-center gap-2 border ${isEditMode ? 'bg-amber-500 text-white border-amber-500 font-black' : 'bg-transparent text-amber-600 border-amber-500 hover:bg-amber-50'}`}
-              >
-                {isEditMode ? (
-                  <>
-                    <Check className="w-3.5 h-3.5" />
-                    Fechar Edição
-                  </>
-                ) : (
-                  <>
-                    <Edit2 className="w-3.5 h-3.5" />
-                    Lançar 021101 / 020304
-                  </>
-                )}
-              </button>
-
-              <button 
                 onClick={handleSaveAnalysis}
                 disabled={saving}
-                className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-900 font-sans font-black text-xs uppercase tracking-wider rounded-xl transition-all cursor-pointer border-none flex items-center gap-2 shadow-sm disabled:opacity-50"
+                className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white font-sans font-black text-xs uppercase tracking-wider rounded-xl transition-all cursor-pointer border-none flex items-center gap-2 shadow-sm disabled:opacity-50"
               >
                 {saving ? (
                   <RefreshCw className="w-3.5 h-3.5 animate-spin" />
                 ) : (
-                  <Save className="w-3.5 h-3.5 text-indigo-600" />
+                  <Save className="w-3.5 h-3.5 text-white" />
                 )}
                 Salvar Análise do Dia
               </button>
             </div>
           </div>
 
-          {/* HISTORICAL METADATA BANNER WARNING */}
-          {isHistoricalLoaded && loadedHistoryMeta && (
-            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-[10px] flex items-center justify-between flex-wrap gap-2 shadow-inner">
-              <div className="flex items-center gap-2">
-                <Info className="w-4 h-4 shrink-0" />
-                <span>
-                  Você está visualizando uma análise salva por <strong className="text-slate-900 font-semibold">{loadedHistoryMeta.savedBy}</strong> em <strong className="text-slate-900 font-semibold">{new Date(loadedHistoryMeta.savedAt).toLocaleString()}</strong>. Alterações só serão aplicadas se clicar em salvar novamente.
-                </span>
-              </div>
-              <button 
-                onClick={handleRestoreDefaults}
-                className="px-2 py-0.5 text-[9px] font-black uppercase text-amber-900 bg-amber-100 hover:bg-amber-200 rounded border border-amber-300 transition-all cursor-pointer"
-              >
-                Reverter Padrão
-              </button>
-            </div>
-          )}
+
 
           {/* QUICK EDIT ACTIONS PANEL */}
           {isEditMode && (
             <motion.div 
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="p-3.5 bg-slate-50 border border-amber-200 border-dashed rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-inner"
+              className="relative p-5 bg-white border border-slate-200 rounded-2xl flex flex-col gap-5 shadow-xs overflow-hidden"
             >
-              <div>
-                <span className="text-[10px] font-black uppercase text-amber-800 block">Atalhos Operacionais do Lançamento</span>
-                <span className="text-[8px] text-slate-400 uppercase font-bold block mt-0.5">Defina valores de cobertura rapidamente para todo o mix de SKUs</span>
+              {/* Top Accent Gradient Bar representing both routines */}
+              <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-amber-500 to-emerald-500" />
+              
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+                <div className="flex items-start gap-2.5">
+                  <div className="p-1.5 bg-indigo-50/60 text-indigo-600 rounded-lg border border-indigo-100 shrink-0">
+                    <SlidersHorizontal className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <span className="text-xs font-black uppercase tracking-wider text-slate-800 block">Atalhos Operacionais & Importações</span>
+                    <span className="text-[10px] text-slate-400 font-medium block mt-0.5">Gerencie os valores de estoque inicial e saídas rapidamente via arquivos ou atalhos</span>
+                  </div>
+                </div>
+                
+                <div className="flex flex-wrap items-center gap-2">
+                  <button 
+                    onClick={handleResetInitial}
+                    className="px-3 py-1.5 bg-amber-50/50 hover:bg-amber-100/70 text-amber-800 border border-amber-200/50 rounded-lg text-[9.5px] font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5 shadow-3xs"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-amber-600" />
+                    Zerar Inicial (021101)
+                  </button>
+                  <button 
+                    onClick={handleResetSales}
+                    className="px-3 py-1.5 bg-emerald-50/50 hover:bg-emerald-100/70 text-emerald-800 border border-emerald-200/50 rounded-lg text-[9.5px] font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5 shadow-3xs"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-emerald-600" />
+                    Zerar Saídas (020304)
+                  </button>
+                  <button 
+                    onClick={handleRestoreDefaults}
+                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 rounded-lg text-[9.5px] font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5 shadow-3xs"
+                  >
+                    <Undo className="w-3.5 h-3.5 text-slate-600" />
+                    Restaurar Padrão
+                  </button>
+                </div>
               </div>
-              <div className="flex flex-wrap gap-1.5">
-                <button 
-                  onClick={handleResetInitial}
-                  className="px-2.5 py-1 bg-white hover:bg-slate-100 text-amber-700 border border-slate-200 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer"
-                >
-                  Zerar Inicial (021101)
-                </button>
-                <button 
-                  onClick={handleResetSales}
-                  className="px-2.5 py-1 bg-white hover:bg-slate-100 text-blue-700 border border-slate-200 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer"
-                >
-                  Zerar Saídas (020304)
-                </button>
-                <button 
-                  onClick={handleRestoreDefaults}
-                  className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-white border-none rounded-lg text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1"
-                >
-                  <Undo className="w-3 h-3" />
-                  Restaurar Padrão
-                </button>
+
+              {/* INTEGRATED FILE IMPORT BENTO CARDS */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                
+                {/* ROTINA 021101 (CONTAGEM INICIAL) */}
+                <div className="relative bg-slate-50/40 border border-slate-200/60 hover:border-amber-200/70 rounded-xl p-5 flex flex-col justify-between gap-4 shadow-3xs transition-all duration-200 group overflow-hidden">
+                  <div className="absolute top-0 left-0 bottom-0 w-[3px] bg-amber-500 rounded-l-xl opacity-0 group-hover:opacity-100 transition-opacity" />
+                  <div className="flex items-start gap-3.5">
+                    <div className="p-2.5 bg-amber-50 text-amber-600 rounded-xl border border-amber-100 shrink-0 shadow-3xs">
+                      <FileSpreadsheet className="w-5 h-5 text-amber-600" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <span className="text-[11.5px] font-extrabold uppercase tracking-tight text-slate-800 block">Importar Estoque Inicial (021101)</span>
+                      <p className="text-[10px] text-slate-400 font-medium leading-relaxed mt-1">
+                        Carregue o inventário de picking em formato <strong className="text-slate-600">.csv, .txt ou .xlsx</strong> para preencher o estoque inicial.
+                      </p>
+                      
+                      {/* Column specs badges */}
+                      <div className="flex flex-wrap gap-1.5 mt-2.5">
+                        <span className="inline-flex items-center gap-1 bg-slate-100/80 border border-slate-200 text-slate-600 text-[8.5px] font-bold px-2 py-0.5 rounded-md font-mono">
+                          Col C = SKU
+                        </span>
+                        <span className="inline-flex items-center gap-1 bg-slate-100/80 border border-slate-200 text-slate-600 text-[8.5px] font-bold px-2 py-0.5 rounded-md font-mono">
+                          Col D = Descrição
+                        </span>
+                        <span className="inline-flex items-center gap-1 bg-amber-50 border border-amber-200/60 text-amber-800 text-[8.5px] font-bold px-2 py-0.5 rounded-md font-mono">
+                          Col J = Qtd Estoque
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {fileName021101 ? (
+                    <div className="flex items-center justify-between bg-amber-50/30 border border-amber-200/40 rounded-xl px-3 py-2 mt-1">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <CheckCircle2 className="w-4 h-4 text-amber-600 shrink-0" />
+                        <span className="text-[10px] text-amber-900 font-mono font-bold truncate" title={fileName021101}>
+                          {fileName021101}
+                        </span>
+                      </div>
+                      <button 
+                        onClick={handleClear021101}
+                        className="p-1 bg-amber-100/50 hover:bg-amber-100 text-amber-900 rounded-md transition-colors cursor-pointer border-none"
+                        title="Remover arquivo e zerar valores"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="mt-1">
+                      <label className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-sans font-black text-[9.5px] uppercase tracking-wider rounded-lg transition-all cursor-pointer shadow-3xs text-center border-none">
+                        <FileSpreadsheet className="w-3.5 h-3.5" />
+                        {importing021101 ? 'Processando...' : 'Selecionar Planilha 021101'}
+                        <input 
+                          type="file"
+                          accept=".csv,.txt,.xlsx,.xls"
+                          onChange={handleImport021101}
+                          className="hidden"
+                          disabled={importing021101}
+                        />
+                      </label>
+                    </div>
+                  )}
+                </div>
+
+                {/* ROTINA 020304 (SAÍDAS / VENDAS) */}
+                <div className="relative bg-slate-50/40 border border-slate-200/60 hover:border-emerald-200/70 rounded-xl p-5 flex flex-col justify-between gap-4 shadow-3xs transition-all duration-200 group overflow-hidden">
+                  <div className="absolute top-0 left-0 bottom-0 w-[3px] bg-emerald-500 rounded-l-xl opacity-0 group-hover:opacity-100 transition-opacity" />
+                  <div className="flex items-start gap-3.5">
+                    <div className="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl border border-emerald-100 shrink-0 shadow-3xs">
+                      <FileSpreadsheet className="w-5 h-5 text-emerald-600" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <span className="text-[11.5px] font-extrabold uppercase tracking-tight text-slate-800 block">Importar Saídas / Vendas (020304)</span>
+                      <p className="text-[10px] text-slate-400 font-medium leading-relaxed mt-1">
+                        Carregue o relatório de vendas/saídas diárias em formato <strong className="text-slate-600">.csv, .txt ou .xlsx</strong> para preencher as saídas.
+                      </p>
+                      
+                      {/* Column specs badges */}
+                      <div className="flex flex-wrap gap-1.5 mt-2.5">
+                        <span className="inline-flex items-center gap-1 bg-slate-100/80 border border-slate-200 text-slate-600 text-[8.5px] font-bold px-2 py-0.5 rounded-md font-mono">
+                          Col B = SKU
+                        </span>
+                        <span className="inline-flex items-center gap-1 bg-slate-100/80 border border-slate-200 text-slate-600 text-[8.5px] font-bold px-2 py-0.5 rounded-md font-mono">
+                          Col C = Descrição
+                        </span>
+                        <span className="inline-flex items-center gap-1 bg-emerald-50 border border-emerald-200/60 text-emerald-800 text-[8.5px] font-bold px-2 py-0.5 rounded-md font-mono">
+                          Col J = Qtd Saídas
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {fileName020304 ? (
+                    <div className="flex items-center justify-between bg-emerald-50/30 border border-emerald-200/40 rounded-xl px-3 py-2 mt-1">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                        <span className="text-[10px] text-emerald-900 font-mono font-bold truncate" title={fileName020304}>
+                          {fileName020304}
+                        </span>
+                      </div>
+                      <button 
+                        onClick={handleClear020304}
+                        className="p-1 bg-emerald-100/50 hover:bg-emerald-100 text-emerald-900 rounded-md transition-colors cursor-pointer border-none"
+                        title="Remover arquivo e zerar valores"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="mt-1">
+                      <label className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white font-sans font-black text-[9.5px] uppercase tracking-wider rounded-lg transition-all cursor-pointer shadow-3xs text-center border-none">
+                        <FileSpreadsheet className="w-3.5 h-3.5" />
+                        {importing020304 ? 'Processando...' : 'Selecionar Planilha 020304'}
+                        <input 
+                          type="file"
+                          accept=".csv,.txt,.xlsx,.xls"
+                          onChange={handleImport020304}
+                          className="hidden"
+                          disabled={importing020304}
+                        />
+                      </label>
+                    </div>
+                  )}
+                </div>
+
               </div>
             </motion.div>
           )}
@@ -967,16 +1506,16 @@ export default function AbastecimentoDiarioComponent({ user, empresa, tasks }: A
 
               <div className="grid grid-cols-3 gap-2.5 bg-white p-3 rounded-xl border border-slate-200/60 shadow-inner">
                 <div className="flex flex-col">
-                  <span className="text-[8px] text-slate-400 font-bold uppercase">SKUs</span>
-                  <span className="text-sm font-black font-mono text-slate-800">{totalSkusChecked}</span>
+                  <span className="text-[10px] tracking-wider text-slate-500 font-bold uppercase">SKUs</span>
+                  <span className="text-2xl font-black font-mono text-slate-800">{totalSkusChecked}</span>
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-[8px] text-slate-400 font-bold uppercase">Caixas</span>
-                  <span className="text-sm font-black font-mono text-slate-800">{totalInitialBoxes.toLocaleString()}</span>
+                  <span className="text-[10px] tracking-wider text-slate-500 font-bold uppercase">Caixas</span>
+                  <span className="text-2xl font-black font-mono text-slate-800">{totalInitialBoxes.toLocaleString()}</span>
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-[8px] text-slate-400 font-bold uppercase">Paletes</span>
-                  <span className="text-sm font-black font-mono text-slate-800">{totalInitialPallets.toLocaleString()} PL</span>
+                  <span className="text-[10px] tracking-wider text-slate-500 font-bold uppercase">Paletes</span>
+                  <span className="text-2xl font-black font-mono text-slate-800">{totalInitialPallets.toLocaleString()} <span className="text-xs font-bold text-slate-400 font-sans">PL</span></span>
                 </div>
               </div>
 
@@ -1008,21 +1547,21 @@ export default function AbastecimentoDiarioComponent({ user, empresa, tasks }: A
 
               <div className="grid grid-cols-3 gap-2.5 bg-white p-3 rounded-xl border border-slate-200/60 shadow-inner">
                 <div className="flex flex-col">
-                  <span className="text-[8px] text-slate-400 font-bold uppercase">Abastecidos</span>
-                  <span className="text-sm font-black font-mono text-emerald-600">
-                    {totalSkusReplenished || 0} SKUs
+                  <span className="text-[10px] tracking-wider text-slate-500 font-bold uppercase">Abastecidos</span>
+                  <span className="text-2xl font-black font-mono text-emerald-600">
+                    {totalSkusReplenished || 0} <span className="text-xs font-bold text-emerald-500 font-sans">SKUs</span>
                   </span>
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-[8px] text-slate-400 font-bold uppercase">Caixas</span>
-                  <span className="text-sm font-black font-mono text-emerald-600">
+                  <span className="text-[10px] tracking-wider text-slate-500 font-bold uppercase">Caixas</span>
+                  <span className="text-2xl font-black font-mono text-emerald-600">
                     {totalReplenishedBoxes.toLocaleString()}
                   </span>
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-[8px] text-slate-400 font-bold uppercase">Paletes</span>
-                  <span className="text-sm font-black font-mono text-emerald-600">
-                    {totalReplenishedPallets.toLocaleString()} PL
+                  <span className="text-[10px] tracking-wider text-slate-500 font-bold uppercase">Paletes</span>
+                  <span className="text-2xl font-black font-mono text-emerald-600">
+                    {totalReplenishedPallets.toLocaleString()} <span className="text-xs font-bold text-emerald-500 font-sans">PL</span>
                   </span>
                 </div>
               </div>
@@ -1061,35 +1600,37 @@ export default function AbastecimentoDiarioComponent({ user, empresa, tasks }: A
 
               <div className="grid grid-cols-3 gap-2.5 bg-white p-3 rounded-xl border border-slate-200/60 shadow-inner">
                 <div className="flex flex-col">
-                  <span className="text-[8px] text-slate-400 font-bold uppercase">Venda Diária</span>
-                  <span className="text-sm font-black font-mono text-blue-600">{totalSalesBoxes.toLocaleString()} cx</span>
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-[8px] text-slate-400 font-bold uppercase">Saldo Picking</span>
-                  <span className={`text-sm font-black font-mono ${totalCurrentBalanceBoxes >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                    {totalCurrentBalanceBoxes.toLocaleString()} cx
+                  <span className="text-[10px] tracking-wider text-slate-500 font-bold uppercase">Venda Diária</span>
+                  <span className="text-2xl font-black font-mono text-blue-600">
+                    {totalSalesBoxes.toLocaleString()} <span className="text-xs font-bold text-blue-400 font-sans">cx</span>
                   </span>
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-[8px] text-slate-400 font-bold uppercase">Suficiência</span>
-                  <span className="text-sm font-black font-mono text-indigo-600">
-                    {Math.round((totalInitialBoxes + totalReplenishedBoxes) / (totalSalesBoxes || 1) * 100)}%
+                  <span className="text-[10px] tracking-wider text-slate-500 font-bold uppercase">Saldo Picking</span>
+                  <span className={`text-2xl font-black font-mono ${totalCurrentBalanceBoxes >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                    {totalCurrentBalanceBoxes.toLocaleString()} <span className="text-xs font-bold font-sans opacity-70">cx</span>
+                  </span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-[10px] tracking-wider text-slate-500 font-bold uppercase">Suficiência</span>
+                  <span className="text-2xl font-black font-mono text-indigo-600">
+                    {totalSalesBoxes > 0 ? `${Math.round((totalInitialBoxes + totalReplenishedBoxes) / totalSalesBoxes * 100)}%` : '0%'}
                   </span>
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-1 text-[9px] text-center font-bold">
-                <div className="bg-emerald-50 text-emerald-600 p-1.5 rounded border border-emerald-100 flex items-center justify-center gap-1">
+              <div className="grid grid-cols-3 gap-1.5 text-[11px] text-center font-extrabold uppercase">
+                <div className="bg-emerald-50 text-emerald-700 py-2 px-1 rounded-xl border border-emerald-150 flex items-center justify-center gap-1.5">
                   <span>OK</span>
-                  <span className="font-mono bg-emerald-600 text-white px-1 py-0.2 rounded-full text-[8px]">{statusCounts.ok}</span>
+                  <span className="font-mono bg-emerald-600 text-white w-4.5 h-4.5 rounded-full text-[9px] flex items-center justify-center font-black">{statusCounts.ok}</span>
                 </div>
-                <div className="bg-amber-50 text-amber-600 p-1.5 rounded border border-amber-100 flex items-center justify-center gap-1">
+                <div className="bg-amber-50 text-amber-700 py-2 px-1 rounded-xl border border-amber-150 flex items-center justify-center gap-1.5">
                   <span>Atenção</span>
-                  <span className="font-mono bg-amber-500 text-white px-1 py-0.2 rounded-full text-[8px]">{statusCounts.attention}</span>
+                  <span className="font-mono bg-amber-500 text-white w-4.5 h-4.5 rounded-full text-[9px] flex items-center justify-center font-black">{statusCounts.attention}</span>
                 </div>
-                <div className="bg-red-50 text-red-500 p-1.5 rounded border border-red-100 flex items-center justify-center gap-1">
+                <div className="bg-red-50 text-red-600 py-2 px-1 rounded-xl border border-red-150 flex items-center justify-center gap-1.5">
                   <span>Crítico</span>
-                  <span className="font-mono bg-red-500 text-white px-1 py-0.2 rounded-full text-[8px]">{statusCounts.critical}</span>
+                  <span className="font-mono bg-red-500 text-white w-4.5 h-4.5 rounded-full text-[9px] flex items-center justify-center font-black">{statusCounts.critical}</span>
                 </div>
               </div>
             </div>
@@ -1100,32 +1641,32 @@ export default function AbastecimentoDiarioComponent({ user, empresa, tasks }: A
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
             
             {/* CHART 1: REPLENISHMENTS BY HOUR */}
-            <div className="lg:col-span-7 bg-white border border-slate-200 p-4 rounded-2xl flex flex-col gap-2 shadow-sm">
+            <div className="lg:col-span-7 bg-white border border-slate-200 p-5 rounded-2xl flex flex-col gap-3 shadow-sm">
               <div>
-                <span className="text-[10px] uppercase font-black text-slate-500 tracking-wider block flex items-center gap-1.5">
+                <span className="text-xs uppercase font-black text-slate-700 tracking-wider flex items-center gap-2">
                   <Clock className="w-4 h-4 text-amber-500" />
                   Volume de Abastecimento por Horário (Diurno 07h - 19h)
                 </span>
-                <span className="text-[8px] text-slate-400 uppercase block font-bold">
+                <span className="text-[10px] text-slate-400 uppercase block font-bold mt-0.5">
                   Detalhamento de caixas reabastecidas para auditoria de produtividade diurna
                 </span>
               </div>
-
-              <div className="h-56 w-full pt-4">
+              
+              <div className="h-80 w-full pt-4">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={hourlyChartData} margin={{ top: 10, right: 10, left: -20, bottom: 5 }}>
+                  <BarChart data={hourlyChartData} margin={{ top: 10, right: 10, left: -15, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                    <XAxis dataKey="hour" stroke="#94a3b8" fontSize={9} tickLine={false} />
-                    <YAxis stroke="#94a3b8" fontSize={9} tickLine={false} />
+                    <XAxis dataKey="hour" stroke="#94a3b8" fontSize={11} tickLine={false} />
+                    <YAxis stroke="#94a3b8" fontSize={11} tickLine={false} />
                     <Tooltip 
                       contentStyle={{ background: '#1e293b', border: 'none', borderRadius: '8px', color: '#fff' }}
-                      labelStyle={{ fontWeight: 'bold', fontSize: '10px' }}
-                      itemStyle={{ fontSize: '10px', color: '#f5a623' }}
+                      labelStyle={{ fontWeight: 'bold', fontSize: '11px' }}
+                      itemStyle={{ fontSize: '11px', color: '#f5a623' }}
                     />
                     <Bar dataKey="caixas" radius={[4, 4, 0, 0]}>
                       {hourlyChartData.map((entry, index) => {
                         const isLunch = entry.hour === '12h';
-                        return <Cell key={`cell-${index}`} fill={isLunch ? '#94a3b8' : '#f5a623'} />;
+                        return <Cell key={`cell-${index}`} fill={isLunch ? '#94a3b8' : '#032b5e'} />;
                       })}
                     </Bar>
                   </BarChart>
@@ -1134,18 +1675,18 @@ export default function AbastecimentoDiarioComponent({ user, empresa, tasks }: A
             </div>
 
             {/* CHART 2: TOP 10 REPLENISHED PRODUCTS */}
-            <div className="lg:col-span-5 bg-white border border-slate-200 p-4 rounded-2xl flex flex-col gap-2 shadow-sm">
+            <div className="lg:col-span-5 bg-white border border-slate-200 p-5 rounded-2xl flex flex-col gap-3 shadow-sm">
               <div>
-                <span className="text-[10px] uppercase font-black text-slate-500 tracking-wider block flex items-center gap-1.5">
+                <span className="text-xs uppercase font-black text-slate-700 tracking-wider flex items-center gap-2">
                   <TrendingUp className="w-4 h-4 text-emerald-500" />
                   Top 10 Produtos Mais Reabastecidos
                 </span>
-                <span className="text-[8px] text-slate-400 uppercase block font-bold">
+                <span className="text-[10px] text-slate-400 uppercase block font-bold mt-0.5">
                   Produtos que mais demandaram intervenção operativa do empilhador hoje
                 </span>
               </div>
 
-              <div className="h-56 w-full pt-4">
+              <div className="h-80 w-full pt-4">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart 
                     data={topProductsChartData} 
@@ -1153,14 +1694,14 @@ export default function AbastecimentoDiarioComponent({ user, empresa, tasks }: A
                     margin={{ top: 5, right: 10, left: 10, bottom: 5 }}
                   >
                     <CartesianGrid strokeDasharray="3 3" vertical={false} horizontal={false} stroke="#f1f5f9" />
-                    <XAxis type="number" stroke="#94a3b8" fontSize={8} tickLine={false} />
-                    <YAxis type="category" dataKey="name" stroke="#64748b" fontSize={8} width={110} tickLine={false} />
+                    <XAxis type="number" stroke="#94a3b8" fontSize={10} tickLine={false} />
+                    <YAxis type="category" dataKey="name" stroke="#64748b" fontSize={9} width={130} tickLine={false} />
                     <Tooltip 
                       contentStyle={{ background: '#1e293b', border: 'none', borderRadius: '8px', color: '#fff' }}
-                      labelStyle={{ fontWeight: 'bold', fontSize: '10px' }}
-                      itemStyle={{ fontSize: '10px', color: '#34d399' }}
+                      labelStyle={{ fontWeight: 'bold', fontSize: '11px' }}
+                      itemStyle={{ fontSize: '11px', color: '#34d399' }}
                     />
-                    <Bar dataKey="caixas" fill="#10b981" radius={[0, 4, 4, 0]} barSize={10} />
+                    <Bar dataKey="caixas" fill="#10b981" radius={[0, 4, 4, 0]} barSize={12} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>

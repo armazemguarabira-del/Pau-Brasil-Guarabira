@@ -43,6 +43,9 @@ export interface RepackRow {
   operador?: string;
   motivoNaoBaterMeta?: string;
   _criadoEm?: string;
+  tratativaGestor?: string;
+  tratativaData?: string;
+  tratativaResponsavel?: string;
 }
 
 export interface RepackValidadeRow {
@@ -73,6 +76,9 @@ export interface DespejoRow {
   resultado: string;
   operador?: string;
   _criadoEm?: string;
+  tratativaGestor?: string;
+  tratativaData?: string;
+  tratativaResponsavel?: string;
 }
 
 export interface ArmazemRow {

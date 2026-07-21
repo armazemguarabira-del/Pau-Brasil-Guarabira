@@ -498,7 +498,7 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
     const ops = new Set<string>();
     repackRows.forEach(r => {
       if (r.operador) {
-        const cleanName = r.operador.split('(')[0].trim();
+        const cleanName = r.operador.split('(')[0].trim().toUpperCase();
         if (cleanName) {
           ops.add(cleanName);
         }
@@ -512,9 +512,9 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
     return repackRows.filter(row => {
       // 1. Colaborador
       if (activeColaborador !== 'todos') {
-        const rowOpClean = row.operador?.split('(')[0].trim().toLowerCase() || '';
-        const filterOpClean = activeColaborador.toLowerCase();
-        if (rowOpClean !== filterOpClean && !row.operador?.toLowerCase().includes(filterOpClean)) return false;
+        const rowOpClean = row.operador?.split('(')[0].trim().toUpperCase() || '';
+        const filterOpClean = activeColaborador.toUpperCase();
+        if (rowOpClean !== filterOpClean && !row.operador?.toUpperCase().includes(filterOpClean)) return false;
       }
 
       // 2. Embalagem
