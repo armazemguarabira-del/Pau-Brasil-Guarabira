@@ -1,6 +1,6 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { initializeFirestore, doc, getDocFromServer } from 'firebase/firestore';
+import { initializeFirestore, doc, getDocFromServer, persistentLocalCache, persistentMultipleTabManager } from 'firebase/firestore';
 
 interface FirebaseConfigExtended {
   apiKey: string;
@@ -58,9 +58,14 @@ if (typeof window !== 'undefined') {
 // Initialize Firebase
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 const auth = getAuth(app);
+const firestoreSettings = {
+  experimentalForceLongPolling: true,
+  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+};
+
 const db = firebaseConfig.firestoreDatabaseId 
-  ? initializeFirestore(app, { experimentalForceLongPolling: true }, firebaseConfig.firestoreDatabaseId)
-  : initializeFirestore(app, { experimentalForceLongPolling: true });
+  ? initializeFirestore(app, firestoreSettings, firebaseConfig.firestoreDatabaseId)
+  : initializeFirestore(app, firestoreSettings);
 
 // Validation check on boot
 async function testConnection() {

@@ -37,8 +37,9 @@ import {
   Zap,
   Radio
 } from 'lucide-react';
-import { collection, onSnapshot, query, where, addDoc, updateDoc, deleteDoc, doc, orderBy } from 'firebase/firestore';
+import { collection, query, where, addDoc, updateDoc, deleteDoc, doc, orderBy } from 'firebase/firestore';
 import { db, isCustomFirebaseConnected } from '../firebase';
+import { fetchComCache } from '../utils/fetchComCache';
 
 const getRoleLabel = (role?: string) => {
   if (!role) return '';
@@ -197,7 +198,7 @@ export default function DashboardOverview({
     return `há ${days} dias`;
   };
 
-  // 1. Establish the Firestore Real-time Listeners
+  // 1. Establish the Firestore Data Fetching (Cache-First)
   useEffect(() => {
     const companyId = empresa?.id || 'demo';
     if (!db) {
@@ -227,91 +228,69 @@ export default function DashboardOverview({
       return;
     }
 
-    // Não assina nenhum listener sem empresaId definido: evita cair num
-    // fallback que buscaria as coleções inteiras sem filtro.
     if (!companyId) return;
 
-    // Repack
-    const qRepack = query(collection(db, 'repack'), where('empresaId', '==', companyId));
-    const unsubRepack = onSnapshot(qRepack, (snap) => {
-      const rows = snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as any));
-      setRepackList(rows);
-    }, (err) => console.error("Error in repack onSnapshot", err));
+    let cancelado = false;
 
-    // Despejo
-    const qDespejo = query(collection(db, 'despejo'), where('empresaId', '==', companyId));
-    const unsubDespejo = onSnapshot(qDespejo, (snap) => {
-      const rows = snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as any));
-      setDespejoList(rows);
-    }, (err) => console.error("Error in despejo onSnapshot", err));
+    const carregarDados = async () => {
+      try {
+        const [
+          repackSnap,
+          despejoSnap,
+          quebrasSnap,
+          validadesSnap,
+          armazemSnap,
+          blitzSnap,
+          tarefasSnap,
+          usuariosSnap,
+          acoesSnap,
+          colaboradoresSnap
+        ] = await Promise.all([
+          fetchComCache(query(collection(db, 'repack'), where('empresaId', '==', companyId))),
+          fetchComCache(query(collection(db, 'despejo'), where('empresaId', '==', companyId))),
+          fetchComCache(query(collection(db, 'quebras'), where('empresaId', '==', companyId))),
+          fetchComCache(query(collection(db, 'validades'), where('empresaId', '==', companyId))),
+          fetchComCache(query(collection(db, 'armazem'), where('empresaId', '==', companyId))),
+          fetchComCache(query(collection(db, 'blitz_refugo'), where('empresaId', '==', companyId))),
+          fetchComCache(query(collection(db, 'tarefas'), where('empresaId', '==', companyId))),
+          fetchComCache(query(collection(db, 'usuarios'), where('empresaId', '==', companyId))),
+          fetchComCache(query(collection(db, 'acoes'), where('empresaId', '==', companyId))),
+          fetchComCache(query(collection(db, 'colaboradores'), where('empresaId', '==', companyId)))
+        ]);
 
-    // Quebras
-    const qQuebras = query(collection(db, 'quebras'), where('empresaId', '==', companyId));
-    const unsubQuebras = onSnapshot(qQuebras, (snap) => {
-      const rows = snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as any));
-      setQuebrasList(rows);
-    }, (err) => console.error("Error in quebras onSnapshot", err));
+        if (cancelado) return;
 
-    // Validades
-    const qValidades = query(collection(db, 'validades'), where('empresaId', '==', companyId));
-    const unsubValidades = onSnapshot(qValidades, (snap) => {
-      const rows = snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as any));
-      setValidadesList(rows);
-    }, (err) => console.error("Error in validades onSnapshot", err));
+        setRepackList(repackSnap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as any)));
+        setDespejoList(despejoSnap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as any)));
+        setQuebrasList(quebrasSnap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as any)));
+        setValidadesList(validadesSnap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as any)));
+        setArmazemList(armazemSnap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as any)));
+        setBlitzList(blitzSnap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as any)));
+        setTarefasList(tarefasSnap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as any)));
+        setUsuariosList(usuariosSnap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as any)));
+        setAcoesList(acoesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as any)));
+        setColaboradoresList(colaboradoresSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as any)));
+      } catch (err) {
+        console.error("Error in carregarDados", err);
+      }
+    };
 
-    // Armazem
-    const qArmazem = query(collection(db, 'armazem'), where('empresaId', '==', companyId));
-    const unsubArmazem = onSnapshot(qArmazem, (snap) => {
-      const rows = snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as any));
-      setArmazemList(rows);
-    }, (err) => console.error("Error in armazem onSnapshot", err));
+    carregarDados();
 
-    // Blitz Refugo
-    const qBlitz = query(collection(db, 'blitz_refugo'), where('empresaId', '==', companyId));
-    const unsubBlitz = onSnapshot(qBlitz, (snap) => {
-      const rows = snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as any));
-      setBlitzList(rows);
-    }, (err) => console.error("Error in blitz onSnapshot", err));
+    const intervalId = setInterval(carregarDados, 2 * 60 * 1000);
 
-    // Tarefas
-    const qTarefas = query(collection(db, 'tarefas'), where('empresaId', '==', companyId));
-    const unsubTarefas = onSnapshot(qTarefas, (snap) => {
-      const rows = snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as any));
-      setTarefasList(rows);
-    }, (err) => console.error("Error in tarefas onSnapshot", err));
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        carregarDados();
+      }
+    };
 
-    // Usuarios
-    const qUsuarios = query(collection(db, 'usuarios'), where('empresaId', '==', companyId));
-    const unsubUsuarios = onSnapshot(qUsuarios, (snap) => {
-      const rows = snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as any));
-      setUsuariosList(rows);
-    }, (err) => console.error("Error in usuarios onSnapshot", err));
-
-    // Acoes (Action Plans / Improvements)
-    const qAcoes = query(collection(db, 'acoes'), where('empresaId', '==', companyId));
-    const unsubAcoes = onSnapshot(qAcoes, (snap) => {
-      const rows = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
-      setAcoesList(rows);
-    }, (err) => console.error("Error in acoes onSnapshot", err));
-
-    // Colaboradores
-    const qColaboradores = query(collection(db, 'colaboradores'), where('empresaId', '==', companyId));
-    const unsubColaboradores = onSnapshot(qColaboradores, (snap) => {
-      const rows = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
-      setColaboradoresList(rows);
-    }, (err) => console.error("Error in colaboradores onSnapshot", err));
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
-      unsubRepack();
-      unsubDespejo();
-      unsubQuebras();
-      unsubValidades();
-      unsubArmazem();
-      unsubBlitz();
-      unsubTarefas();
-      unsubUsuarios();
-      unsubAcoes();
-      unsubColaboradores();
+      cancelado = true;
+      clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [empresa?.id]);
 

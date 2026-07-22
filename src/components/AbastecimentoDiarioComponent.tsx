@@ -26,7 +26,9 @@ import {
   FileText,
   RefreshCw,
   Undo,
-  Moon
+  Moon,
+  AlertTriangle,
+  AlertOctagon
 } from 'lucide-react';
 import { 
   ResponsiveContainer, 
@@ -39,6 +41,7 @@ import {
   Cell
 } from 'recharts';
 import { BaseSkuData, ABASTECIMENTO_PRODUCTS_DATA } from '../data/abastecimentoData';
+import { PRODUCTS } from '../planosData';
 import { Tarefa } from '../types';
 import * as XLSX from 'xlsx';
 import { db } from '../firebase';
@@ -62,7 +65,7 @@ export default function AbastecimentoDiarioComponent({ user, empresa, tasks }: A
 
   // Search & Filter State
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'ok' | 'attention' | 'critical' | 'night_need'>('night_need');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'ok' | 'attention' | 'critical' | 'night_need' | 'no_picking_sales' | 'total_rupture'>('night_need');
   const [showOnlyWithSales, setShowOnlyWithSales] = useState(false);
 
   // Night Replenishment Strategy State
@@ -289,6 +292,17 @@ export default function AbastecimentoDiarioComponent({ user, empresa, tasks }: A
     return { map, excludedCount };
   }, [tasks, selectedAnalysisDate, productsList]);
 
+  // Map for SKU -> Hectolitro Factor (fatorHecto)
+  const planoHectoMap = useMemo(() => {
+    const map = new Map<number, number>();
+    PRODUCTS.forEach(p => {
+      if (p.codigo && p.fatorHecto) {
+        map.set(Number(p.codigo), Number(p.fatorHecto));
+      }
+    });
+    return map;
+  }, []);
+
   // 4. Combine baseline or custom values with active replenishment data
   const processedSkus = useMemo(() => {
     return productsList.map(p => {
@@ -302,6 +316,12 @@ export default function AbastecimentoDiarioComponent({ user, empresa, tasks }: A
       const estoqueTotalDisponivel = estoqueInicial + abastecimento;
       const saldoPicking = estoqueTotalDisponivel - venda;
       
+      const fatorHecto = planoHectoMap.get(Number(p.sku)) || 0.072;
+      const estoqueInicialHecto = estoqueInicial * fatorHecto;
+      const abastecimentoHecto = abastecimento * fatorHecto;
+      const vendaHecto = venda * fatorHecto;
+      const saldoPickingHecto = saldoPicking * fatorHecto;
+
       let status: 'ok' | 'attention' | 'critical' = 'ok';
       if (saldoPicking < 0) {
         status = 'critical';
@@ -327,22 +347,30 @@ export default function AbastecimentoDiarioComponent({ user, empresa, tasks }: A
       }
 
       const necessidadeNoturnaPaletes = Math.round((necessidadeNoturna / p.qtdPallet) * 10) / 10;
+      const necessidadeNoturnaHecto = necessidadeNoturna * fatorHecto;
 
       return {
         ...p,
+        fatorHecto,
         estoqueInicialCaixas: estoqueInicial,
+        estoqueInicialHecto,
         vendaCaixas: venda,
+        vendaHecto,
         abastecimento,
         abastecimentoPaletes: replData.pallets,
+        abastecimentoHecto,
         estoqueTotalDisponivel,
+        estoqueTotalHecto: estoqueTotalDisponivel * fatorHecto,
         saldoPicking,
+        saldoPickingHecto,
         status,
         operadores: Array.from(replData.operators),
         necessidadeNoturna,
-        necessidadeNoturnaPaletes
+        necessidadeNoturnaPaletes,
+        necessidadeNoturnaHecto
       };
     });
-  }, [replenishmentMap, customProductData, nightStrategy]);
+  }, [productsList, replenishmentMap, customProductData, nightStrategy, planoHectoMap]);
 
   // 5. Totals calculations
   const totalSkusChecked = useMemo(() => processedSkus.filter(p => p.estoqueInicialCaixas > 0).length, [processedSkus]);
@@ -350,10 +378,17 @@ export default function AbastecimentoDiarioComponent({ user, empresa, tasks }: A
   const totalInitialPallets = useMemo(() => {
     return Math.round(processedSkus.reduce((acc, curr) => acc + (curr.estoqueInicialCaixas / curr.qtdPallet), 0) * 10) / 10;
   }, [processedSkus]);
+  const totalInitialHecto = useMemo(() => {
+    return processedSkus.reduce((acc, curr) => acc + (curr.estoqueInicialHecto || 0), 0);
+  }, [processedSkus]);
 
   const totalSkusReplenished = useMemo(() => processedSkus.filter(p => p.abastecimento > 0).length, [processedSkus]);
   const totalReplenishedBoxes = useMemo(() => processedSkus.reduce((acc, curr) => acc + curr.abastecimento, 0), [processedSkus]);
   const totalReplenishedPallets = useMemo(() => processedSkus.reduce((acc, curr) => acc + curr.abastecimentoPaletes, 0), [processedSkus]);
+  const totalReplenishedHecto = useMemo(() => {
+    return processedSkus.reduce((acc, curr) => acc + (curr.abastecimentoHecto || 0), 0);
+  }, [processedSkus]);
+
   const activeOperators = useMemo(() => {
     const allOps = new Set<string>();
     replenishmentMap.map.forEach(val => {
@@ -363,13 +398,18 @@ export default function AbastecimentoDiarioComponent({ user, empresa, tasks }: A
   }, [replenishmentMap]);
 
   const totalSalesBoxes = useMemo(() => processedSkus.reduce((acc, curr) => acc + curr.vendaCaixas, 0), [processedSkus]);
+  const totalSalesHecto = useMemo(() => processedSkus.reduce((acc, curr) => acc + (curr.vendaHecto || 0), 0), [processedSkus]);
   const totalCurrentBalanceBoxes = useMemo(() => processedSkus.reduce((acc, curr) => acc + curr.saldoPicking, 0), [processedSkus]);
+  const totalCurrentBalanceHecto = useMemo(() => processedSkus.reduce((acc, curr) => acc + (curr.saldoPickingHecto || 0), 0), [processedSkus]);
   
   // Night Replenishment Totals
   const totalSkusNightReplenish = useMemo(() => processedSkus.filter(p => p.necessidadeNoturna > 0).length, [processedSkus]);
   const totalNightReplenishBoxes = useMemo(() => processedSkus.reduce((acc, curr) => acc + curr.necessidadeNoturna, 0), [processedSkus]);
   const totalNightReplenishPallets = useMemo(() => {
     return Math.round(processedSkus.reduce((acc, curr) => acc + (curr.necessidadeNoturna / curr.qtdPallet), 0) * 10) / 10;
+  }, [processedSkus]);
+  const totalNightReplenishHecto = useMemo(() => {
+    return processedSkus.reduce((acc, curr) => acc + (curr.necessidadeNoturnaHecto || 0), 0);
   }, [processedSkus]);
   
   const statusCounts = useMemo(() => {
@@ -382,6 +422,15 @@ export default function AbastecimentoDiarioComponent({ user, empresa, tasks }: A
       else if (p.status === 'critical') critical++;
     });
     return { ok, attention, critical };
+  }, [processedSkus]);
+
+  // SKUs without initial picking stock that had sales output
+  const skusSemEstoqueInicialComVenda = useMemo(() => {
+    return processedSkus.filter(p => p.estoqueInicialCaixas === 0 && p.vendaCaixas > 0);
+  }, [processedSkus]);
+
+  const skusRupturaTotalPicking = useMemo(() => {
+    return processedSkus.filter(p => p.estoqueTotalDisponivel === 0 && p.vendaCaixas > 0);
   }, [processedSkus]);
 
   // Hourly replenishment data for charts
@@ -469,6 +518,8 @@ export default function AbastecimentoDiarioComponent({ user, empresa, tasks }: A
       if (statusFilter === 'attention' && p.status !== 'attention') return false;
       if (statusFilter === 'critical' && p.status !== 'critical') return false;
       if (statusFilter === 'night_need' && p.necessidadeNoturna === 0) return false;
+      if (statusFilter === 'no_picking_sales' && !(p.estoqueInicialCaixas === 0 && p.vendaCaixas > 0)) return false;
+      if (statusFilter === 'total_rupture' && !(p.estoqueTotalDisponivel === 0 && p.vendaCaixas > 0)) return false;
 
       if (showOnlyWithSales && p.vendaCaixas === 0 && p.abastecimento === 0) return false;
 
@@ -1504,18 +1555,22 @@ export default function AbastecimentoDiarioComponent({ user, empresa, tasks }: A
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-2.5 bg-white p-3 rounded-xl border border-slate-200/60 shadow-inner">
+              <div className="grid grid-cols-4 gap-2 bg-white p-3 rounded-xl border border-slate-200/60 shadow-inner">
                 <div className="flex flex-col">
-                  <span className="text-[10px] tracking-wider text-slate-500 font-bold uppercase">SKUs</span>
-                  <span className="text-2xl font-black font-mono text-slate-800">{totalSkusChecked}</span>
+                  <span className="text-[9px] tracking-wider text-slate-500 font-bold uppercase">SKUs</span>
+                  <span className="text-xl font-black font-mono text-slate-800">{totalSkusChecked}</span>
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-[10px] tracking-wider text-slate-500 font-bold uppercase">Caixas</span>
-                  <span className="text-2xl font-black font-mono text-slate-800">{totalInitialBoxes.toLocaleString()}</span>
+                  <span className="text-[9px] tracking-wider text-slate-500 font-bold uppercase">Caixas</span>
+                  <span className="text-xl font-black font-mono text-slate-800">{totalInitialBoxes.toLocaleString()}</span>
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-[10px] tracking-wider text-slate-500 font-bold uppercase">Paletes</span>
-                  <span className="text-2xl font-black font-mono text-slate-800">{totalInitialPallets.toLocaleString()} <span className="text-xs font-bold text-slate-400 font-sans">PL</span></span>
+                  <span className="text-[9px] tracking-wider text-slate-500 font-bold uppercase">Paletes</span>
+                  <span className="text-xl font-black font-mono text-slate-800">{totalInitialPallets.toLocaleString()} <span className="text-[10px] font-bold text-slate-400 font-sans">PL</span></span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-[9px] tracking-wider text-amber-600 font-bold uppercase">Hectolitros</span>
+                  <span className="text-xl font-black font-mono text-amber-700">{totalInitialHecto.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} <span className="text-[10px] font-bold text-amber-500 font-sans">HL</span></span>
                 </div>
               </div>
 
@@ -1545,23 +1600,29 @@ export default function AbastecimentoDiarioComponent({ user, empresa, tasks }: A
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-2.5 bg-white p-3 rounded-xl border border-slate-200/60 shadow-inner">
+              <div className="grid grid-cols-4 gap-2 bg-white p-3 rounded-xl border border-slate-200/60 shadow-inner">
                 <div className="flex flex-col">
-                  <span className="text-[10px] tracking-wider text-slate-500 font-bold uppercase">Abastecidos</span>
-                  <span className="text-2xl font-black font-mono text-emerald-600">
-                    {totalSkusReplenished || 0} <span className="text-xs font-bold text-emerald-500 font-sans">SKUs</span>
+                  <span className="text-[9px] tracking-wider text-slate-500 font-bold uppercase">Abastecidos</span>
+                  <span className="text-xl font-black font-mono text-emerald-600">
+                    {totalSkusReplenished || 0} <span className="text-[10px] font-bold text-emerald-500 font-sans">SKUs</span>
                   </span>
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-[10px] tracking-wider text-slate-500 font-bold uppercase">Caixas</span>
-                  <span className="text-2xl font-black font-mono text-emerald-600">
+                  <span className="text-[9px] tracking-wider text-slate-500 font-bold uppercase">Caixas</span>
+                  <span className="text-xl font-black font-mono text-emerald-600">
                     {totalReplenishedBoxes.toLocaleString()}
                   </span>
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-[10px] tracking-wider text-slate-500 font-bold uppercase">Paletes</span>
-                  <span className="text-2xl font-black font-mono text-emerald-600">
-                    {totalReplenishedPallets.toLocaleString()} <span className="text-xs font-bold text-emerald-500 font-sans">PL</span>
+                  <span className="text-[9px] tracking-wider text-slate-500 font-bold uppercase">Paletes</span>
+                  <span className="text-xl font-black font-mono text-emerald-600">
+                    {totalReplenishedPallets.toLocaleString()} <span className="text-[10px] font-bold text-emerald-500 font-sans">PL</span>
+                  </span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-[9px] tracking-wider text-emerald-700 font-bold uppercase">Hectolitros</span>
+                  <span className="text-xl font-black font-mono text-emerald-600">
+                    {totalReplenishedHecto.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} <span className="text-[10px] font-bold text-emerald-500 font-sans">HL</span>
                   </span>
                 </div>
               </div>
@@ -1598,23 +1659,31 @@ export default function AbastecimentoDiarioComponent({ user, empresa, tasks }: A
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-2.5 bg-white p-3 rounded-xl border border-slate-200/60 shadow-inner">
+              <div className="grid grid-cols-4 gap-2 bg-white p-3 rounded-xl border border-slate-200/60 shadow-inner">
                 <div className="flex flex-col">
-                  <span className="text-[10px] tracking-wider text-slate-500 font-bold uppercase">Venda Diária</span>
-                  <span className="text-2xl font-black font-mono text-blue-600">
-                    {totalSalesBoxes.toLocaleString()} <span className="text-xs font-bold text-blue-400 font-sans">cx</span>
+                  <span className="text-[9px] tracking-wider text-slate-500 font-bold uppercase">Venda Diária</span>
+                  <span className="text-xl font-black font-mono text-blue-600">
+                    {totalSalesBoxes.toLocaleString()} <span className="text-[10px] font-bold text-blue-400 font-sans">cx</span>
                   </span>
+                  <span className="text-[8px] font-mono text-blue-500 font-bold">{totalSalesHecto.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} HL</span>
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-[10px] tracking-wider text-slate-500 font-bold uppercase">Saldo Picking</span>
-                  <span className={`text-2xl font-black font-mono ${totalCurrentBalanceBoxes >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                    {totalCurrentBalanceBoxes.toLocaleString()} <span className="text-xs font-bold font-sans opacity-70">cx</span>
+                  <span className="text-[9px] tracking-wider text-slate-500 font-bold uppercase">Saldo Picking</span>
+                  <span className={`text-xl font-black font-mono ${totalCurrentBalanceBoxes >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                    {totalCurrentBalanceBoxes.toLocaleString()} <span className="text-[10px] font-bold font-sans opacity-70">cx</span>
                   </span>
+                  <span className="text-[8px] font-mono text-slate-500 font-bold">{totalCurrentBalanceHecto.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} HL</span>
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-[10px] tracking-wider text-slate-500 font-bold uppercase">Suficiência</span>
-                  <span className="text-2xl font-black font-mono text-indigo-600">
+                  <span className="text-[9px] tracking-wider text-slate-500 font-bold uppercase">Suficiência</span>
+                  <span className="text-xl font-black font-mono text-indigo-600">
                     {totalSalesBoxes > 0 ? `${Math.round((totalInitialBoxes + totalReplenishedBoxes) / totalSalesBoxes * 100)}%` : '0%'}
+                  </span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-[9px] tracking-wider text-indigo-600 font-bold uppercase">Vol. Total</span>
+                  <span className="text-xl font-black font-mono text-indigo-700">
+                    {(totalInitialHecto + totalReplenishedHecto).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} <span className="text-[10px] font-bold font-sans">HL</span>
                   </span>
                 </div>
               </div>
@@ -1633,6 +1702,21 @@ export default function AbastecimentoDiarioComponent({ user, empresa, tasks }: A
                   <span className="font-mono bg-red-500 text-white w-4.5 h-4.5 rounded-full text-[9px] flex items-center justify-center font-black">{statusCounts.critical}</span>
                 </div>
               </div>
+
+              {skusSemEstoqueInicialComVenda.length > 0 && (
+                <button 
+                  onClick={() => setStatusFilter('no_picking_sales')}
+                  className="w-full bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 p-2 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center justify-between transition-colors cursor-pointer"
+                >
+                  <span className="flex items-center gap-1.5">
+                    <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+                    Sem Inicial c/ Venda
+                  </span>
+                  <span className="bg-amber-600 text-white px-2 py-0.5 rounded-full font-mono text-[9px] font-black">
+                    {skusSemEstoqueInicialComVenda.length} SKUs
+                  </span>
+                </button>
+              )}
             </div>
 
           </div>
@@ -1712,6 +1796,56 @@ export default function AbastecimentoDiarioComponent({ user, empresa, tasks }: A
           {/* COMPREHENSIVE STATUS TABLE */}
           <div className="bg-white border border-slate-200 rounded-2xl p-4 flex flex-col gap-4 shadow-sm">
             
+            {/* ALERT BANNER: SKUs without Picking Stock that had Sales Output */}
+            {skusSemEstoqueInicialComVenda.length > 0 && (
+              <div className="p-4 bg-gradient-to-r from-amber-50 via-rose-50 to-amber-50 border-2 border-amber-300 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-sm">
+                <div className="flex items-start md:items-center gap-3">
+                  <div className="p-2.5 bg-amber-500 text-white rounded-xl shadow-sm flex-shrink-0">
+                    <AlertTriangle className="w-6 h-6 animate-pulse" />
+                  </div>
+                  <div className="flex flex-col">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-black uppercase tracking-wider text-amber-950">
+                        Alerta Operacional: Venda sem Estoque no Picking
+                      </span>
+                      <span className="px-2 py-0.5 bg-amber-200 text-amber-950 font-mono font-black text-[9px] rounded-full uppercase">
+                        {skusSemEstoqueInicialComVenda.length} SKUs Afetados
+                      </span>
+                    </div>
+                    <p className="text-[11px] font-medium text-slate-700 mt-0.5">
+                      Estes produtos tiveram <strong className="text-blue-700">saída de venda registrada (Rotina 020304)</strong>, mas estavam com <strong className="text-amber-900">Zero Estoque na Contagem Inicial do Picking</strong> (Rotina 021101). Desses, <strong className="text-rose-700">{skusRupturaTotalPicking.length} SKUs</strong> continuam sem nenhum abastecimento no dia (Ruptura Total).
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <button
+                    onClick={() => setStatusFilter('no_picking_sales')}
+                    className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-xl transition-all border cursor-pointer flex items-center gap-1.5 ${
+                      statusFilter === 'no_picking_sales'
+                        ? 'bg-amber-600 text-white border-amber-700 shadow-md'
+                        : 'bg-white text-amber-900 border-amber-300 hover:bg-amber-100'
+                    }`}
+                  >
+                    <AlertTriangle className="w-3.5 h-3.5" />
+                    Sem Inicial ({skusSemEstoqueInicialComVenda.length})
+                  </button>
+                  {skusRupturaTotalPicking.length > 0 && (
+                    <button
+                      onClick={() => setStatusFilter('total_rupture')}
+                      className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-xl transition-all border cursor-pointer flex items-center gap-1.5 ${
+                        statusFilter === 'total_rupture'
+                          ? 'bg-rose-600 text-white border-rose-700 shadow-md'
+                          : 'bg-white text-rose-900 border-rose-300 hover:bg-rose-100'
+                      }`}
+                    >
+                      <AlertOctagon className="w-3.5 h-3.5" />
+                      Ruptura Total ({skusRupturaTotalPicking.length})
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Table Toolbar */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200/60">
               
@@ -1762,6 +1896,22 @@ export default function AbastecimentoDiarioComponent({ user, empresa, tasks }: A
                   >
                     <Moon className="w-2.5 h-2.5" />
                     Abastar à Noite ({totalSkusNightReplenish})
+                  </button>
+                  <button 
+                    onClick={() => setStatusFilter('no_picking_sales')}
+                    className={`px-2 py-1 text-[9px] font-black uppercase tracking-wider rounded-md cursor-pointer border-none transition-all flex items-center gap-1 ${statusFilter === 'no_picking_sales' ? 'bg-amber-600 text-white font-black shadow-sm' : 'text-amber-800 hover:bg-amber-50 bg-transparent'}`}
+                    title="Produtos sem estoque inicial no picking que tiveram vendas"
+                  >
+                    <AlertTriangle className="w-2.5 h-2.5" />
+                    Sem Inicial ({skusSemEstoqueInicialComVenda.length})
+                  </button>
+                  <button 
+                    onClick={() => setStatusFilter('total_rupture')}
+                    className={`px-2 py-1 text-[9px] font-black uppercase tracking-wider rounded-md cursor-pointer border-none transition-all flex items-center gap-1 ${statusFilter === 'total_rupture' ? 'bg-rose-600 text-white font-black shadow-sm' : 'text-rose-700 hover:bg-rose-50 bg-transparent'}`}
+                    title="Produtos sem estoque e sem abastecimento com vendas (Ruptura Total)"
+                  >
+                    <AlertOctagon className="w-2.5 h-2.5" />
+                    Ruptura Total ({skusRupturaTotalPicking.length})
                   </button>
                 </div>
 
@@ -1825,6 +1975,17 @@ export default function AbastecimentoDiarioComponent({ user, empresa, tasks }: A
                             <span className="text-[8px] text-slate-400 uppercase font-semibold">
                               Embalagem: {item.embalagem} • Palete: {item.qtdPallet} cx
                             </span>
+                            {item.estoqueTotalDisponivel === 0 && item.vendaCaixas > 0 ? (
+                              <span className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-black uppercase rounded bg-rose-100 text-rose-800 border border-rose-300 w-fit">
+                                <AlertOctagon className="w-2.5 h-2.5 text-rose-600" />
+                                Ruptura Total no Picking
+                              </span>
+                            ) : item.estoqueInicialCaixas === 0 && item.vendaCaixas > 0 ? (
+                              <span className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-black uppercase rounded bg-amber-100 text-amber-900 border border-amber-300 w-fit">
+                                <AlertTriangle className="w-2.5 h-2.5 text-amber-600" />
+                                Venda sem Estoque Inicial
+                              </span>
+                            ) : null}
                           </div>
                         </td>
                         
