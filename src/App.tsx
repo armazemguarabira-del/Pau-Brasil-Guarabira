@@ -31,14 +31,80 @@ import { Usuario, Empresa } from './types';
 import { motion, AnimatePresence } from 'motion/react';
 
 export default function App() {
-  const [user, setUser] = useState<Usuario | null>(null);
-  const [empresa, setEmpresa] = useState<Empresa | null>(null);
-  const [activePanel, setActivePanel] = useState<string>('landing');
+  const [user, setUser] = useState<Usuario | null>(() => {
+    try {
+      const saved = localStorage.getItem('af_logged_user');
+      return saved ? JSON.parse(saved) : null;
+    } catch (e) {
+      return null;
+    }
+  });
+
+  const [empresa, setEmpresa] = useState<Empresa | null>(() => {
+    try {
+      const saved = localStorage.getItem('af_logged_empresa');
+      return saved ? JSON.parse(saved) : null;
+    } catch (e) {
+      return null;
+    }
+  });
+
+  const [activePanel, setActivePanel] = useState<string>(() => {
+    try {
+      const savedUser = localStorage.getItem('af_logged_user');
+      if (savedUser) {
+        const savedPanel = localStorage.getItem('af_logged_panel');
+        if (savedPanel && savedPanel !== 'landing') return savedPanel;
+        return 'visao-geral';
+      }
+    } catch (e) {
+      // fallback
+    }
+    return 'landing';
+  });
+
   const [showAuthGate, setShowAuthGate] = useState(false);
   const [loading, setLoading] = useState(true);
   const [theme, setTheme] = useState<'dark' | 'light'>('light');
   const [currentTime, setCurrentTime] = useState('');
   const [activeActions, setActiveActions] = useState<any[]>([]);
+
+  // Sync user, empresa, and activePanel to localStorage for session persistence
+  useEffect(() => {
+    try {
+      if (user) {
+        localStorage.setItem('af_logged_user', JSON.stringify(user));
+      } else {
+        localStorage.removeItem('af_logged_user');
+      }
+    } catch (e) {
+      // ignore
+    }
+  }, [user]);
+
+  useEffect(() => {
+    try {
+      if (empresa) {
+        localStorage.setItem('af_logged_empresa', JSON.stringify(empresa));
+      } else {
+        localStorage.removeItem('af_logged_empresa');
+      }
+    } catch (e) {
+      // ignore
+    }
+  }, [empresa]);
+
+  useEffect(() => {
+    try {
+      if (user && activePanel && activePanel !== 'landing') {
+        localStorage.setItem('af_logged_panel', activePanel);
+      } else if (!user) {
+        localStorage.removeItem('af_logged_panel');
+      }
+    } catch (e) {
+      // ignore
+    }
+  }, [user, activePanel]);
 
   // Listen to pending action plans for the current logged in collaborator
   useEffect(() => {
@@ -262,15 +328,19 @@ export default function App() {
                 setEmpresa(eData);
               }
             }
-            setActivePanel('visao-geral');
+            setActivePanel(prev => (prev === 'landing' || !prev ? 'visao-geral' : prev));
           }
         } catch(e) {
           console.error('Error syncing auth metadata', e);
         }
       } else {
-        setUser(null);
-        setEmpresa(null);
-        setActivePanel('landing');
+        // Only clear if no saved user session exists in localStorage
+        const savedUser = localStorage.getItem('af_logged_user');
+        if (!savedUser) {
+          setUser(null);
+          setEmpresa(null);
+          setActivePanel('landing');
+        }
       }
       setLoading(false);
     });
@@ -323,7 +393,7 @@ export default function App() {
     }
 
     setShowAuthGate(false);
-    setActivePanel('visao-geral');
+    setActivePanel(prev => (prev === 'landing' || !prev ? 'visao-geral' : prev));
   };
 
   const handleLogout = async () => {
@@ -355,6 +425,10 @@ export default function App() {
         sessionStorage.removeItem(sessionKey);
       }
     }
+
+    localStorage.removeItem('af_logged_user');
+    localStorage.removeItem('af_logged_empresa');
+    localStorage.removeItem('af_logged_panel');
 
     if (auth) {
       await signOut(auth);
