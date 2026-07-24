@@ -362,6 +362,36 @@ const DEFAULT_ACOES = [
 • Métrica Detectada: 3.8 erros / 1000 cx (Meta: < 1.0 erro / 1000 cx)
 • Causa Provável: Endereçamento de gôndolas com etiquetas rasgadas ou sobrepostas na rua B.
 • Recomendação: Recadastrar e refazer a sinalização de código de barras nas posições de picking da rua B.`
+  },
+  {
+    id: 'local_act_006',
+    titulo: 'Plano de Ação: Descumprimento da Curva Pareto 70/30 no Carregamento (Picking)',
+    setor: 'Picking',
+    prioridade: 'alta',
+    responsavel: 'Supervisor de Operações (Picking)',
+    status: 'pendente',
+    limiteEm: '2026-07-28',
+    criadoEm: '2026-07-24T08:00:00.000Z',
+    origemAlertaId: 'alt_pareto_carregamento_70_30',
+    descricao: `[ALERTA AUTOMÁTICO - DESCUMPRIMENTO DA CURVA PARETO 70/30]
+📅 Registro de Ocorrência Operacional no Picking / Carregamento Ativo vs Após
+📍 Estágio: Carregamento Ativo vs Após (Distribuição de Volume por Etapa)
+
+📊 Métrica Apurada:
+• Durante Carregamento: 26% (115 PL)
+• Após Carregamento: 74% (325 PL)
+
+🎯 Meta Estipulada (Pareto 70/30):
+• Mínimo 70% Durante o Carregamento
+• Máximo 30% Após o Carregamento
+
+⚠️ Análise do Desvio:
+A proporção de separação realizada 'Após Carregamento' (74%) ultrapassou drasticamente a cota máxima permitida de 30%, resultando em gargalo no pós-embarque.
+
+💡 Plano de Ação Recomendado:
+1. Reorganizar a fila de reabastecimento de picking antes do início da janela de carregamento.
+2. Escalar 1 operador extra para montagem prévia dos paletes de maior giro (MVA).
+3. Realizar auditoria de sincronismo entre conferência e equipe de pátio.`
   }
 ];
 

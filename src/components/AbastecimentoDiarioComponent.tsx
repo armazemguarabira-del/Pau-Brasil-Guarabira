@@ -12,6 +12,7 @@ import {
   Activity,
   ArrowUpRight,
   TrendingUp,
+  TrendingDown,
   Info,
   Sparkles,
   FileSpreadsheet,
@@ -491,21 +492,6 @@ export default function AbastecimentoDiarioComponent({ user, empresa, tasks }: A
         allocated += val;
       });
       dataMap[10] = (dataMap[10] || 0) + (totalReplenishedBoxes - allocated);
-    } else if (totalComputed === 0) {
-      // Baseline curve for realistic representation
-      dataMap[7] = 210;
-      dataMap[8] = 450;
-      dataMap[9] = 680;
-      dataMap[10] = 920;
-      dataMap[11] = 710;
-      dataMap[12] = 310;
-      dataMap[13] = 420;
-      dataMap[14] = 810;
-      dataMap[15] = 980;
-      dataMap[16] = 750;
-      dataMap[17] = 510;
-      dataMap[18] = 380;
-      dataMap[19] = 140;
     }
 
     return hours.map(h => ({
@@ -514,9 +500,13 @@ export default function AbastecimentoDiarioComponent({ user, empresa, tasks }: A
     }));
   }, [replenishmentMap, totalReplenishedBoxes]);
 
-  // Top 10 product replenishments
+  const totalHourlyReplenished = useMemo(() => {
+    return hourlyChartData.reduce((acc, curr) => acc + curr.caixas, 0);
+  }, [hourlyChartData]);
+
+  // Top 15 product replenishments (real day's data)
   const topProductsChartData = useMemo(() => {
-    const list = processedSkus
+    return processedSkus
       .filter(p => p.abastecimento > 0)
       .map(p => ({
         sku: p.sku,
@@ -525,24 +515,24 @@ export default function AbastecimentoDiarioComponent({ user, empresa, tasks }: A
         caixas: p.abastecimento,
         paletes: Math.round((p.abastecimento / p.qtdPallet) * 10) / 10
       }))
-      .sort((a, b) => b.caixas - a.caixas);
+      .sort((a, b) => b.caixas - a.caixas)
+      .slice(0, 15);
+  }, [processedSkus]);
 
-    if (list.length === 0) {
-      return [
-        { sku: 2546, name: "ORIGINAL 600ML", fullName: "ORIGINAL 600ML", caixas: 320, paletes: 3.2 },
-        { sku: 13205, name: "SKOL VD 300ML", fullName: "SKOL GFA VD 300ML CX C/23", caixas: 280, paletes: 2.8 },
-        { sku: 19164, name: "GUARANA CHP 200ML", fullName: "GUARANA CHP ANTARCTICA PET 200ML", caixas: 240, paletes: 2.4 },
-        { sku: 2548, name: "BUDWEISER 600ML", fullName: "BUDWEISER 600ML", caixas: 180, paletes: 1.8 },
-        { sku: 1743, name: "ANTARCTICA GFA 1L", fullName: "ANTARCTICA PILSEN GFA VD 1L", caixas: 170, paletes: 1.7 },
-        { sku: 9067, name: "ANTARCTICA LATA 350", fullName: "ANTARCTICA PILSEN LATA 350ML", caixas: 150, paletes: 1.5 },
-        { sku: 9068, name: "SKOL LATA 350ML", fullName: "SKOL LATA 350ML SH C/12 NPAL", caixas: 120, paletes: 1.2 },
-        { sku: 34698, name: "SPATEN N 600ML", fullName: "SPATEN N 600ML CX C/24", caixas: 100, paletes: 1.0 },
-        { sku: 19225, name: "RED BULL 250ML", fullName: "RED BULL ENERGY DRINK 250ML", caixas: 80, paletes: 0.8 },
-        { sku: 20530, name: "STELLA ARTOIS 269ML", fullName: "STELLA ARTOIS 269ML", caixas: 70, paletes: 0.7 }
-      ];
-    }
-
-    return list.slice(0, 10);
+  // Top 15 products with the lowest sales (Rotina 020304) of the day
+  const lowestSalesChartData = useMemo(() => {
+    return processedSkus
+      .filter(p => (p.vendaCaixas || 0) > 0)
+      .map(p => ({
+        sku: p.sku,
+        name: p.descricao.length > 20 ? p.descricao.substring(0, 18) + '...' : p.descricao,
+        fullName: p.descricao,
+        vendas: p.vendaCaixas,
+        paletes: Math.round(((p.vendaCaixas || 0) / p.qtdPallet) * 10) / 10,
+        hecto: p.vendaHecto !== undefined ? Math.round(p.vendaHecto * 10) / 10 : Math.round(((p.vendaCaixas || 0) * p.fatorHecto) * 10) / 10
+      }))
+      .sort((a, b) => a.vendas - b.vendas) // Ascending order: lowest sales first
+      .slice(0, 15);
   }, [processedSkus]);
 
   // Filtered SKUs for active table
@@ -1159,6 +1149,19 @@ export default function AbastecimentoDiarioComponent({ user, empresa, tasks }: A
 
     setCustomProductData(prevCustom => {
       const updatedCustom = { ...prevCustom };
+      const importedSkuSet = new Set(importedItems.map(i => i.sku));
+
+      // Reset sales for SKUs not present in this 020304 import
+      Object.keys(updatedCustom).forEach(key => {
+        const skuNum = Number(key);
+        if (!importedSkuSet.has(skuNum)) {
+          updatedCustom[skuNum] = {
+            ...updatedCustom[skuNum],
+            vendaCaixas: 0
+          };
+        }
+      });
+
       importedItems.forEach(item => {
         updatedCustom[item.sku] = {
           estoqueInicialCaixas: prevCustom[item.sku]?.estoqueInicialCaixas || 0,
@@ -1763,7 +1766,7 @@ export default function AbastecimentoDiarioComponent({ user, empresa, tasks }: A
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
             
             {/* CHART 1: REPLENISHMENTS BY HOUR */}
-            <div className="lg:col-span-7 bg-white border border-slate-200 p-5 rounded-2xl flex flex-col gap-3 shadow-sm">
+            <div className="lg:col-span-12 bg-white border border-slate-200 p-5 rounded-2xl flex flex-col gap-3 shadow-sm">
               <div className="flex items-start justify-between">
                 <div>
                   <span className="text-xs uppercase font-black text-slate-700 tracking-wider flex items-center gap-2">
@@ -1782,49 +1785,56 @@ export default function AbastecimentoDiarioComponent({ user, empresa, tasks }: A
                 </div>
               </div>
               
-              <div className="h-80 w-full pt-2">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={hourlyChartData} margin={{ top: 10, right: 10, left: -15, bottom: 5 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                    <XAxis dataKey="hour" stroke="#94a3b8" fontSize={11} tickLine={false} />
-                    <YAxis stroke="#94a3b8" fontSize={11} tickLine={false} />
-                    <Tooltip 
-                      content={({ active, payload, label }) => {
-                        if (active && payload && payload.length) {
-                          const data = payload[0].payload;
-                          return (
-                            <div className="bg-slate-900 border border-slate-700 p-3 rounded-xl text-white shadow-xl">
-                              <p className="font-extrabold text-xs text-amber-400 mb-1">Horário: {label}</p>
-                              <p className="text-[11px] font-bold text-slate-200">
-                                Reabastecimento: <span className="font-black text-amber-400">{data.caixas.toLocaleString('pt-BR')} caixas</span>
-                              </p>
-                            </div>
-                          );
-                        }
-                        return null;
-                      }}
-                    />
-                    <Bar dataKey="caixas" radius={[4, 4, 0, 0]}>
-                      {hourlyChartData.map((entry, index) => {
-                        const isLunch = entry.hour === '12h';
-                        return <Cell key={`cell-${index}`} fill={isLunch ? '#94a3b8' : '#032b5e'} />;
-                      })}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
+              <div className="h-72 w-full pt-2">
+                {totalReplenishedBoxes === 0 && totalHourlyReplenished === 0 ? (
+                  <div className="h-full w-full flex flex-col items-center justify-center text-slate-400 gap-2 border border-dashed border-slate-200 rounded-xl bg-slate-50/50">
+                    <Info className="w-6 h-6 text-slate-300" />
+                    <span className="text-xs font-bold uppercase tracking-wider text-center px-4">Nenhum abastecimento de operador registrado na data selecionada</span>
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={hourlyChartData} margin={{ top: 10, right: 10, left: -15, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                      <XAxis dataKey="hour" stroke="#94a3b8" fontSize={11} tickLine={false} />
+                      <YAxis stroke="#94a3b8" fontSize={11} tickLine={false} />
+                      <Tooltip 
+                        content={({ active, payload, label }) => {
+                          if (active && payload && payload.length) {
+                            const data = payload[0].payload;
+                            return (
+                              <div className="bg-slate-900 border border-slate-700 p-3 rounded-xl text-white shadow-xl">
+                                <p className="font-extrabold text-xs text-amber-400 mb-1">Horário: {label}</p>
+                                <p className="text-[11px] font-bold text-slate-200">
+                                  Reabastecimento: <span className="font-black text-amber-400">{data.caixas.toLocaleString('pt-BR')} caixas</span>
+                                </p>
+                              </div>
+                            );
+                          }
+                          return null;
+                        }}
+                      />
+                      <Bar dataKey="caixas" radius={[4, 4, 0, 0]}>
+                        {hourlyChartData.map((entry, index) => {
+                          const isLunch = entry.hour === '12h';
+                          return <Cell key={`cell-${index}`} fill={isLunch ? '#94a3b8' : '#032b5e'} />;
+                        })}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
               </div>
             </div>
 
-            {/* CHART 2: TOP 10 REPLENISHED PRODUCTS */}
-            <div className="lg:col-span-5 bg-white border border-slate-200 p-5 rounded-2xl flex flex-col gap-3 shadow-sm">
+            {/* CHART 2: TOP 15 REPLENISHED SKUS */}
+            <div className="lg:col-span-6 bg-white border border-slate-200 p-5 rounded-2xl flex flex-col gap-3 shadow-sm">
               <div className="flex items-start justify-between">
                 <div>
                   <span className="text-xs uppercase font-black text-slate-700 tracking-wider flex items-center gap-2">
                     <TrendingUp className="w-4 h-4 text-emerald-500" />
-                    Top 10 Produtos Mais Reabastecidos
+                    Top 15 SKUs Mais Abastecidos no Dia
                   </span>
                   <span className="text-[10px] text-slate-400 uppercase block font-bold mt-0.5">
-                    Produtos que mais demandaram intervenção operativa do empilhador hoje
+                    SKUs com maior volume de reabastecimento operacional no turno
                   </span>
                 </div>
                 <div className="hidden sm:flex flex-col items-end">
@@ -1835,40 +1845,111 @@ export default function AbastecimentoDiarioComponent({ user, empresa, tasks }: A
                 </div>
               </div>
 
-              <div className="h-80 w-full pt-2">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart 
-                    data={topProductsChartData} 
-                    layout="vertical"
-                    margin={{ top: 5, right: 10, left: 10, bottom: 5 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} horizontal={false} stroke="#f1f5f9" />
-                    <XAxis type="number" stroke="#94a3b8" fontSize={10} tickLine={false} />
-                    <YAxis type="category" dataKey="name" stroke="#64748b" fontSize={9} width={130} tickLine={false} />
-                    <Tooltip 
-                      content={({ active, payload }) => {
-                        if (active && payload && payload.length) {
-                          const data = payload[0].payload;
-                          return (
-                            <div className="bg-slate-900 border border-slate-700 p-3 rounded-xl text-white shadow-xl max-w-xs">
-                              <p className="font-extrabold text-xs text-emerald-400 mb-0.5">#{data.sku} - {data.fullName || data.name}</p>
-                              <p className="text-[11px] font-bold text-slate-200">
-                                Reabastecido Hoje: <span className="font-black text-emerald-400">{data.caixas.toLocaleString('pt-BR')} caixas</span>
-                              </p>
-                              {data.paletes !== undefined && (
-                                <p className="text-[10px] text-slate-400 font-medium">
-                                  Equivalente: {data.paletes} palete(s)
+              <div className="h-[460px] w-full pt-2">
+                {topProductsChartData.length === 0 ? (
+                  <div className="h-full w-full flex flex-col items-center justify-center text-slate-400 gap-2 border border-dashed border-slate-200 rounded-xl bg-slate-50/50">
+                    <Info className="w-6 h-6 text-slate-300" />
+                    <span className="text-xs font-bold uppercase tracking-wider text-center px-4">Nenhum abastecimento registrado na data selecionada</span>
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart 
+                      data={topProductsChartData} 
+                      layout="vertical"
+                      margin={{ top: 5, right: 15, left: 10, bottom: 5 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} horizontal={false} stroke="#f1f5f9" />
+                      <XAxis type="number" stroke="#94a3b8" fontSize={10} tickLine={false} />
+                      <YAxis type="category" dataKey="name" stroke="#64748b" fontSize={9} width={130} tickLine={false} />
+                      <Tooltip 
+                        content={({ active, payload }) => {
+                          if (active && payload && payload.length) {
+                            const data = payload[0].payload;
+                            return (
+                              <div className="bg-slate-900 border border-slate-700 p-3 rounded-xl text-white shadow-xl max-w-xs">
+                                <p className="font-extrabold text-xs text-emerald-400 mb-0.5">#{data.sku} - {data.fullName || data.name}</p>
+                                <p className="text-[11px] font-bold text-slate-200">
+                                  Reabastecido Hoje: <span className="font-black text-emerald-400">{data.caixas.toLocaleString('pt-BR')} caixas</span>
                                 </p>
-                              )}
-                            </div>
-                          );
-                        }
-                        return null;
-                      }}
-                    />
-                    <Bar dataKey="caixas" fill="#10b981" radius={[0, 4, 4, 0]} barSize={14} />
-                  </BarChart>
-                </ResponsiveContainer>
+                                {data.paletes !== undefined && (
+                                  <p className="text-[10px] text-slate-400 font-medium">
+                                    Equivalente: {data.paletes} palete(s)
+                                  </p>
+                                )}
+                              </div>
+                            );
+                          }
+                          return null;
+                        }}
+                      />
+                      <Bar dataKey="caixas" fill="#10b981" radius={[0, 4, 4, 0]} barSize={12} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+            </div>
+
+            {/* CHART 3: TOP 15 LOWEST SALES / LOWEST OUTPUT (ROTINA 020304) */}
+            <div className="lg:col-span-6 bg-white border border-slate-200 p-5 rounded-2xl flex flex-col gap-3 shadow-sm">
+              <div className="flex items-start justify-between">
+                <div>
+                  <span className="text-xs uppercase font-black text-slate-700 tracking-wider flex items-center gap-2">
+                    <TrendingDown className="w-4 h-4 text-amber-500" />
+                    Top 15 Produtos com Menor Saída (Rotina 020304 do Dia)
+                  </span>
+                  <span className="text-[10px] text-slate-400 uppercase block font-bold mt-0.5">
+                    Produtos com menor volume de vendas/saída apurados no relatório 020304
+                  </span>
+                </div>
+                <div className="hidden sm:flex flex-col items-end">
+                  <span className="text-[9px] uppercase font-black text-slate-400">Origem Dados</span>
+                  <span className="text-xs font-black font-mono text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-lg">
+                    Rotina 020304
+                  </span>
+                </div>
+              </div>
+
+              <div className="h-[460px] w-full pt-2">
+                {lowestSalesChartData.length === 0 ? (
+                  <div className="h-full w-full flex flex-col items-center justify-center text-slate-400 gap-2 border border-dashed border-slate-200 rounded-xl bg-slate-50/50">
+                    <Info className="w-6 h-6 text-slate-300" />
+                    <span className="text-xs font-bold uppercase tracking-wider text-center px-4">Nenhuma saída/venda (020304) registrada para a data selecionada</span>
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart 
+                      data={lowestSalesChartData} 
+                      layout="vertical"
+                      margin={{ top: 5, right: 15, left: 10, bottom: 5 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} horizontal={false} stroke="#f1f5f9" />
+                      <XAxis type="number" stroke="#94a3b8" fontSize={10} tickLine={false} />
+                      <YAxis type="category" dataKey="name" stroke="#64748b" fontSize={9} width={130} tickLine={false} />
+                      <Tooltip 
+                        content={({ active, payload }) => {
+                          if (active && payload && payload.length) {
+                            const data = payload[0].payload;
+                            return (
+                              <div className="bg-slate-900 border border-slate-700 p-3 rounded-xl text-white shadow-xl max-w-xs">
+                                <p className="font-extrabold text-xs text-amber-400 mb-0.5">#{data.sku} - {data.fullName || data.name}</p>
+                                <p className="text-[11px] font-bold text-slate-200">
+                                  Saída / Venda Hoje: <span className="font-black text-amber-400">{data.vendas.toLocaleString('pt-BR')} caixas</span>
+                                </p>
+                                {data.paletes !== undefined && (
+                                  <p className="text-[10px] text-slate-300 font-medium">
+                                    Equivalente: {data.paletes} palete(s) ({data.hecto} HL)
+                                  </p>
+                                )}
+                              </div>
+                            );
+                          }
+                          return null;
+                        }}
+                      />
+                      <Bar dataKey="vendas" fill="#f59e0b" radius={[0, 4, 4, 0]} barSize={12} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
               </div>
             </div>
 

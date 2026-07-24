@@ -12,7 +12,8 @@ import {
   Line,
   PieChart,
   Pie,
-  Legend
+  Legend,
+  LabelList
 } from 'recharts';
 import { 
   Calendar, 
@@ -32,7 +33,8 @@ import {
   User,
   ShieldAlert,
   Archive,
-  Truck
+  Truck,
+  Package
 } from 'lucide-react';
 import { Usuario, Empresa, QuebraRow } from '../types';
 import { db, isCustomFirebaseConnected } from '../firebase';
@@ -40,6 +42,7 @@ import { collection, onSnapshot, query, addDoc, deleteDoc, doc, where } from 'fi
 import { generateMockQuebras } from '../mockDataGenerator';
 import A3BoardComponent from './A3BoardComponent';
 import CalendarFilter from './CalendarFilter';
+import WqiTab from './WqiTab';
 
 interface QuebrasDashboardProps {
   user: Usuario;
@@ -99,6 +102,19 @@ const DEFAULT_PLANS: ActionPlan5W2H[] = [
   }
 ];
 
+// Helper to classify embalagem
+const getEmbalagemName = (desc: string): string => {
+  const d = (desc || '').toUpperCase();
+  if (d.includes('600')) return 'Garrafa 600ml';
+  if (d.includes('300') || d.includes('RF') || d.includes('ROMANI') || d.includes('RETORNÁVEL') || d.includes('RETORNAVEL')) return 'Garrafa 300ml';
+  if (d.includes('473') || d.includes('LATÃO') || d.includes('LATAO') || d.includes('SLEEK')) return 'Lata 473ml';
+  if (d.includes('350') || d.includes('355') || d.includes('269') || d.includes('LATA') || d.includes('LT')) return 'Lata 350ml/269ml';
+  if (d.includes('LN') || d.includes('LONG') || d.includes('330') || d.includes('275')) return 'Long Neck';
+  if (d.includes('1L') || d.includes('1 L') || d.includes('LITRÃO') || d.includes('LITRAO') || d.includes('1000')) return 'Garrafa 1L';
+  if (d.includes('PET') || d.includes('2L') || d.includes('1.5L')) return 'PET';
+  return 'Outras Embalagens';
+};
+
 export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashboardProps) {
   const [actualQuebras, setActualQuebras] = useState<QuebraRow[]>([]);
   const [startDate, setStartDate] = useState<string>(() => {
@@ -109,7 +125,8 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
   const [endDate, setEndDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
   const [filterArea, setFilterArea] = useState<string>('TODAS');
   const [filterTurno, setFilterTurno] = useState<string>('TODOS');
-  const [activeSubTab, setActiveSubTab] = useState<'indicadores' | 'boarda3'>('indicadores');
+  const [filterEmbalagem, setFilterEmbalagem] = useState<string>('TODAS');
+  const [activeSubTab, setActiveSubTab] = useState<'indicadores' | 'wqi' | 'boarda3'>('indicadores');
   const [viewUnit, setViewUnit] = useState<'cx' | 'he'>('cx');
 
   const quebras = useMemo(() => {
@@ -194,6 +211,8 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
       if (filterArea !== 'TODAS' && q.area !== filterArea) return false;
       // Turno filter
       if (filterTurno !== 'TODOS' && q.turno !== filterTurno) return false;
+      // Embalagem filter
+      if (filterEmbalagem !== 'TODAS' && getEmbalagemName(q.descricao) !== filterEmbalagem) return false;
       
       // Date range filter
       if (startDate || endDate) {
@@ -280,6 +299,24 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
     .map(([codMotivo, item]) => ({ name: codMotivo, value: Math.round(item.val * 100) / 100 }))
     .sort((a, b) => b.value - a.value)
     .slice(0, 7);
+
+  // Embalagem Pareto Data
+  const embalagemMap: Record<string, number> = {};
+  filteredData.forEach(q => {
+    const embName = getEmbalagemName(q.descricao);
+    const val = viewUnit === 'cx' ? q.quantidade : convertCxToHE(q.quantidade, q.descricao);
+    embalagemMap[embName] = (embalagemMap[embName] || 0) + val;
+  });
+
+  const embalagemChartData = Object.entries(embalagemMap)
+    .map(([name, value]) => ({ name, value: Math.round(value * 100) / 100 }))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 7);
+
+  const totalEmbalagemVolume = Math.round(embalagemChartData.reduce((acc, curr) => acc + curr.value, 0) * 100) / 100;
+  const topEmbalagensPct = embalagemChartData.length > 0 && totalEmbalagemVolume > 0
+    ? `${embalagemChartData[0].name} (${Math.round((embalagemChartData[0].value / totalEmbalagemVolume) * 100)}%)`
+    : '';
 
   // Area Chart Data
   const areaChartData = Object.entries(areaVolumeMap)
@@ -403,6 +440,12 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
               Quebras & BI
             </button>
             <button 
+              onClick={() => setActiveSubTab('wqi')}
+              className={`px-4 py-1.5 rounded-lg font-sans font-bold text-[10px] uppercase tracking-wider transition-all border-none cursor-pointer ${activeSubTab === 'wqi' ? 'bg-[#032b5e] text-white shadow-sm' : 'text-gray-500 hover:text-[#032b5e] bg-transparent'}`}
+            >
+              WQI
+            </button>
+            <button 
               onClick={() => setActiveSubTab('boarda3')}
               className={`px-4 py-1.5 rounded-lg font-sans font-bold text-[10px] uppercase tracking-wider transition-all border-none cursor-pointer ${activeSubTab === 'boarda3' ? 'bg-[#032b5e] text-white shadow-sm' : 'text-gray-500 hover:text-[#032b5e] bg-transparent'}`}
             >
@@ -420,45 +463,7 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
             <div className="flex flex-wrap items-center gap-4 w-full md:w-auto">
               {/* Period selector */}
               <div className="flex flex-col gap-1 min-w-[260px]">
-                <div className="flex items-center justify-between">
-                  <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Período</span>
-                  <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const todayISO = new Date().toISOString().split('T')[0];
-                        setStartDate(todayISO);
-                        setEndDate(todayISO);
-                      }}
-                      className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase transition-all border cursor-pointer ${
-                        startDate === new Date().toISOString().split('T')[0] && endDate === new Date().toISOString().split('T')[0]
-                          ? 'bg-[#032b5e] text-white border-[#032b5e] shadow-sm'
-                          : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
-                      }`}
-                    >
-                      Hoje
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const today = new Date();
-                        const endISO = today.toISOString().split('T')[0];
-                        const d = new Date(today);
-                        d.setDate(d.getDate() - 30);
-                        const startISO = d.toISOString().split('T')[0];
-                        setStartDate(startISO);
-                        setEndDate(endISO);
-                      }}
-                      className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase transition-all border cursor-pointer ${
-                        startDate !== endDate
-                          ? 'bg-[#032b5e] text-white border-[#032b5e] shadow-sm'
-                          : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
-                      }`}
-                    >
-                      30 Dias
-                    </button>
-                  </div>
-                </div>
+                <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Período</span>
                 <CalendarFilter
                   startDate={startDate}
                   endDate={endDate}
@@ -496,6 +501,26 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
                   <option value="TODOS">Todos os Turnos</option>
                   <option value="MANHÃ">Manhã</option>
                   <option value="NOITE">Noite / Madrugada</option>
+                </select>
+              </div>
+
+              {/* Embalagem filter */}
+              <div className="flex flex-col gap-1 w-[150px]">
+                <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Embalagem</span>
+                <select 
+                  value={filterEmbalagem} 
+                  onChange={e => setFilterEmbalagem(e.target.value)} 
+                  className="w-full bg-white border border-gray-200 text-[#032b5e] font-sans font-bold rounded-lg outline-none px-2.5 py-1 text-[10px] h-[28px] cursor-pointer transition-all hover:border-blue-400 focus:border-[#032b5e]"
+                >
+                  <option value="TODAS">Todas Embalagens</option>
+                  <option value="Garrafa 600ml">Garrafa 600ml</option>
+                  <option value="Garrafa 300ml">Garrafa 300ml</option>
+                  <option value="Lata 473ml">Lata 473ml</option>
+                  <option value="Lata 350ml/269ml">Lata 350ml/269ml</option>
+                  <option value="Long Neck">Long Neck</option>
+                  <option value="Garrafa 1L">Garrafa 1L</option>
+                  <option value="PET">PET</option>
+                  <option value="Outras Embalagens">Outras Embalagens</option>
                 </select>
               </div>
 
@@ -604,16 +629,16 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
       </div>
 
       {/* CHARTS CONTAINER GRID - OPTIMIZED HORIZONTAL LAYOUT */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-5">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
         
         {/* CHART 1: Pareto por Código DPO / Motivo */}
         <div className="bg-white p-4.5 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between gap-3 min-h-[340px]">
           <div>
             <h3 className="font-sans font-black text-[11px] uppercase text-[#032b5e] tracking-wider flex items-center gap-1.5">
-              <TrendingUp className="w-3.5 h-3.5 text-[#ef4444]" /> PARETO DE CAUSA RAIZ
+              <TrendingUp className="w-3.5 h-3.5 text-[#ef4444]" /> PERDAS POR MOTIVO
             </h3>
             <span className="text-[9px] text-gray-400 font-bold mt-0.5 block">
-              Volume de perdas por desvio
+              Volume de perdas por motivo
             </span>
           </div>
 
@@ -656,7 +681,76 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
           </div>
         </div>
 
-        {/* CHART 2: Distribuição por Área */}
+        {/* CHART 2: Perdas por Embalagem */}
+        <div className="bg-white p-4.5 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between gap-3 min-h-[340px]">
+          <div className="flex items-start justify-between">
+            <div>
+              <h3 className="font-sans font-black text-[11px] uppercase text-[#032b5e] tracking-wider flex items-center gap-1.5">
+                <Package className="w-3.5 h-3.5 text-[#3b82f6]" /> PERDAS POR EMBALAGEM
+              </h3>
+              <span className="text-[9px] text-gray-400 font-bold mt-0.5 block">
+                Volume por tipo de vasilhame/lata
+              </span>
+            </div>
+            <span className="text-[10px] font-mono font-black text-[#032b5e] bg-slate-100 border border-slate-200/80 px-2 py-0.5 rounded-md">
+              {totalEmbalagemVolume.toLocaleString('pt-BR')} {viewUnit === 'cx' ? 'CX' : 'HL'}
+            </span>
+          </div>
+
+          <div className="h-48 w-full">
+            {embalagemChartData.length === 0 ? (
+              <div className="w-full h-full flex items-center justify-center text-xs text-gray-400">
+                Sem registros de embalagem.
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={embalagemChartData} layout="vertical" margin={{ top: 5, right: 45, left: -5, bottom: 5 }}>
+                  <CartesianGrid stroke="#f1f5f9" horizontal={false} />
+                  <XAxis type="number" stroke="#94a3b8" fontSize={8} tickLine={false} axisLine={false} />
+                  <YAxis 
+                    type="category" 
+                    dataKey="name" 
+                    stroke="#334155" 
+                    fontSize={9}
+                    fontWeight={700}
+                    tickLine={false} 
+                    axisLine={false} 
+                    width={95}
+                  />
+                  <Tooltip 
+                    contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', fontSize: 10, color: '#fff' }}
+                    labelStyle={{ color: '#38bdf8', fontWeight: 'bold' }}
+                    itemStyle={{ color: '#cbd5e1' }}
+                    formatter={(val: any) => [`${val.toLocaleString('pt-BR')} ${viewUnit === 'cx' ? 'CX' : 'HL'}`, 'Volume']}
+                  />
+                  <Bar dataKey="value" fill="#3b82f6" radius={[0, 6, 6, 0]} barSize={16}>
+                    <LabelList 
+                      dataKey="value" 
+                      position="right" 
+                      fontSize={9} 
+                      fontWeight={800} 
+                      fill="#032b5e" 
+                      formatter={(val: number) => `${val.toLocaleString('pt-BR')}`} 
+                    />
+                    {embalagemChartData.map((entry, index) => (
+                      <Cell key={`cell-emb-${index}`} fill={COLORS[(index + 2) % COLORS.length]} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+          <div className="text-[9px] text-gray-500 font-semibold border-t border-gray-100 pt-1.5 flex items-center justify-between">
+            <span>Classificação por vasilhame</span>
+            {topEmbalagensPct && (
+              <span className="font-bold text-[#032b5e] font-mono">
+                Maior: {topEmbalagensPct}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* CHART 3: Distribuição por Área */}
         <div className="bg-white p-4.5 rounded-xl border border-gray-200/80 shadow-sm flex flex-col justify-between gap-3 min-h-[340px]">
           <div>
             <h3 className="font-sans font-black text-[11px] uppercase text-[#032b5e] tracking-wider">
@@ -1110,6 +1204,19 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
       )}
 
       </>
+      )}
+
+      {activeSubTab === 'wqi' && (
+        <WqiTab 
+          empresaId={empresa?.id || 'demo'}
+          startDate={startDate}
+          endDate={endDate}
+          onDateChange={(start, end) => {
+            setStartDate(start);
+            setEndDate(end);
+          }}
+          viewUnit={viewUnit}
+        />
       )}
 
       {activeSubTab === 'boarda3' && (

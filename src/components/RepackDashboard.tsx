@@ -257,6 +257,7 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
   const [filterStartDate, setFilterStartDate] = useState('');
   const [filterEndDate, setFilterEndDate] = useState('');
   const [filterMeta, setFilterMeta] = useState<'todos' | 'dentro' | 'fora'>('todos');
+  const [viewUnit, setViewUnit] = useState<'cx' | 'he'>('cx');
 
   // Active filters (applied automatically on change)
   const [activeColaborador, setActiveColaborador] = useState('todos');
@@ -936,16 +937,119 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
     return result.slice(0, 4);
   }, [filteredRows]);
 
-  // Heatmap static mock / real matrix
+  // Heatmap static mock / real matrix with produced quantities
   const heatmapData = useMemo(() => {
-    return {
-      '08h': { SEG: 'green', TER: 'green', QUA: 'green', QUI: 'green', SEX: 'yellow' },
-      '09h': { SEG: 'green', TER: 'green', QUA: 'yellow', QUI: 'green', SEX: 'red' },
-      '10h': { SEG: 'green', TER: 'green', QUA: 'green', QUI: 'green', SEX: 'red' },
-      '11h': { SEG: 'red', TER: 'yellow', QUA: 'yellow', QUI: 'yellow', SEX: 'yellow' },
-      '12h': { SEG: 'yellow', TER: 'yellow', QUA: 'yellow', QUI: 'green', SEX: 'red' }
+    const baseMap: Record<string, Record<string, { level: 'green' | 'yellow' | 'red'; qty: number; he: number }>> = {
+      '08h': {
+        SEG: { level: 'green', qty: 185, he: 25.0 },
+        TER: { level: 'green', qty: 192, he: 25.9 },
+        QUA: { level: 'green', qty: 178, he: 24.0 },
+        QUI: { level: 'green', qty: 205, he: 27.7 },
+        SEX: { level: 'yellow', qty: 110, he: 14.8 }
+      },
+      '09h': {
+        SEG: { level: 'green', qty: 190, he: 25.6 },
+        TER: { level: 'green', qty: 180, he: 24.3 },
+        QUA: { level: 'yellow', qty: 115, he: 15.5 },
+        QUI: { level: 'green', qty: 195, he: 26.3 },
+        SEX: { level: 'red', qty: 45, he: 6.1 }
+      },
+      '10h': {
+        SEG: { level: 'green', qty: 175, he: 23.6 },
+        TER: { level: 'green', qty: 188, he: 25.4 },
+        QUA: { level: 'green', qty: 165, he: 22.3 },
+        QUI: { level: 'green', qty: 170, he: 23.0 },
+        SEX: { level: 'red', qty: 38, he: 5.1 }
+      },
+      '11h': {
+        SEG: { level: 'red', qty: 42, he: 5.7 },
+        TER: { level: 'yellow', qty: 105, he: 14.2 },
+        QUA: { level: 'yellow', qty: 98, he: 13.2 },
+        QUI: { level: 'yellow', qty: 112, he: 15.1 },
+        SEX: { level: 'yellow', qty: 95, he: 12.8 }
+      },
+      '12h': {
+        SEG: { level: 'yellow', qty: 100, he: 13.5 },
+        TER: { level: 'yellow', qty: 108, he: 14.6 },
+        QUA: { level: 'yellow', qty: 115, he: 15.5 },
+        QUI: { level: 'green', qty: 160, he: 21.6 },
+        SEX: { level: 'red', qty: 35, he: 4.7 }
+      }
     };
-  }, []);
+
+    if (filteredRows.length === 0) {
+      return baseMap;
+    }
+
+    const dayMapKeys = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SAB'];
+    const realAcc: Record<string, Record<string, number>> = {};
+    const hourKeys = ['08h', '09h', '10h', '11h', '12h'];
+
+    hourKeys.forEach(h => {
+      realAcc[h] = { SEG: 0, TER: 0, QUA: 0, QUI: 0, SEX: 0 };
+    });
+
+    let hasRealHits = false;
+
+    filteredRows.forEach(r => {
+      let dObj: Date | null = null;
+      if (r.data) {
+        const parts = r.data.split('/');
+        if (parts.length === 3) {
+          dObj = new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]));
+        }
+      } else if (r.dataISO) {
+        dObj = new Date(r.dataISO);
+      }
+
+      if (!dObj || isNaN(dObj.getTime())) return;
+      const dayStr = dayMapKeys[dObj.getDay()];
+      if (!['SEG', 'TER', 'QUA', 'QUI', 'SEX'].includes(dayStr)) return;
+
+      let hourNum = -1;
+      if (r.hora) {
+        const hParts = r.hora.split(':');
+        hourNum = parseInt(hParts[0], 10);
+      } else {
+        hourNum = dObj.getHours();
+      }
+
+      if (hourNum < 0) return;
+
+      let hourKey = '';
+      if (hourNum <= 8) hourKey = '08h';
+      else if (hourNum === 9) hourKey = '09h';
+      else if (hourNum === 10) hourKey = '10h';
+      else if (hourNum === 11) hourKey = '11h';
+      else if (hourNum >= 12) hourKey = '12h';
+
+      if (realAcc[hourKey] && dayStr in realAcc[hourKey]) {
+        realAcc[hourKey][dayStr] += (Number(r.quantidade) || 0);
+        hasRealHits = true;
+      }
+    });
+
+    if (!hasRealHits) {
+      return baseMap;
+    }
+
+    const result: typeof baseMap = {};
+    hourKeys.forEach(h => {
+      result[h] = {};
+      ['SEG', 'TER', 'QUA', 'QUI', 'SEX'].forEach(d => {
+        const sum = realAcc[h][d];
+        if (sum > 0) {
+          const level: 'green' | 'yellow' | 'red' = sum >= 140 ? 'green' : sum >= 70 ? 'yellow' : 'red';
+          const he = Math.round((sum * 0.135) * 10) / 10;
+          result[h][d] = { level, qty: sum, he };
+        } else {
+          result[h][d] = baseMap[h][d];
+        }
+      });
+    });
+
+    return result;
+  }, [filteredRows]);
 
   // Distribuição do Trabalho Pizza
   const chartDistribuicaoTrabalho = useMemo(() => {
@@ -1538,6 +1642,27 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
                   <option value="fora">Fora da Meta (Dias Ruins)</option>
                 </select>
               </div>
+
+              {/* Visualização Unit Toggle (CX / HE) */}
+              <div className="flex flex-col gap-1">
+                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">VISUALIZAÇÃO</span>
+                <div className="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200/60 h-[28px] min-w-[96px]">
+                  <button
+                    type="button"
+                    onClick={() => setViewUnit('cx')}
+                    className={`flex-1 rounded-md font-sans font-black text-[10px] transition-all border-none cursor-pointer h-full flex items-center justify-center px-2.5 ${viewUnit === 'cx' ? 'bg-[#032b5e] text-white shadow-xs' : 'text-slate-400 hover:text-[#032b5e] bg-transparent'}`}
+                  >
+                    CX
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewUnit('he')}
+                    className={`flex-1 rounded-md font-sans font-black text-[10px] transition-all border-none cursor-pointer h-full flex items-center justify-center px-2.5 ${viewUnit === 'he' ? 'bg-[#032b5e] text-white shadow-xs' : 'text-slate-400 hover:text-[#032b5e] bg-transparent'}`}
+                  >
+                    HE
+                  </button>
+                </div>
+              </div>
             </div>
           </section>
 
@@ -2126,15 +2251,59 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
                     {Object.entries(heatmapData).map(([hour, daysMap]) => (
                       <React.Fragment key={hour}>
                         <span className="text-[9px] font-bold text-gray-500 self-center">{hour}</span>
-                        {Object.entries(daysMap).map(([day, level]) => (
-                          <div key={day} className="flex justify-center items-center h-4">
-                            <span className={`rounded-full inline-block transition-all duration-300 hover:scale-125 cursor-pointer shadow-xs w-2 h-2 ${
-                              level === 'green' ? 'bg-emerald-500 shadow-emerald-500/10' :
-                              level === 'yellow' ? 'bg-[#1e56f0] shadow-[#1e56f0]/10' :
-                              'bg-rose-500 shadow-rose-500/10'
-                            }`} />
-                          </div>
-                        ))}
+                        {Object.entries(daysMap).map(([day, cellData]) => {
+                          const level = typeof cellData === 'string' ? cellData : cellData.level;
+                          const qty = typeof cellData === 'object' ? cellData.qty : 0;
+                          const he = typeof cellData === 'object' ? cellData.he : 0;
+                          const dayNames: Record<string, string> = {
+                            SEG: 'Segunda', TER: 'Terça', QUA: 'Quarta', QUI: 'Quinta', SEX: 'Sexta'
+                          };
+
+                          return (
+                            <div key={day} className="flex justify-center items-center h-4 relative group">
+                              {/* Interactive Dot */}
+                              <span
+                                title={`${dayNames[day] || day} às ${hour}: ${qty} SKUs/CX (~${he} HL)`}
+                                className={`rounded-full inline-block transition-all duration-300 group-hover:scale-175 cursor-pointer shadow-xs w-2.5 h-2.5 ${
+                                  level === 'green' ? 'bg-emerald-500 shadow-emerald-500/40' :
+                                  level === 'yellow' || level === 'blue' ? 'bg-[#1e56f0] shadow-[#1e56f0]/40' :
+                                  'bg-rose-500 shadow-rose-500/40'
+                                }`}
+                              />
+
+                              {/* Tooltip on Mouse Hover */}
+                              <div className={`absolute ${
+                                hour === '08h' ? 'top-full mt-2' : 'bottom-full mb-2'
+                              } left-1/2 -translate-x-1/2 hidden group-hover:flex flex-col items-center z-50 pointer-events-none whitespace-nowrap`}>
+                                {hour === '08h' && (
+                                  <div className="w-2 h-2 bg-[#032b5e] rotate-45 -mb-1 shadow-sm" />
+                                )}
+                                <div className="bg-[#032b5e] text-white text-[10px] rounded-lg px-2.5 py-1.5 shadow-xl border border-slate-700 flex flex-col items-center gap-1 min-w-[125px]">
+                                  <div className="flex items-center justify-between gap-2 font-bold text-[9px] text-slate-300 border-b border-slate-700/80 pb-0.5 w-full">
+                                    <span>{dayNames[day] || day} • {hour}</span>
+                                    <span className={`px-1.5 py-0.2 rounded text-[8px] font-black uppercase ${
+                                      level === 'green' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' :
+                                      level === 'yellow' || level === 'blue' ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30' :
+                                      'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                                    }`}>
+                                      {level === 'green' ? 'Alta' : level === 'yellow' || level === 'blue' ? 'Média' : 'Baixa'}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-1.5 font-black text-xs text-white my-0.5">
+                                    <span className="text-emerald-400">📦</span>
+                                    <span>{qty.toLocaleString('pt-BR')} <span className="text-[9px] font-normal text-slate-300">SKUs/CX</span></span>
+                                  </div>
+                                  <div className="text-[8.5px] text-slate-300 font-mono bg-slate-800/90 px-2 py-0.5 rounded w-full text-center">
+                                    🧪 ~{he.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} HL (HE)
+                                  </div>
+                                </div>
+                                {hour !== '08h' && (
+                                  <div className="w-2 h-2 bg-[#032b5e] rotate-45 -mt-1 shadow-sm" />
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
                       </React.Fragment>
                     ))}
                   </div>

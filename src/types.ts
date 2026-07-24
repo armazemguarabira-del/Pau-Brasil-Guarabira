@@ -114,6 +114,11 @@ export interface QuebraRow {
   motivo: string;
   fiscal?: string;
   colaboradorQuebrou?: string;
+  responsavel?: string;
+  funcao?: string;
+  embalagem?: string;
+  tipoMarca?: string;
+  valorTotal?: number;
   _criadoEm?: string;
 }
 

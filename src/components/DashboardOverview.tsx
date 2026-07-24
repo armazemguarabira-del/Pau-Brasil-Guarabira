@@ -140,6 +140,15 @@ export default function DashboardOverview({
   const [errorMsg, setErrorMsg] = useState('');
   const [alertFilter, setAlertFilter] = useState<'all' | 'pending' | 'treated'>('pending');
 
+  // Toggle mode state: CX (Caixas) vs HE (Hectolitros)
+  const [viewUnit, setViewUnit] = useState<'cx' | 'he'>(() => {
+    return (localStorage.getItem('dashboard_view_unit') as 'cx' | 'he') || 'cx';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('dashboard_view_unit', viewUnit);
+  }, [viewUnit]);
+
   // Local derived dynamic KPI stats
   const [liveKpiStats, setLiveKpiStats] = useState({
     usuarios: kpiStats.usuarios,
@@ -789,8 +798,30 @@ export default function DashboardOverview({
           </div>
         </div>
 
-        {/* Info lateral (Apenas Colaborador, sem turno, sem data e sem botão de alertas) */}
-        <div className="flex flex-col justify-center pl-0 lg:pl-6 border-t lg:border-t-0 lg:border-l border-slate-100 pt-4 lg:pt-0 shrink-0 min-w-[240px]">
+        {/* Info lateral & Chave de Visualização (CX / HE) */}
+        <div className="flex flex-wrap items-center justify-end gap-4 pl-0 lg:pl-6 border-t lg:border-t-0 lg:border-l border-slate-100 pt-4 lg:pt-0 shrink-0 min-w-[280px]">
+          
+          {/* Visualização Unit Toggle Key */}
+          <div className="flex flex-col items-start gap-1">
+            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">VISUALIZAÇÃO</span>
+            <div className="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200/60 h-[28px] w-[96px]">
+              <button
+                type="button"
+                onClick={() => setViewUnit('cx')}
+                className={`flex-1 rounded-md font-sans font-black text-[10px] transition-all border-none cursor-pointer h-full flex items-center justify-center ${viewUnit === 'cx' ? 'bg-[#032b5e] text-white shadow-sm' : 'text-slate-400 hover:text-[#032b5e] bg-transparent'}`}
+              >
+                CX
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewUnit('he')}
+                className={`flex-1 rounded-md font-sans font-black text-[10px] transition-all border-none cursor-pointer h-full flex items-center justify-center ${viewUnit === 'he' ? 'bg-[#032b5e] text-white shadow-sm' : 'text-slate-400 hover:text-[#032b5e] bg-transparent'}`}
+              >
+                HE
+              </button>
+            </div>
+          </div>
+
           <div className="flex items-center gap-3 text-xs bg-slate-50 p-2.5 rounded-xl border border-slate-100/80">
             <div className="w-8 h-8 rounded-lg bg-blue-500/10 text-blue-600 flex items-center justify-center font-bold text-xs font-mono shrink-0">
               {user.nome ? user.nome.substring(0, 2).toUpperCase() : 'US'}
@@ -839,9 +870,18 @@ export default function DashboardOverview({
 
           <div className="g-card p-3.5 md:p-4 text-center flex flex-col justify-center items-center">
             <ClipboardCheck className="w-5 h-5 text-[#3b82f6] mb-1.5" />
-            <span className="font-sans font-black text-fluid-kpi text-[#3b82f6]">{liveKpiStats.docsHoje}</span>
-            <span className="text-[#6a7d92] text-[9.5px] uppercase font-bold tracking-widest mt-1">Lançamentos</span>
-            <span className="text-[8.5px] text-[#6a7d92] mt-0.5">Lançamentos hoje</span>
+            <span className="font-sans font-black text-fluid-kpi text-[#3b82f6]">
+              {viewUnit === 'cx' 
+                ? liveKpiStats.docsHoje 
+                : Math.round(liveKpiStats.docsHoje * 0.135 * 10) / 10
+              }
+            </span>
+            <span className="text-[#6a7d92] text-[9.5px] uppercase font-bold tracking-widest mt-1">
+              {viewUnit === 'cx' ? 'Lançamentos (CX)' : 'Volume (HE)'}
+            </span>
+            <span className="text-[8.5px] text-[#6a7d92] mt-0.5">
+              {viewUnit === 'cx' ? 'Lançamentos hoje' : 'Hectolitros hoje'}
+            </span>
           </div>
 
         </div>
@@ -853,7 +893,12 @@ export default function DashboardOverview({
         <div className="g-card p-6 md:col-span-8 flex flex-col justify-between">
           <div>
             <h3 className="font-sans font-black text-sm tracking-widest text-[#f5a623] uppercase mb-4 flex items-center justify-between">
-              <span>📡 Atividades em Tempo Real</span>
+              <div className="flex items-center gap-2">
+                <span>📡 Atividades em Tempo Real</span>
+                <span className="text-[9px] bg-[#032b5e]/80 text-white font-bold px-2 py-0.5 rounded uppercase">
+                  {viewUnit === 'cx' ? 'CX' : 'HE'}
+                </span>
+              </div>
               <span className="text-[9px] bg-[#22c55e]/15 border border-[#22c55e]/25 text-[#22c55e] px-2 py-0.5 rounded-full font-sans tracking-wide">● Sincronizado</span>
             </h3>
             

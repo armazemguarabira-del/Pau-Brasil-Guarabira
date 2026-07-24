@@ -99,6 +99,7 @@ export default function PickingDashboard({ user, empresa, onBack }: PickingDashb
   const [selectedMeta, setSelectedMeta] = useState<'all' | 'dentro' | 'fora'>('all');
   const [slaLimit, setSlaLimit] = useState<number>(5); // Target time per pallet (default: 5 min)
   const [datePreset, setDatePreset] = useState<'today' | '7days' | '30days' | 'custom'>('custom');
+  const [alertGeneratedNotice, setAlertGeneratedNotice] = useState<string | null>(null);
   
   const empresaId = empresa?.id || 'demo';
 
@@ -608,7 +609,7 @@ export default function PickingDashboard({ user, empresa, onBack }: PickingDashb
     ];
   }, [filteredTasks]);
 
-  // 7. DURANTE X APÓS CARREGAMENTO
+  // 7. DURANTE X APÓS CARREGAMENTO (PARETO 70/30)
   const duringVsAfterData = useMemo(() => {
     let durante = 0;
     let apos = 0;
@@ -617,11 +618,93 @@ export default function PickingDashboard({ user, empresa, onBack }: PickingDashb
       else apos += t.quantidadePaletes;
     });
     const total = durante + apos || 1;
-    return [
-      { name: 'Durante Carregamento', value: durante, percentage: Math.round((durante / total) * 100) },
-      { name: 'Após Carregamento', value: apos, percentage: Math.round((apos / total) * 100) }
-    ];
+    const durantePct = Math.round((durante / total) * 100);
+    const aposPct = Math.round((apos / total) * 100);
+    // Pareto Rule: 70% Durante Carregamento / 30% Após Carregamento
+    const isParetoBroken = durantePct < 70;
+
+    return {
+      durante,
+      apos,
+      durantePct,
+      aposPct,
+      isParetoBroken,
+      chartData: [
+        { name: 'Durante Carregamento', value: durante, percentage: durantePct },
+        { name: 'Após Carregamento', value: apos, percentage: aposPct }
+      ]
+    };
   }, [filteredTasks]);
+
+  // Função para gerar/atualizar alerta no Plano de Ações quando a regra de Pareto 70/30 é quebrada
+  const triggerParetoActionPlanAlert = async () => {
+    const companyId = empresa?.id || 'demo';
+    const alertId = 'alt_pareto_carregamento_70_30';
+    const title = `[ALERTA PARETO 70/30] Desvio no Carregamento (${duringVsAfterData.durantePct}% / Meta: 70%)`;
+    const desc = `[ALERTA AUTOMÁTICO - DESCUMPRIMENTO DA CURVA PARETO 70/30]
+📅 Registro de Ocorrência Operacional no Picking / Carregamento
+📍 Estágio: Carregamento Ativo vs Após (Volume por Etapa)
+
+📊 Métrica Apurada:
+• Durante Carregamento: ${duringVsAfterData.durantePct}% (${duringVsAfterData.durante} Paletes)
+• Após Carregamento: ${duringVsAfterData.aposPct}% (${duringVsAfterData.apos} Paletes)
+
+🎯 Meta Estipulada (Pareto 70/30):
+• Mínimo 70% Durante o Carregamento
+• Máximo 30% Após o Carregamento
+
+⚠️ Análise do Desvio:
+A proporção de separação 'Após Carregamento' (${duringVsAfterData.aposPct}%) ultrapassou o limite máximo estipulado de 30% da Curva Pareto, gerando gargalo e sobrecarga no pós-embarque.
+
+💡 Plano de Ação Recomendado:
+1. Reorganizar a fila de reabastecimento de picking antes do início da janela de carregamento.
+2. Escalar 1 operador extra para montagem prévia dos paletes de maior giro (MVA).
+3. Realizar alinhamento de sincronismo entre conferência e pátio.`;
+
+    const newAcao = {
+      empresaId: companyId,
+      titulo: title,
+      setor: 'Picking',
+      prioridade: 'alta',
+      responsavel: 'Supervisor de Operações (Picking)',
+      status: 'pendente',
+      limiteEm: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      criadoEm: new Date().toISOString(),
+      origemAlertaId: alertId,
+      tipo: 'alerta',
+      descricao: desc,
+      criadoPorNome: user?.nome || 'Sistema (Pareto 70/30)',
+      criadoPorUid: user?.uid || 'system'
+    };
+
+    // Save/Sync to localStorage
+    const key = `acoes_rows_${companyId}`;
+    try {
+      const existingRows = JSON.parse(localStorage.getItem(key) || '[]');
+      const filtered = existingRows.filter((a: any) => a.origemAlertaId !== alertId && a.id !== alertId);
+      const updated = [{ id: alertId, ...newAcao }, ...filtered];
+      localStorage.setItem(key, JSON.stringify(updated));
+    } catch (e) {
+      console.error(e);
+    }
+
+    // Save/Sync to Firestore
+    if (db) {
+      try {
+        await addDoc(collection(db, 'acoes'), newAcao);
+      } catch (err) {
+        console.error('Erro ao registrar alerta no Firestore:', err);
+      }
+    }
+
+    setAlertGeneratedNotice('Alerta do Pareto 70/30 registrado no Plano de Ações com sucesso!');
+  };
+
+  useEffect(() => {
+    if (duringVsAfterData.isParetoBroken) {
+      triggerParetoActionPlanAlert();
+    }
+  }, [duringVsAfterData.isParetoBroken, duringVsAfterData.durantePct, empresa?.id]);
 
   // 8. TEMPO DO PROCESSO (ETAPAS)
   const processStages = useMemo(() => {
@@ -1209,31 +1292,31 @@ export default function PickingDashboard({ user, empresa, onBack }: PickingDashb
                       LISTA DOS PRODUTOS DE MAIOR GIRO NO PERÍODO
                     </span>
 
-                    <div className="overflow-x-auto max-h-[300px] border border-slate-200/80 rounded-xl bg-slate-50/50 shadow-inner">
-                      <table className="w-full text-left text-xs border-collapse">
+                    <div className="border border-slate-200/80 rounded-xl overflow-hidden bg-white shadow-2xs">
+                      <table className="w-full text-left text-xs border-collapse table-fixed">
                         <thead>
                           <tr className="bg-slate-100/90 border-b border-slate-200 text-slate-500 uppercase font-bold text-[9px] tracking-wider">
-                            <th className="p-2.5">SKU / PRODUTO</th>
-                            <th className="p-2.5 text-center">SOLICITAÇÕES</th>
-                            <th className="p-2.5 text-right">PALETES</th>
+                            <th className="py-1.5 px-2.5 w-[52%]">SKU / PRODUTO</th>
+                            <th className="py-1.5 px-2 text-center w-[23%]">SOLIC.</th>
+                            <th className="py-1.5 px-2 text-right w-[25%]">PALETES</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 text-slate-700">
                           {skuRanking.slice(0, 10).map((sku, idx) => (
-                            <tr key={idx} className="hover:bg-blue-50/30 transition-all text-[11px]">
-                              <td className="p-2.5 font-bold">
-                                <div className="flex flex-col">
-                                  <span className="font-mono text-[10px] text-amber-600 font-extrabold">#{sku.sku}</span>
-                                  <span className="text-[10px] truncate max-w-[150px] text-slate-500 font-medium" title={sku.desc}>{sku.desc}</span>
+                            <tr key={idx} className="hover:bg-blue-50/30 transition-all text-[10px]">
+                              <td className="py-1.5 px-2.5 font-bold">
+                                <div className="flex flex-col min-w-0">
+                                  <span className="font-mono text-[9.5px] text-amber-600 font-extrabold leading-tight">#{sku.sku}</span>
+                                  <span className="text-[9.5px] truncate text-slate-600 font-semibold leading-tight" title={sku.desc}>{sku.desc}</span>
                                 </div>
                               </td>
-                              <td className="p-2.5 text-center font-mono text-blue-600 font-bold text-xs">{sku.requests}</td>
-                              <td className="p-2.5 text-right font-mono text-emerald-600 font-black text-xs">{sku.pallets} PL</td>
+                              <td className="py-1.5 px-2 text-center font-mono text-blue-600 font-bold text-[11px] align-middle">{sku.requests}</td>
+                              <td className="py-1.5 px-2 text-right font-mono text-emerald-600 font-black text-[11px] align-middle">{sku.pallets} PL</td>
                             </tr>
                           ))}
                           {skuRanking.length === 0 && (
                             <tr>
-                              <td colSpan={3} className="p-6 text-center text-slate-400 font-mono text-[10px] uppercase">Nenhum produto registrado</td>
+                              <td colSpan={3} className="p-4 text-center text-slate-400 font-mono text-[10px] uppercase">Nenhum produto registrado</td>
                             </tr>
                           )}
                         </tbody>
@@ -1324,24 +1407,29 @@ export default function PickingDashboard({ user, empresa, onBack }: PickingDashb
                 </div>
 
                 {/* 7. Durante x Após Carregamento (Pie Chart) (3 Columns) */}
-                <div className="lg:col-span-3 bg-white border border-slate-200 p-4 rounded-2xl flex flex-col justify-between shadow-sm">
+                <div className="lg:col-span-3 bg-white border border-slate-200 p-4 rounded-2xl flex flex-col justify-between shadow-sm relative">
                   <div>
-                    <span className="text-[10px] uppercase font-black text-slate-500 tracking-wider block mb-1 flex items-center gap-1.5">
-                      <Truck className="w-4 h-4 text-amber-500" />
-                      7. Carregamento Ativo vs Após
-                    </span>
+                    <div className="flex items-start justify-between gap-2 mb-1">
+                      <span className="text-[10px] uppercase font-black text-slate-500 tracking-wider flex items-center gap-1.5">
+                        <Truck className="w-4 h-4 text-amber-500" />
+                        7. Carregamento Ativo vs Após
+                      </span>
+                      <span className="text-[8.5px] bg-purple-50 text-purple-700 border border-purple-200 px-1.5 py-0.5 rounded font-black uppercase shrink-0">
+                        Pareto 70/30
+                      </span>
+                    </div>
                     <span className="text-[8px] text-slate-400 uppercase block font-bold mb-4">Volume total distribuído por etapa</span>
                   </div>
 
-                  <div className="h-44 w-full flex items-center justify-center relative">
+                  <div className="h-36 w-full flex items-center justify-center relative my-1">
                     <ResponsiveContainer width="100%" height="100%">
                       <PieChart>
                         <Pie
-                          data={duringVsAfterData}
+                          data={duringVsAfterData.chartData}
                           cx="50%"
                           cy="50%"
-                          innerRadius={45}
-                          outerRadius={65}
+                          innerRadius={42}
+                          outerRadius={60}
                           paddingAngle={3}
                           dataKey="value"
                         >
@@ -1354,20 +1442,22 @@ export default function PickingDashboard({ user, empresa, onBack }: PickingDashb
                         />
                       </PieChart>
                     </ResponsiveContainer>
-                    <div className="absolute flex flex-col items-center">
-                      <span className="text-slate-400 text-[8px] uppercase font-bold">Estágio</span>
-                      <span className="text-sm font-black text-slate-800">Picking</span>
+                    <div className="absolute flex flex-col items-center pointer-events-none">
+                      <span className="text-slate-400 text-[7.5px] uppercase font-bold">Pareto</span>
+                      <span className={`text-xs font-black ${duringVsAfterData.isParetoBroken ? 'text-rose-600' : 'text-emerald-600'}`}>
+                        {duringVsAfterData.durantePct}%
+                      </span>
                     </div>
                   </div>
 
-                  <div className="flex flex-col gap-1.5 mt-3 border-t border-slate-200 pt-2 text-[10px] font-black uppercase">
+                  <div className="flex flex-col gap-1.5 mt-2 border-t border-slate-200 pt-2 text-[10px] font-black uppercase">
                     <div className="flex justify-between items-center text-purple-600">
-                      <span>Durante Carregamento</span>
-                      <span>{duringVsAfterData[0]?.percentage}% ({duringVsAfterData[0]?.value} PL)</span>
+                      <span>Durante Carregamento (Meta ≥70%)</span>
+                      <span>{duringVsAfterData.durantePct}% ({duringVsAfterData.durante} PL)</span>
                     </div>
                     <div className="flex justify-between items-center text-pink-600">
-                      <span>Após Carregamento</span>
-                      <span>{duringVsAfterData[1]?.percentage}% ({duringVsAfterData[1]?.value} PL)</span>
+                      <span>Após Carregamento (Meta ≤30%)</span>
+                      <span>{duringVsAfterData.aposPct}% ({duringVsAfterData.apos} PL)</span>
                     </div>
                   </div>
                 </div>
