@@ -169,7 +169,7 @@ export default function DespejoPanel({ user, empresa }: DespejoPanelProps) {
 
     const today = new Date();
     const dataStr = today.toLocaleDateString('pt-BR');
-    const dataISO = today.toISOString().split('T')[0];
+    const dataISO = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
     const newRow: Omit<DespejoRow, '_docId'> & { empresaId: string } = {
       empresaId: empresa?.id || 'demo',

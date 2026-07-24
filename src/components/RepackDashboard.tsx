@@ -521,7 +521,7 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
       if (activeEmbalagem !== 'todos' && row.embalagem !== activeEmbalagem) return false;
 
       // 3. Período (Calendário)
-      const rowDate = row.dataISO || (row.data ? row.data.split('/').reverse().join('-') : '');
+      const rowDate = (row.data ? row.data.split('/').reverse().map(p => p.padStart(2, '0')).join('-') : '') || row.dataISO || '';
       if (activeStartDate && rowDate && rowDate < activeStartDate) return false;
       if (activeEndDate && rowDate && rowDate > activeEndDate) return false;
 

@@ -112,6 +112,7 @@ export interface QuebraRow {
   turno: string;
   codQuebra: string;
   motivo: string;
+  fiscal?: string;
   colaboradorQuebrou?: string;
   _criadoEm?: string;
 }

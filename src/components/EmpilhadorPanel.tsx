@@ -28,7 +28,7 @@ export default function EmpilhadorPanel({ user, empresa }: EmpilhadorPanelProps)
   };
 
   const [operatorName, setOperatorName] = useState<string>(() => getDraftValue('operatorName', ''));
-  const [operators, setOperators] = useState<string[]>(() => getDraftValue('operators', ['MARIVALDO', 'RONILDO', 'PAULO PEREIRA']));
+  const [operators, setOperators] = useState<string[]>(['MARIVALDO', 'RONILDO', 'PAULO PEREIRA']);
   const [newOpName, setNewOpName] = useState<string>(() => getDraftValue('newOpName', ''));
 
   const defaultChecklist = [
@@ -82,7 +82,7 @@ export default function EmpilhadorPanel({ user, empresa }: EmpilhadorPanelProps)
       if (saved) {
         const parsed = JSON.parse(saved);
         setOperatorName(parsed.operatorName || '');
-        setOperators(parsed.operators || ['MARIVALDO', 'RONILDO', 'PAULO PEREIRA']);
+        setOperators(['MARIVALDO', 'RONILDO', 'PAULO PEREIRA']);
         setNewOpName(parsed.newOpName || '');
         setChecklist(parsed.checklist || defaultChecklist);
         setChecklistDone(parsed.checklistDone || false);
@@ -124,54 +124,7 @@ export default function EmpilhadorPanel({ user, empresa }: EmpilhadorPanelProps)
   // Sync operators from Firestore 'colaboradores' collection
   useEffect(() => {
     const allowedOps = ['MARIVALDO', 'RONILDO', 'PAULO PEREIRA'];
-    const normalizeOp = (name: string) => {
-      const upper = name.toUpperCase();
-      if (upper.includes('MARIVALDO')) return 'MARIVALDO';
-      if (upper.includes('RONILDO')) return 'RONILDO';
-      if (upper.includes('PAULO PEREIRA')) return 'PAULO PEREIRA';
-      return '';
-    };
-
-    if (!db) {
-      const savedColab = localStorage.getItem(`colaboradores_${empresaId}`);
-      if (savedColab) {
-        const list = JSON.parse(savedColab);
-        const ops = list
-          .filter((c: any) => {
-            const f = (c.funcao || '').toLowerCase();
-            return f !== 'controle' && f !== 'conferente';
-          })
-          .map((c: any) => normalizeOp(c.nome))
-          .filter(Boolean);
-        const uniqueOps = Array.from(new Set(ops));
-        if (uniqueOps.length > 0) {
-          setOperators(uniqueOps);
-        } else {
-          setOperators(allowedOps);
-        }
-      }
-      return;
-    }
-    const q = query(collection(db, 'colaboradores'), where('empresaId', '==', empresaId));
-    const unsub = onSnapshot(q, (snap) => {
-      const list = snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as any));
-      const ops = list
-        .filter(c => {
-          const f = (c.funcao || '').toLowerCase();
-          return f !== 'controle' && f !== 'conferente';
-        })
-        .map(c => normalizeOp(c.nome))
-        .filter(Boolean);
-      const uniqueOps = Array.from(new Set(ops));
-      if (uniqueOps.length > 0) {
-        setOperators(uniqueOps);
-      } else {
-        setOperators(allowedOps);
-      }
-    }, (error) => {
-      console.error("Error reading colaboradores in EmpilhadorPanel:", error);
-    });
-    return () => unsub();
+    setOperators(allowedOps);
   }, [empresaId]);
 
   const persistState = (extra: Record<string, any> = {}) => {
@@ -291,11 +244,16 @@ export default function EmpilhadorPanel({ user, empresa }: EmpilhadorPanelProps)
           locMapsLink: payload.locData.mapsLink,
         });
       }
+      window.dispatchEvent(new CustomEvent('app_data_updated'));
+      window.dispatchEvent(new CustomEvent('local_data_changed'));
     } else {
       // Local fallback
       const updated = tasks.map(x => x.id === taskId ? { ...x, status, ...payload } : x);
       setTasks(updated);
       localStorage.setItem(`tasks_${empresaId}`, JSON.stringify(updated));
+      localStorage.setItem(`tarefas_rows_${empresaId}`, JSON.stringify(updated));
+      window.dispatchEvent(new CustomEvent('app_data_updated'));
+      window.dispatchEvent(new CustomEvent('local_data_changed'));
     }
   };
 

@@ -269,15 +269,17 @@ export default function QuebrasPanel({ user, empresa }: QuebrasPanelProps) {
 
     setRegistering(true);
     const today = new Date();
-    const dataISO = today.toISOString().split('T')[0];
+    const dataISO = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
     const dataStr = today.toLocaleDateString('pt-BR');
 
     const chosenMotive = motivosDisponiveis.find(m => m.cod === motivoCod)?.motivo || String(motivoCod);
 
-    const newRow: Omit<QuebraRow, '_docId'> & { empresaId: string } = {
+    const newRow: Omit<QuebraRow, '_docId'> & { empresaId: string; _criadoEm?: string } = {
       empresaId: empresa?.id || 'demo',
       data: dataStr,
       dataISO,
+      _criadoEm: today.toISOString(),
+      fiscal: user.nome || 'Fiscal',
       codProduto: String(selectedProd.codigo),
       descricao: selectedProd.descricao,
       quantidade: Number(quantidade),

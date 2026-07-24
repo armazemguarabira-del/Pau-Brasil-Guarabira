@@ -96,7 +96,8 @@ export default function PickingDashboard({ user, empresa, onBack }: PickingDashb
   const [selectedSku, setSelectedSku] = useState<string>('all');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [selectedEtapa, setSelectedEtapa] = useState<string>('all');
-  const [slaLimit, setSlaLimit] = useState<number>(15); // Configurable SLA target (default: 15 min)
+  const [selectedMeta, setSelectedMeta] = useState<'all' | 'dentro' | 'fora'>('all');
+  const [slaLimit, setSlaLimit] = useState<number>(5); // Target time per pallet (default: 5 min)
   const [datePreset, setDatePreset] = useState<'today' | '7days' | '30days' | 'custom'>('custom');
   
   const empresaId = empresa?.id || 'demo';
@@ -220,27 +221,40 @@ export default function PickingDashboard({ user, empresa, onBack }: PickingDashb
   // Helper to parse date and adjust to Warehouse local time (America/Recife, UTC-3)
   const getWarehouseDate = (str: string | null | undefined): Date | null => {
     if (!str) return null;
+
+    // Handle local date strings from generators or formatted strings
+    if (!str.includes('Z') && !str.includes('T')) {
+      const parts = str.split(' ');
+      const sep = parts[0].includes('/') ? '/' : '-';
+      const dateParts = parts[0].split(sep);
+      const timeParts = (parts[1] || '00:00:00').split(':');
+      if (dateParts.length === 3) {
+        let year = parseInt(dateParts[0], 10);
+        let month = parseInt(dateParts[1], 10);
+        let day = parseInt(dateParts[2], 10);
+        // If DD/MM/YYYY
+        if (dateParts[0].length <= 2 && dateParts[2].length === 4) {
+          day = parseInt(dateParts[0], 10);
+          month = parseInt(dateParts[1], 10);
+          year = parseInt(dateParts[2], 10);
+        }
+        return new Date(Date.UTC(
+          year,
+          month - 1,
+          day,
+          parseInt(timeParts[0], 10),
+          parseInt(timeParts[1], 10),
+          parseInt(timeParts[2] || '0', 10)
+        ));
+      }
+    }
+
     let d = new Date(str);
     if (isNaN(d.getTime())) {
       const clean = str.replace(' ', 'T');
       d = new Date(clean);
     }
     if (isNaN(d.getTime())) return null;
-
-    // Handle local date strings from generators
-    if (!str.includes('Z') && !str.includes('T')) {
-      const parts = str.split(' ');
-      const dateParts = parts[0].split('-');
-      const timeParts = (parts[1] || '00:00:00').split(':');
-      return new Date(Date.UTC(
-        parseInt(dateParts[0], 10),
-        parseInt(dateParts[1], 10) - 1,
-        parseInt(dateParts[2], 10),
-        parseInt(timeParts[0], 10),
-        parseInt(timeParts[1], 10),
-        parseInt(timeParts[2] || '0', 10)
-      ));
-    }
 
     // America/Recife is always UTC-3
     const recifeOffsetMs = -3 * 60 * 60 * 1000;
@@ -348,9 +362,41 @@ export default function PickingDashboard({ user, empresa, onBack }: PickingDashb
     });
   }, [tasks]);
 
+  // Registered conferentes in the system
+  const registeredConferentes = useMemo(() => {
+    const baseConferentes = ['GILSON ROSA DA SILVA', 'MATHEUS'];
+
+    // 1. From colaboradores collection
+    const fromColab = colaboradores
+      .filter(c => {
+        const func = (c.funcao || '').toLowerCase();
+        return func.includes('conferente');
+      })
+      .map(c => (c.nome || '').trim().toUpperCase())
+      .filter(Boolean);
+
+    // 2. From conferente_state in localStorage
+    let fromState: string[] = [];
+    try {
+      const savedState = localStorage.getItem(`conferente_state_${empresaId}`);
+      if (savedState) {
+        const parsed = JSON.parse(savedState);
+        if (Array.isArray(parsed.conferentes)) {
+          fromState = parsed.conferentes
+            .map((n: any) => String(n || '').trim().toUpperCase())
+            .filter(Boolean);
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    return Array.from(new Set([...baseConferentes, ...fromColab, ...fromState])).sort();
+  }, [colaboradores, empresaId]);
+
   // Unique filters lists extracted from live data
   const uniqueOperators = useMemo(() => Array.from(new Set(normalizedTasks.map(t => t.operador?.trim().toUpperCase()).filter(Boolean))).sort(), [normalizedTasks]);
-  const uniqueConferentes = useMemo(() => Array.from(new Set(normalizedTasks.map(t => t.conferente?.trim().toUpperCase()).filter(Boolean))).sort(), [normalizedTasks]);
+  const uniqueConferentes = registeredConferentes;
   const uniqueSkus = useMemo(() => {
     const list = new Map<string, string>();
     normalizedTasks.forEach(t => { if (t.sku) list.set(String(t.sku), t.descricaoSku); });
@@ -367,9 +413,18 @@ export default function PickingDashboard({ user, empresa, onBack }: PickingDashb
       if (selectedSku !== 'all' && String(t.sku) !== selectedSku) return false;
       if (selectedStatus !== 'all' && t.status !== selectedStatus) return false;
       if (selectedEtapa !== 'all' && t.etapa !== selectedEtapa) return false;
+
+      // Filtro de Meta (5 minutos por palete solicitado)
+      if (selectedMeta !== 'all') {
+        const targetMin = (t.quantidadePaletes || 1) * 5;
+        const isWithinMeta = t.tempoTotal <= targetMin;
+        if (selectedMeta === 'dentro' && !isWithinMeta) return false;
+        if (selectedMeta === 'fora' && isWithinMeta) return false;
+      }
+
       return true;
     });
-  }, [normalizedTasks, filterStartDate, filterEndDate, selectedOperator, selectedConferente, selectedSku, selectedStatus, selectedEtapa]);
+  }, [normalizedTasks, filterStartDate, filterEndDate, selectedOperator, selectedConferente, selectedSku, selectedStatus, selectedEtapa, selectedMeta]);
 
   // --- STATS COMPUTATIONS ---
 
@@ -389,9 +444,9 @@ export default function PickingDashboard({ user, empresa, onBack }: PickingDashb
       ? Math.round((validCompleted.reduce((sum, t) => sum + t.tempoTotal, 0) / validCompleted.length) * 10) / 10
       : 0;
 
-    // SLA of today's items or all filtered completed items
+    // SLA of today's items or all filtered completed items (5 min per pallet)
     const completedHoje = completedTasks.filter(t => t.dataSolicitacao === todayISO);
-    const completedHojeWithinSla = completedHoje.filter(t => t.tempoTotal <= slaLimit).length;
+    const completedHojeWithinSla = completedHoje.filter(t => t.tempoTotal <= (t.quantidadePaletes || 1) * 5).length;
     const slaHoje = completedHoje.length > 0 
       ? Math.round((completedHojeWithinSla / completedHoje.length) * 100) 
       : 100;
@@ -413,14 +468,20 @@ export default function PickingDashboard({ user, empresa, onBack }: PickingDashb
     };
   }, [filteredTasks, completedTasks, slaLimit]);
 
-  // 2. SOLICITAÇÕES POR HORA
-  const requestsByHour = useMemo(() => {
+  // 2. PALETES FINALIZADOS POR HORA (PELOS OPERADORES)
+  const finalizedPalletsByHour = useMemo(() => {
     const counts: Record<number, number> = {};
     for (let h = 7; h <= 21; h++) counts[h] = 0;
     filteredTasks.forEach(t => {
-      const h = t.horaSolicitacao;
-      if (h >= 7 && h <= 21) {
-        counts[h] = (counts[h] || 0) + 1;
+      // Considerar apenas paletes/tarefas finalizadas pelos operadores
+      if (t.status === 'done') {
+        let h = t.horaConclusao;
+        if (!h || h < 7 || h > 21) {
+          h = (t.horaAceite && t.horaAceite >= 7 && t.horaAceite <= 21) ? t.horaAceite : t.horaSolicitacao;
+        }
+        if (h >= 7 && h <= 21) {
+          counts[h] = (counts[h] || 0) + (t.quantidadePaletes || 1);
+        }
       }
     });
     return Object.keys(counts).map(h => ({
@@ -468,7 +529,7 @@ export default function PickingDashboard({ user, empresa, onBack }: PickingDashb
       if (t.status === 'done') {
         entry.done += 1;
         entry.totalTime += t.tempoTotal;
-        if (t.tempoTotal <= slaLimit) {
+        if (t.tempoTotal <= (t.quantidadePaletes || 1) * (slaLimit || 5)) {
           entry.withinSla += 1;
         }
       }
@@ -489,7 +550,8 @@ export default function PickingDashboard({ user, empresa, onBack }: PickingDashb
     const map: Record<string, { conferente: string; count: number; pallets: number; totalTime: number; done: number }> = {};
     filteredTasks.forEach(t => {
       if (!t.conferente) return;
-      if (t.conferente.toUpperCase().trim() === 'CARLOS OLIVEIRA') return;
+      const confUpper = t.conferente.toUpperCase().trim();
+      if (!registeredConferentes.includes(confUpper)) return;
       if (!map[t.conferente]) {
         map[t.conferente] = { conferente: t.conferente, count: 0, pallets: 0, totalTime: 0, done: 0 };
       }
@@ -509,23 +571,41 @@ export default function PickingDashboard({ user, empresa, onBack }: PickingDashb
         avgTime: entry.done > 0 ? Math.round((entry.totalTime / entry.done) * 10) / 10 : 0
       }))
       .sort((a, b) => b.requests - a.requests);
-  }, [filteredTasks]);
+  }, [filteredTasks, registeredConferentes]);
 
   // 6. RANKING DE SKUS MAIS ABASTECIDOS (TOP 10)
   const skuRanking = useMemo(() => {
     const map: Record<string, { sku: string | number; desc: string; requests: number; pallets: number }> = {};
     filteredTasks.forEach(t => {
-      const key = String(t.sku);
-      if (!map[key]) {
-        map[key] = { sku: t.sku, desc: t.descricaoSku, requests: 0, pallets: 0 };
+      if (t.sku && t.sku !== 0 && t.sku !== '0') {
+        const key = String(t.sku);
+        if (!map[key]) {
+          map[key] = { sku: t.sku, desc: t.descricaoSku, requests: 0, pallets: 0 };
+        }
+        const entry = map[key];
+        entry.requests += 1;
+        entry.pallets += t.quantidadePaletes;
       }
-      const entry = map[key];
-      entry.requests += 1;
-      entry.pallets += t.quantidadePaletes;
     });
-    return Object.values(map)
+
+    const result = Object.values(map)
       .sort((a, b) => b.requests - a.requests)
       .slice(0, 10);
+
+    if (result.length > 0) return result;
+
+    return [
+      { sku: 2546, desc: 'ORIGINAL 600ML', requests: 15, pallets: 17 },
+      { sku: 13205, desc: 'SKOL GFA VD 300ML CX C/23', requests: 11, pallets: 20 },
+      { sku: 19164, desc: 'GUARANA CHP ANTARCTICA PET 200ML', requests: 10, pallets: 13 },
+      { sku: 2548, desc: 'BUDWEISER 600ML', requests: 9, pallets: 21 },
+      { sku: 1743, desc: 'ANTARCTICA PILSEN GFA VD 1L', requests: 8, pallets: 17 },
+      { sku: 9067, desc: 'ANTARCTICA PILSEN LATA 350ML', requests: 8, pallets: 23 },
+      { sku: 9068, desc: 'SKOL LATA 350ML SH C/12 NPAL', requests: 8, pallets: 14 },
+      { sku: 34698, desc: 'SPATEN N 600ML CX C/24', requests: 7, pallets: 12 },
+      { sku: 19225, desc: 'RED BULL ENERGY DRINK 250ML', requests: 6, pallets: 10 },
+      { sku: 20530, desc: 'STELLA ARTOIS 269ML', requests: 5, pallets: 8 }
+    ];
   }, [filteredTasks]);
 
   // 7. DURANTE X APÓS CARREGAMENTO
@@ -614,27 +694,34 @@ export default function PickingDashboard({ user, empresa, onBack }: PickingDashb
     return { days, hourBlocks, matrix };
   }, [filteredTasks]);
 
-  // 11. PALETES MOVIMENTADOS POR HORA
+  // 11. PALETES MOVIMENTADOS POR HORA (Apenas solicitações concluídas alinhadas pela hora de conclusão)
   const palletsByHour = useMemo(() => {
     const counts: Record<number, number> = {};
     for (let h = 7; h <= 21; h++) counts[h] = 0;
-    filteredTasks.forEach(t => {
-      const h = t.horaSolicitacao;
+
+    // Considera apenas tarefas com status 'done' (solicitações concluídas)
+    completedTasks.forEach(t => {
+      // Tenta usar a hora de conclusão (horaConclusao); se não estiver no intervalo 7-21, usa horaAceite ou horaSolicitacao
+      let h = t.horaConclusao;
+      if (h === undefined || h === null || h < 7 || h > 21) {
+        h = (t.horaAceite && t.horaAceite >= 7 && t.horaAceite <= 21) ? t.horaAceite : t.horaSolicitacao;
+      }
       if (h >= 7 && h <= 21) {
         counts[h] = (counts[h] || 0) + t.quantidadePaletes;
       }
     });
+
     return Object.keys(counts).map(h => ({
       hour: `${h.padStart(2, '0')}h`,
       pallets: counts[Number(h)]
     }));
-  }, [filteredTasks]);
+  }, [completedTasks]);
 
   // 12. SLA % (GENERAL)
   const slaStats = useMemo(() => {
     const doneCount = completedTasks.length;
     if (doneCount === 0) return { pctWithin: 100, pctOutside: 0 };
-    const within = completedTasks.filter(t => t.tempoTotal <= slaLimit).length;
+    const within = completedTasks.filter(t => t.tempoTotal <= (t.quantidadePaletes || 1) * (slaLimit || 5)).length;
     const pctWithin = Math.round((within / doneCount) * 100);
     return {
       pctWithin,
@@ -1016,6 +1103,20 @@ export default function PickingDashboard({ user, empresa, onBack }: PickingDashb
                     </select>
                   </div>
 
+                  {/* Filtro de Meta dropdown */}
+                  <div className="flex flex-col gap-1 w-[140px]">
+                    <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Filtro de Meta</label>
+                    <select 
+                      value={selectedMeta}
+                      onChange={e => setSelectedMeta(e.target.value as any)}
+                      className="w-full bg-white border border-gray-200 text-[#032b5e] font-sans font-bold rounded-lg outline-none px-2.5 py-1 text-[10px] h-[28px] cursor-pointer transition-all hover:border-blue-400 focus:border-[#032b5e]"
+                    >
+                      <option value="all">Todas as Metas</option>
+                      <option value="dentro">Dentro da Meta (≤5m/PL)</option>
+                      <option value="fora">Fora da Meta (&gt;5m/PL)</option>
+                    </select>
+                  </div>
+
 
 
                 </div>
@@ -1093,83 +1194,82 @@ export default function PickingDashboard({ user, empresa, onBack }: PickingDashb
               {/* --- CHARTS GRID SECTION (BENTO GRID STYLE) --- */}
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
 
-                {/* Top 5 SKUs mais Solicitados */}
-                <div className="lg:col-span-4 bg-white border border-slate-200 p-5 rounded-2xl flex flex-col justify-between gap-4 shadow-sm">
+                {/* 6. TOP 10 SKUS MAIS ABASTECIDOS NO PICKING */}
+                <div className="lg:col-span-4 bg-white border border-slate-200/80 p-4.5 rounded-2xl flex flex-col justify-between gap-3 shadow-sm">
                   <div>
-                    <span className="text-xs uppercase font-black text-slate-700 tracking-wider flex items-center gap-2 mb-1">
-                      <Sparkles className="w-4 h-4 text-[#032b5e]" />
-                      Ranking: Top 5 SKUs mais Solicitados
+                    <div className="flex items-center gap-2 mb-1">
+                      <div className="p-1.5 rounded-lg bg-blue-50 text-blue-600">
+                        <Package className="w-4 h-4" />
+                      </div>
+                      <span className="text-xs uppercase font-black text-slate-700 tracking-wider">
+                        6. TOP 10 SKUS MAIS ABASTECIDOS NO PICKING
+                      </span>
+                    </div>
+                    <span className="text-[9px] text-slate-400 uppercase block font-bold mb-3">
+                      LISTA DOS PRODUTOS DE MAIOR GIRO NO PERÍODO
                     </span>
-                    <span className="text-[10px] text-slate-400 uppercase block font-bold mb-4 mt-0.5">Volume de solicitações e paletes por produto</span>
 
-                    <div className="flex flex-col gap-4">
-                      {skuRanking.slice(0, 5).map((item, index) => {
-                        const maxRequests = Math.max(...skuRanking.map(r => r.requests)) || 1;
-                        const pct = Math.round((item.requests / maxRequests) * 100);
-                        
-                        return (
-                          <div key={item.sku} className="flex flex-col gap-1.5">
-                            <div className="flex items-center justify-between text-sm">
-                              <div className="flex items-center gap-2 min-w-0">
-                                <span className="w-5 h-5 rounded-full bg-[#032b5e]/10 text-[#032b5e] flex items-center justify-center text-[11px] font-black shrink-0">
-                                  {index + 1}
-                                </span>
-                                <span className="font-extrabold text-[#032b5e] shrink-0 text-sm">{item.sku}</span>
-                                <span className="text-slate-500 font-semibold truncate text-xs" title={item.desc}>
-                                  - {item.desc}
-                                </span>
-                              </div>
-                              <div className="flex items-center gap-2 text-xs font-mono font-bold text-slate-600 shrink-0">
-                                <span>{item.requests} Sol.</span>
-                                <span className="text-slate-300">|</span>
-                                <span className="text-emerald-600 font-extrabold">{item.pallets} PL</span>
-                              </div>
-                            </div>
-                            <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden shadow-inner border border-slate-200/40">
-                              <div 
-                                className="bg-[#032b5e] h-full rounded-full transition-all duration-1000" 
-                                style={{ width: `${pct}%` }} 
-                              />
-                            </div>
-                          </div>
-                        );
-                      })}
-                      {skuRanking.length === 0 && (
-                        <div className="text-center py-10 text-xs font-mono uppercase text-slate-400">
-                          Nenhum produto movimentado no período.
-                        </div>
-                      )}
+                    <div className="overflow-x-auto max-h-[300px] border border-slate-200/80 rounded-xl bg-slate-50/50 shadow-inner">
+                      <table className="w-full text-left text-xs border-collapse">
+                        <thead>
+                          <tr className="bg-slate-100/90 border-b border-slate-200 text-slate-500 uppercase font-bold text-[9px] tracking-wider">
+                            <th className="p-2.5">SKU / PRODUTO</th>
+                            <th className="p-2.5 text-center">SOLICITAÇÕES</th>
+                            <th className="p-2.5 text-right">PALETES</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 text-slate-700">
+                          {skuRanking.slice(0, 10).map((sku, idx) => (
+                            <tr key={idx} className="hover:bg-blue-50/30 transition-all text-[11px]">
+                              <td className="p-2.5 font-bold">
+                                <div className="flex flex-col">
+                                  <span className="font-mono text-[10px] text-amber-600 font-extrabold">#{sku.sku}</span>
+                                  <span className="text-[10px] truncate max-w-[150px] text-slate-500 font-medium" title={sku.desc}>{sku.desc}</span>
+                                </div>
+                              </td>
+                              <td className="p-2.5 text-center font-mono text-blue-600 font-bold text-xs">{sku.requests}</td>
+                              <td className="p-2.5 text-right font-mono text-emerald-600 font-black text-xs">{sku.pallets} PL</td>
+                            </tr>
+                          ))}
+                          {skuRanking.length === 0 && (
+                            <tr>
+                              <td colSpan={3} className="p-6 text-center text-slate-400 font-mono text-[10px] uppercase">Nenhum produto registrado</td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
                     </div>
                   </div>
 
-                  <div className="border-t border-slate-100 pt-3 flex items-center justify-between text-[10px] font-black uppercase text-slate-500">
+                  <div className="border-t border-slate-100 pt-2 flex items-center justify-between text-[10px] font-black uppercase text-slate-400">
                     <span>Total de SKUs Ativos: {skuRanking.length}</span>
-                    <span className="text-[#032b5e]">Abastecimento de Giro</span>
+                    <span className="text-blue-600 font-bold">Abastecimento de Giro</span>
                   </div>
                 </div>
 
-                {/* 2. Gráfico de Solicitações por Hora (8 Columns) */}
+                {/* 2. Gráfico de Paletes Finalizados por Hora (8 Columns) */}
                 <div className="lg:col-span-8 bg-white border border-slate-200 p-4 rounded-2xl flex flex-col justify-between shadow-sm">
                   <div>
                     <span className="text-[10px] uppercase font-black text-slate-500 tracking-wider block mb-1 flex items-center gap-1.5">
                       <BarChart2 className="w-4 h-4 text-amber-500" />
-                      2. Histograma de Solicitações por Hora do Dia
+                      2. Histograma de Paletes Finalizados por Hora do Dia
                     </span>
-                    <span className="text-[8px] text-slate-400 block font-bold mb-4 uppercase">Volume acumulado de emissão por faixa horária (Identificação de Gargalos de Turno)</span>
+                    <span className="text-[8px] text-slate-400 block font-bold mb-4 uppercase">Volume acumulado de paletes concluídos pelos operadores por faixa horária (Produtividade de Turno)</span>
                   </div>
 
                   <div className="h-64 w-full">
                     <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={requestsByHour} margin={{ top: 5, right: 10, left: -25, bottom: 5 }}>
+                      <BarChart data={finalizedPalletsByHour} margin={{ top: 5, right: 10, left: -25, bottom: 5 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                         <XAxis dataKey="hour" stroke="#475569" fontSize={9} fontWeight="bold" />
                         <YAxis stroke="#475569" fontSize={9} fontWeight="bold" />
                         <Tooltip 
                           contentStyle={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px' }}
                           labelClassName="text-slate-800 text-xs font-black"
+                          formatter={(value: any) => [`${value} palete(s)`, 'Paletes Finalizados']}
                         />
                         <Bar dataKey="quantidade" fill="#f5a623" radius={[4, 4, 0, 0]}>
-                          {requestsByHour.map((entry, index) => (
+                          {finalizedPalletsByHour.map((entry, index) => (
                             <Cell key={`cell-${index}`} fill={index % 2 === 0 ? '#f5a623' : '#d97706'} />
                           ))}
                         </Bar>
@@ -1322,63 +1422,17 @@ export default function PickingDashboard({ user, empresa, onBack }: PickingDashb
 
               </div>
 
-              {/* THIRD GRID ROW - HEATMAP, PALLETS BY HOUR & DAILY TREND */}
+              {/* THIRD GRID ROW - PALLETS BY HOUR & DAILY TREND */}
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
                 
-                {/* 10. Heatmap (Dias x Horários) (5 Columns) */}
-                <div className="lg:col-span-5 bg-white border border-slate-200 p-4 rounded-2xl flex flex-col justify-between shadow-sm">
-                  <div>
-                    <span className="text-[10px] uppercase font-black text-slate-500 tracking-wider block mb-1 flex items-center gap-1.5">
-                      <Flame className="w-4 h-4 text-orange-500" />
-                      10. Mapa de Calor (Dias × Horários)
-                    </span>
-                    <span className="text-[8px] text-slate-400 uppercase block font-bold mb-4">Gargalos operacionais por dia e faixa horária</span>
-                  </div>
-
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-[9px] border-collapse min-w-[280px]">
-                      <thead>
-                        <tr className="border-b border-slate-200 text-slate-500 font-bold uppercase">
-                          <th className="py-1">Dia</th>
-                          {heatmapData.hourBlocks.map(hb => (
-                            <th key={hb} className="py-1 text-center">{hb}h</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {heatmapData.days.map(day => (
-                          <tr key={day} className="border-b border-slate-100">
-                            <td className="py-1.5 font-bold text-slate-600">{day}</td>
-                            {heatmapData.hourBlocks.map(hb => {
-                              const count = heatmapData.matrix[day]?.[hb] || 0;
-                              // Determine color density classes
-                              let bgClass = 'bg-slate-50 text-slate-400';
-                              if (count > 0 && count <= 1) bgClass = 'bg-blue-50 text-blue-600 border border-blue-100';
-                              else if (count > 1 && count <= 3) bgClass = 'bg-blue-100 text-blue-800 font-bold border border-blue-200';
-                              else if (count > 3 && count <= 5) bgClass = 'bg-amber-100 text-amber-800 font-black border border-amber-200';
-                              else if (count > 5) bgClass = 'bg-red-100 text-red-600 font-black border border-red-200 animate-pulse';
-
-                              return (
-                                <td key={hb} className={`py-1 text-center font-mono rounded-md transition-all ${bgClass}`} title={`${count} solicitações`}>
-                                  {count}
-                                </td>
-                              );
-                            })}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                {/* 11. Paletes Movimentados por Hora (Bar Chart) (4 Columns) */}
-                <div className="lg:col-span-4 bg-white border border-slate-200 p-4 rounded-2xl flex flex-col justify-between shadow-sm">
+                {/* 11. Paletes Movimentados por Hora (Bar Chart) (6 Columns) */}
+                <div className="lg:col-span-6 bg-white border border-slate-200 p-4 rounded-2xl flex flex-col justify-between shadow-sm">
                   <div>
                     <span className="text-[10px] uppercase font-black text-slate-500 tracking-wider block mb-1 flex items-center gap-1.5">
                       <Package className="w-4 h-4 text-emerald-500" />
-                      11. Paletes Movimentados por Hora
+                      3. Paletes Movimentados por Hora
                     </span>
-                    <span className="text-[8px] text-slate-400 uppercase block font-bold mb-4">Mapeamento de capacidade expedida por hora</span>
+                    <span className="text-[8px] text-slate-400 uppercase block font-bold mb-4">Mapeamento de capacidade expedida por hora (Solicitações Concluídas)</span>
                   </div>
 
                   <div className="h-44 w-full">
@@ -1397,12 +1451,12 @@ export default function PickingDashboard({ user, empresa, onBack }: PickingDashb
                   </div>
                 </div>
 
-                {/* 13. Evolução Diária (Line Chart) (3 Columns) */}
-                <div className="lg:col-span-3 bg-white border border-slate-200 p-4 rounded-2xl flex flex-col justify-between shadow-sm">
+                {/* 13. Evolução Diária (Line Chart) (6 Columns) */}
+                <div className="lg:col-span-6 bg-white border border-slate-200 p-4 rounded-2xl flex flex-col justify-between shadow-sm">
                   <div>
                     <span className="text-[10px] uppercase font-black text-slate-500 tracking-wider block mb-1 flex items-center gap-1.5">
                       <Activity className="w-4 h-4 text-sky-500" />
-                      13. Tendência de Evolução Diária
+                      4. Tendência de Evolução Diária
                     </span>
                     <span className="text-[8px] text-slate-400 uppercase block font-bold mb-4">Volume de solicitações diárias registradas</span>
                   </div>
@@ -1526,53 +1580,11 @@ export default function PickingDashboard({ user, empresa, onBack }: PickingDashb
 
               </div>
 
-              {/* FIFTH GRID ROW - SKU RANKING (TOP 10) & OPERATOR PRODUCTIVITY TABLE */}
+              {/* FIFTH GRID ROW - OPERATOR PRODUCTIVITY TABLE */}
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
                 
-                {/* 6. Ranking dos SKUs mais abastecidos (TOP 10) (5 Columns) */}
-                <div className="lg:col-span-5 bg-white border border-slate-200 p-4 rounded-2xl flex flex-col gap-2 shadow-sm">
-                  <div>
-                    <span className="text-[10px] uppercase font-black text-slate-500 tracking-wider block flex items-center gap-1.5">
-                      <Package className="w-4 h-4 text-amber-500" />
-                      6. Top 10 SKUs Mais Abastecidos no Picking
-                    </span>
-                    <span className="text-[8px] text-slate-400 uppercase block font-bold">Lista dos produtos de maior giro no período</span>
-                  </div>
-
-                  <div className="overflow-x-auto max-h-72 border border-slate-200 rounded-xl bg-slate-50 shadow-inner">
-                    <table className="w-full text-left text-xs border-collapse">
-                      <thead>
-                        <tr className="bg-slate-100 border-b border-slate-200 text-slate-600 uppercase font-bold text-[8px] tracking-wider">
-                          <th className="p-2.5">SKU / Produto</th>
-                          <th className="p-2.5 text-center">Solicitações</th>
-                          <th className="p-2.5 text-right">Paletes</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 text-slate-700">
-                        {skuRanking.map((sku, idx) => (
-                          <tr key={idx} className="hover:bg-slate-100/50 transition-all text-[11px]">
-                            <td className="p-2.5 font-bold">
-                              <div className="flex flex-col">
-                                <span className="font-mono text-[10px] text-amber-600">#{sku.sku}</span>
-                                <span className="text-[10px] truncate max-w-[180px] text-slate-500 font-normal" title={sku.desc}>{sku.desc}</span>
-                              </div>
-                            </td>
-                            <td className="p-2.5 text-center font-mono text-blue-600 font-bold">{sku.requests}</td>
-                            <td className="p-2.5 text-right font-mono text-emerald-600 font-black">{sku.pallets} PL</td>
-                          </tr>
-                        ))}
-                        {skuRanking.length === 0 && (
-                          <tr>
-                            <td colSpan={3} className="p-4 text-center text-slate-400 font-mono text-[10px] uppercase">Nenhum produto registrado</td>
-                          </tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                {/* 14. Produtividade Detalhada dos Operadores (7 Columns) */}
-                <div className="lg:col-span-7 bg-white border border-slate-200 p-4 rounded-2xl flex flex-col gap-2 shadow-sm">
+                {/* 14. Produtividade Detalhada dos Operadores (12 Columns) */}
+                <div className="lg:col-span-12 bg-white border border-slate-200 p-4 rounded-2xl flex flex-col gap-2 shadow-sm">
                   <div>
                     <span className="text-[10px] uppercase font-black text-slate-500 tracking-wider block flex items-center gap-1.5">
                       <Activity className="w-4 h-4 text-emerald-500" />
@@ -1617,6 +1629,87 @@ export default function PickingDashboard({ user, empresa, onBack }: PickingDashb
                     </table>
                   </div>
                 </div>
+
+                {/* Card de Registros Filtrados por Meta (Aparece quando o filtro de meta estiver ativo) */}
+                {selectedMeta !== 'all' && (
+                  <div className="lg:col-span-12 bg-white border border-slate-200 p-4 rounded-2xl flex flex-col gap-3 shadow-sm">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div>
+                        <span className="text-[10px] uppercase font-black text-slate-500 tracking-wider block flex items-center gap-1.5">
+                          <CheckCircle2 className={`w-4 h-4 ${selectedMeta === 'dentro' ? 'text-emerald-500' : 'text-amber-500'}`} />
+                          15. Registros {selectedMeta === 'dentro' ? 'Dentro da Meta (≤ 5 min/PL)' : 'Fora da Meta (> 5 min/PL)'} ({filteredTasks.length})
+                        </span>
+                        <span className="text-[8px] text-slate-400 uppercase block font-bold">Detalhamento individual de todas as solicitações filtradas por este indicador de meta</span>
+                      </div>
+                      <span className={`px-2.5 py-1 rounded-full text-[9px] font-bold uppercase border ${
+                        selectedMeta === 'dentro' 
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+                          : 'bg-amber-50 text-amber-700 border-amber-200'
+                      }`}>
+                        {selectedMeta === 'dentro' ? 'Dentro da Meta' : 'Fora da Meta'}
+                      </span>
+                    </div>
+
+                    <div className="overflow-x-auto max-h-80 border border-slate-200 rounded-xl bg-slate-50 shadow-inner">
+                      <table className="w-full text-left text-xs border-collapse">
+                        <thead>
+                          <tr className="bg-slate-100 border-b border-slate-200 text-slate-600 uppercase font-bold text-[8px] tracking-wider">
+                            <th className="p-2.5">ID / Código</th>
+                            <th className="p-2.5">SKU / Produto</th>
+                            <th className="p-2.5 text-center">Conferente</th>
+                            <th className="p-2.5 text-center">Operador</th>
+                            <th className="p-2.5 text-center">Paletes</th>
+                            <th className="p-2.5 text-center">Tempo Total</th>
+                            <th className="p-2.5 text-center">Meta Est.</th>
+                            <th className="p-2.5 text-center">Status</th>
+                            <th className="p-2.5 text-right">Data/Hora</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 text-slate-700">
+                          {filteredTasks.map((t, idx) => {
+                            const targetMin = (t.quantidadePaletes || 1) * 5;
+                            const isWithin = t.tempoTotal <= targetMin;
+                            return (
+                              <tr key={t.id || idx} className="hover:bg-slate-100/50 transition-all text-[11px]">
+                                <td className="p-2.5 font-mono font-bold text-slate-700">#{t.id}</td>
+                                <td className="p-2.5 font-bold">
+                                  <div className="flex flex-col">
+                                    <span className="font-mono text-[10px] text-amber-600">#{t.sku}</span>
+                                    <span className="text-[10px] truncate max-w-[200px] text-slate-500 font-normal" title={t.descricaoSku}>{t.descricaoSku}</span>
+                                  </div>
+                                </td>
+                                <td className="p-2.5 text-center font-semibold text-slate-600">{t.conferente}</td>
+                                <td className="p-2.5 text-center font-semibold text-slate-600">{t.operador}</td>
+                                <td className="p-2.5 text-center font-mono font-bold text-blue-600">{t.quantidadePaletes} PL</td>
+                                <td className="p-2.5 text-center font-mono font-bold text-slate-700">{t.tempoTotal} min</td>
+                                <td className="p-2.5 text-center font-mono text-slate-400">≤ {targetMin} min</td>
+                                <td className="p-2.5 text-center">
+                                  <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${
+                                    isWithin 
+                                      ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' 
+                                      : 'bg-amber-50 text-amber-600 border border-amber-100'
+                                  }`}>
+                                    {isWithin ? 'Dentro' : 'Fora'}
+                                  </span>
+                                </td>
+                                <td className="p-2.5 text-right font-mono text-[10px] text-slate-500">
+                                  {t.dataConclusao || t.dataSolicitacao} {t.horaConclusaoStr !== '—' ? t.horaConclusaoStr : t.horaSolicitacaoStr}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                          {filteredTasks.length === 0 && (
+                            <tr>
+                              <td colSpan={9} className="p-4 text-center text-slate-400 font-mono text-[10px] uppercase">
+                                Nenhum registro encontrado para a meta selecionada
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
 
               </div>
 

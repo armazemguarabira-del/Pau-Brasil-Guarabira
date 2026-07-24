@@ -372,16 +372,16 @@ export default function DespejoDashboard({ user, empresa, onBack }: DespejoDashb
       }
       // 3. Date range filter
       if (appliedFilters.startDate || appliedFilters.endDate) {
-        if (row.dataISO) {
-          if (appliedFilters.startDate && row.dataISO < appliedFilters.startDate) return false;
-          if (appliedFilters.endDate && row.dataISO > appliedFilters.endDate) return false;
-        } else if (row.data) {
+        if (row.data) {
           const parts = row.data.split('/');
           if (parts.length === 3) {
             const rowISO = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
             if (appliedFilters.startDate && rowISO < appliedFilters.startDate) return false;
             if (appliedFilters.endDate && rowISO > appliedFilters.endDate) return false;
           }
+        } else if (row.dataISO) {
+          if (appliedFilters.startDate && row.dataISO < appliedFilters.startDate) return false;
+          if (appliedFilters.endDate && row.dataISO > appliedFilters.endDate) return false;
         }
       }
       // 4. Hora filter (check if row's start time contains or matches)

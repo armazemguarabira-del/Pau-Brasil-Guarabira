@@ -450,7 +450,7 @@ export default function App() {
     const isSupervisorOrAdmin = user?.isControle || userRoles.includes('admin') || userRoles.includes('controle') || isNixon || user?.uid === 'bypass_g1009';
 
     const adminPanels = [
-      'acessos', 'controle', 'exportar', 'firebase', 'registros',
+      'acessos', 'controle', 'exportar', 'firebase', 'registros', 'acoes',
       'repack-dashboard', 'despejo-dashboard', 'logistica-dashboard',
       'quebras-dashboard', 'fefo-dashboard', 'picking-dashboard'
     ];
@@ -588,6 +588,8 @@ export default function App() {
         return <AcessosPanel user={user} empresa={empresa} />;
       case 'controle':
         return <ControlePanel user={user} empresa={empresa} />;
+      case 'acoes':
+        return <ControlePanel user={user} empresa={empresa} initialSection="acoes" />;
       case 'firebase':
         return <FirebasePanel />;
       case 'exportar':
@@ -743,6 +745,13 @@ export default function App() {
           title: 'Painel Controle',
           subtitle: 'Gerenciamento de operadores, atribuição de senhas, liberação de turnos.',
           color: 'from-[#1e56f0]/10 to-transparent'
+        };
+      case 'acoes':
+        return {
+          breadcrumbs: ['Administração & Gestão', 'Gestão de Ações'],
+          title: 'Gestão de Ações & Alertas Operacionais',
+          subtitle: 'Acompanhamento de desvios, ocorrências e planos de ação registrados.',
+          color: 'from-emerald-500/10 to-transparent'
         };
       case 'exportar':
         return {

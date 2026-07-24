@@ -65,22 +65,68 @@ interface ActionPlanItem {
 }
 
 const CustomizedPercentLabel = (props: any) => {
-  const { x, y, value, fill } = props;
+  const { x, y, value, fill, position = 'top' } = props;
   if (value === undefined || value === null) return null;
+  const yOffset = position === 'bottom' ? 18 : -10;
   return (
-    <text x={x} y={y - 10} fill={fill || "#334155"} fontSize={10} fontWeight="black" textAnchor="middle">
-      {value}%
-    </text>
+    <g>
+      <text
+        x={x}
+        y={y + yOffset}
+        fill="#ffffff"
+        stroke="#ffffff"
+        strokeWidth={4}
+        strokeLinejoin="round"
+        fontSize={11}
+        fontWeight="900"
+        textAnchor="middle"
+      >
+        {value}%
+      </text>
+      <text
+        x={x}
+        y={y + yOffset}
+        fill={fill || "#334155"}
+        fontSize={11}
+        fontWeight="900"
+        textAnchor="middle"
+      >
+        {value}%
+      </text>
+    </g>
   );
 };
 
 const CustomizedMinLabel = (props: any) => {
-  const { x, y, value, fill } = props;
+  const { x, y, value, fill, position = 'top' } = props;
   if (value === undefined || value === null) return null;
+  const yOffset = position === 'bottom' ? 18 : -10;
   return (
-    <text x={x} y={y - 10} fill={fill || "#334155"} fontSize={10} fontWeight="black" textAnchor="middle">
-      {value}
-    </text>
+    <g>
+      <text
+        x={x}
+        y={y + yOffset}
+        fill="#ffffff"
+        stroke="#ffffff"
+        strokeWidth={4}
+        strokeLinejoin="round"
+        fontSize={11}
+        fontWeight="900"
+        textAnchor="middle"
+      >
+        {value} min
+      </text>
+      <text
+        x={x}
+        y={y + yOffset}
+        fill={fill || "#334155"}
+        fontSize={11}
+        fontWeight="900"
+        textAnchor="middle"
+      >
+        {value} min
+      </text>
+    </g>
   );
 };
 
@@ -133,23 +179,23 @@ export default function LogisticaDashboard({ user, empresa, onBack }: LogisticaD
   }, [empresa?.id]);
   // Helper for parsing date fields
   const parseRowDate = (r: ArmazemRow) => {
-    if (r.dataISO) {
-      const parts = r.dataISO.split('-');
-      if (parts.length === 3) {
-        return {
-          year: parts[0],
-          month: parts[1], // "01", "02", etc.
-          day: parts[2]
-        };
-      }
-    }
     if (r.data) {
       const parts = r.data.split('/');
       if (parts.length === 3) {
         return {
           year: parts[2],
-          month: parts[1],
-          day: parts[0]
+          month: parts[1].padStart(2, '0'),
+          day: parts[0].padStart(2, '0')
+        };
+      }
+    }
+    if (r.dataISO) {
+      const parts = r.dataISO.split('-');
+      if (parts.length === 3) {
+        return {
+          year: parts[0],
+          month: parts[1].padStart(2, '0'),
+          day: parts[2].padStart(2, '0')
         };
       }
     }
@@ -921,13 +967,9 @@ export default function LogisticaDashboard({ user, empresa, onBack }: LogisticaD
 
     filteredRows.forEach(r => {
       let dateObj: Date | null = null;
-      if (r.dataISO) {
-        dateObj = new Date(r.dataISO + 'T12:00:00');
-      } else if (r.data) {
-        const p = r.data.split('/');
-        if (p.length === 3) {
-          dateObj = new Date(`${p[2]}-${p[1]}-${p[0]}T12:00:00`);
-        }
+      const dt = parseRowDate(r);
+      if (dt) {
+        dateObj = new Date(`${dt.year}-${dt.month}-${dt.day}T12:00:00`);
       }
 
       if (!dateObj || isNaN(dateObj.getTime())) return;
@@ -969,7 +1011,8 @@ export default function LogisticaDashboard({ user, empresa, onBack }: LogisticaD
   const controlChartData = useMemo(() => {
     const dailyGroups: Record<string, ArmazemRow[]> = {};
     filteredRows.forEach(r => {
-      const dKey = r.dataISO || r.data;
+      const dt = parseRowDate(r);
+      const dKey = dt ? `${dt.year}-${dt.month}-${dt.day}` : (r.data || r.dataISO);
       if (!dKey) return;
       if (!dailyGroups[dKey]) dailyGroups[dKey] = [];
       dailyGroups[dKey].push(r);
@@ -1375,8 +1418,9 @@ export default function LogisticaDashboard({ user, empresa, onBack }: LogisticaD
     const dayNames = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
     
     filteredRows.forEach(r => {
-      if (!r.dataISO) return;
-      const dateObj = new Date(r.dataISO + 'T12:00:00'); // avoid timezone offset
+      const dt = parseRowDate(r);
+      if (!dt) return;
+      const dateObj = new Date(`${dt.year}-${dt.month}-${dt.day}T12:00:00`); // avoid timezone offset
       const dayName = dayNames[dateObj.getDay()];
       
       if (!r.inicio) return;
@@ -2302,7 +2346,7 @@ export default function LogisticaDashboard({ user, empresa, onBack }: LogisticaD
         
         {/* MERGED CHART 1: DESEMPENHO OPERACIONAL – EFC E EFD */}
         <div className="bg-white p-6 rounded-xl border border-gray-200/80 shadow-xs flex flex-col gap-4">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between border-b border-gray-100 pb-4 gap-2">
+          <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between border-b border-gray-100 pb-4 gap-3">
             <div>
               <h3 className="font-sans font-black text-sm uppercase text-slate-800 tracking-wider">
                 DESEMPENHO OPERACIONAL – <span className="text-[#032b5e]">EFC (CARREGAMENTO)</span> E <span className="text-[#f97316]">EFD (DESCARGA)</span>
@@ -2311,33 +2355,33 @@ export default function LogisticaDashboard({ user, empresa, onBack }: LogisticaD
             </div>
             
             {/* Custom Legend */}
-            <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-[10px] font-black uppercase tracking-wider text-slate-600">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[10px] font-black uppercase tracking-wider text-slate-600 bg-slate-50/80 p-2 rounded-lg border border-slate-100/80">
               <div className="flex items-center gap-1.5">
-                <span className="w-5 h-1 bg-[#032b5e] rounded-full"></span>
-                <span>EFC % (Carregamento) - Real</span>
+                <span className="w-4 h-1 bg-[#032b5e] rounded-full"></span>
+                <span>EFC Real</span>
               </div>
               <div className="flex items-center gap-1.5">
-                <span className="w-5 h-0 border-t border-dashed border-[#032b5e] border-2"></span>
-                <span className="text-gray-400">Meta EFC: 96%</span>
+                <span className="w-4 h-0 border-t-2 border-dashed border-[#032b5e]"></span>
+                <span className="text-slate-500">Meta EFC: 96%</span>
               </div>
               <div className="flex items-center gap-1.5">
-                <span className="w-5 h-1 bg-[#f97316] rounded-full"></span>
-                <span>EFD % (Descarga) - Real</span>
+                <span className="w-4 h-1 bg-[#f97316] rounded-full"></span>
+                <span>EFD Real</span>
               </div>
               <div className="flex items-center gap-1.5">
-                <span className="w-5 h-0 border-t border-dashed border-[#f97316] border-2"></span>
-                <span className="text-gray-400">Meta EFD: 85%</span>
+                <span className="w-4 h-0 border-t-2 border-dashed border-[#f97316]"></span>
+                <span className="text-slate-500">Meta EFD: 85%</span>
               </div>
             </div>
           </div>
 
           <div className="h-72 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={trend4MonthsData} margin={{ top: 25, right: 75, left: 10, bottom: 5 }}>
+              <LineChart data={trend4MonthsData} margin={{ top: 30, right: 85, left: 10, bottom: 10 }}>
                 <CartesianGrid stroke="#f1f5f9" vertical={false} />
-                <XAxis dataKey="month" stroke="#94a3b8" fontSize={11} fontWeight="bold" tickLine={false} />
+                <XAxis dataKey="month" stroke="#94a3b8" fontSize={11} fontWeight="bold" tickLine={false} padding={{ left: 35, right: 35 }} />
                 <YAxis 
-                  domain={[0, 100]} 
+                  domain={[0, 105]} 
                   stroke="#94a3b8" 
                   fontSize={11} 
                   tickLine={false} 
@@ -2371,7 +2415,7 @@ export default function LogisticaDashboard({ user, empresa, onBack }: LogisticaD
                   strokeWidth={3} 
                   dot={{ r: 5, stroke: '#032b5e', strokeWidth: 2, fill: '#fff' }} 
                   activeDot={{ r: 7 }}
-                  label={<CustomizedPercentLabel fill="#032b5e" />}
+                  label={<CustomizedPercentLabel fill="#032b5e" position="top" />}
                   isAnimationActive={false}
                 />
 
@@ -2382,7 +2426,7 @@ export default function LogisticaDashboard({ user, empresa, onBack }: LogisticaD
                   strokeWidth={3} 
                   dot={{ r: 5, stroke: '#f97316', strokeWidth: 2, fill: '#fff' }} 
                   activeDot={{ r: 7 }}
-                  label={<CustomizedPercentLabel fill="#f97316" />}
+                  label={<CustomizedPercentLabel fill="#f97316" position="bottom" />}
                   isAnimationActive={false}
                 />
               </LineChart>
@@ -2392,7 +2436,7 @@ export default function LogisticaDashboard({ user, empresa, onBack }: LogisticaD
 
         {/* MERGED CHART 2: TEMPO MÉDIO – CARREGAMENTO E DESCARGA */}
         <div className="bg-white p-6 rounded-xl border border-gray-200/80 shadow-xs flex flex-col gap-4">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between border-b border-gray-100 pb-4 gap-2">
+          <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between border-b border-gray-100 pb-4 gap-3">
             <div>
               <h3 className="font-sans font-black text-sm uppercase text-slate-800 tracking-wider">
                 TEMPO MÉDIO – CARREGAMENTO E DESCARGA (MINUTOS)
@@ -2401,31 +2445,31 @@ export default function LogisticaDashboard({ user, empresa, onBack }: LogisticaD
             </div>
             
             {/* Custom Legend */}
-            <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-[10px] font-black uppercase tracking-wider text-slate-600">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[10px] font-black uppercase tracking-wider text-slate-600 bg-slate-50/80 p-2 rounded-lg border border-slate-100/80">
               <div className="flex items-center gap-1.5">
-                <span className="w-5 h-1 bg-[#032b5e] rounded-full"></span>
-                <span>Média Carregamento (min) - Real</span>
+                <span className="w-4 h-1 bg-[#032b5e] rounded-full"></span>
+                <span>Média Carregamento</span>
               </div>
               <div className="flex items-center gap-1.5">
-                <span className="w-5 h-0 border-t border-dashed border-[#032b5e] border-2"></span>
-                <span className="text-gray-400">Meta: ≤ 15 min</span>
+                <span className="w-4 h-0 border-t-2 border-dashed border-[#032b5e]"></span>
+                <span className="text-slate-500">Meta: ≤ 15 min</span>
               </div>
               <div className="flex items-center gap-1.5">
-                <span className="w-5 h-1 bg-[#f97316] rounded-full"></span>
-                <span>Média Descarga (min) - Real</span>
+                <span className="w-4 h-1 bg-[#f97316] rounded-full"></span>
+                <span>Média Descarga</span>
               </div>
               <div className="flex items-center gap-1.5">
-                <span className="w-5 h-0 border-t border-dashed border-[#f97316] border-2"></span>
-                <span className="text-gray-400">Meta: ≤ 10 min</span>
+                <span className="w-4 h-0 border-t-2 border-dashed border-[#f97316]"></span>
+                <span className="text-slate-500">Meta: ≤ 10 min</span>
               </div>
             </div>
           </div>
 
           <div className="h-72 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={trend4MonthsData} margin={{ top: 25, right: 85, left: 10, bottom: 5 }}>
+              <LineChart data={trend4MonthsData} margin={{ top: 30, right: 85, left: 10, bottom: 10 }}>
                 <CartesianGrid stroke="#f1f5f9" vertical={false} />
-                <XAxis dataKey="month" stroke="#94a3b8" fontSize={11} fontWeight="bold" tickLine={false} />
+                <XAxis dataKey="month" stroke="#94a3b8" fontSize={11} fontWeight="bold" tickLine={false} padding={{ left: 35, right: 35 }} />
                 <YAxis 
                   stroke="#94a3b8" 
                   fontSize={11} 
@@ -2460,7 +2504,7 @@ export default function LogisticaDashboard({ user, empresa, onBack }: LogisticaD
                   strokeWidth={3} 
                   dot={{ r: 5, stroke: '#032b5e', strokeWidth: 2, fill: '#fff' }} 
                   activeDot={{ r: 7 }}
-                  label={<CustomizedMinLabel fill="#032b5e" />}
+                  label={<CustomizedMinLabel fill="#032b5e" position="top" />}
                   isAnimationActive={false}
                 />
 
@@ -2471,7 +2515,7 @@ export default function LogisticaDashboard({ user, empresa, onBack }: LogisticaD
                   strokeWidth={3} 
                   dot={{ r: 5, stroke: '#f97316', strokeWidth: 2, fill: '#fff' }} 
                   activeDot={{ r: 7 }}
-                  label={<CustomizedMinLabel fill="#f97316" />}
+                  label={<CustomizedMinLabel fill="#f97316" position="bottom" />}
                   isAnimationActive={false}
                 />
               </LineChart>

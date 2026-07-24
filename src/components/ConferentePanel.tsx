@@ -98,7 +98,7 @@ export default function ConferentePanel({ user, empresa }: ConferentePanelProps)
         const parsed = JSON.parse(cached);
         if (parsed.conferentes) setConferentes(parsed.conferentes);
         if (parsed.conferente) setConferente(parsed.conferente);
-        if (parsed.operators) setOperators(parsed.operators);
+        setOperators(['MARIVALDO', 'RONILDO', 'PAULO PEREIRA']);
       } catch (e) {}
     }
   }, [empresaId]);
@@ -125,32 +125,12 @@ export default function ConferentePanel({ user, empresa }: ConferentePanelProps)
   // Sync colaboradores from Firestore/localStorage to use as operators and conferentes
   useEffect(() => {
     const allowedOps = ['MARIVALDO', 'RONILDO', 'PAULO PEREIRA'];
-    const normalizeOp = (name: string) => {
-      const upper = name.toUpperCase();
-      if (upper.includes('MARIVALDO')) return 'MARIVALDO';
-      if (upper.includes('RONILDO')) return 'RONILDO';
-      if (upper.includes('PAULO PEREIRA')) return 'PAULO PEREIRA';
-      return '';
-    };
+    setOperators(allowedOps);
 
     if (!db) {
       const savedColab = localStorage.getItem(`colaboradores_${empresaId}`);
       if (savedColab) {
         const list = JSON.parse(savedColab);
-        const ops = list
-          .filter((c: any) => {
-            const f = (c.funcao || '').toLowerCase();
-            return f !== 'controle' && f !== 'conferente';
-          })
-          .map((c: any) => normalizeOp(c.nome))
-          .filter(Boolean);
-        const uniqueOps = Array.from(new Set(ops));
-        if (uniqueOps.length > 0) {
-          setOperators(uniqueOps);
-        } else {
-          setOperators(allowedOps);
-        }
-
         const confs = list
           .filter((c: any) => (c.funcao || '').toLowerCase() === 'conferente')
           .map((c: any) => c.nome.toUpperCase());
@@ -161,20 +141,6 @@ export default function ConferentePanel({ user, empresa }: ConferentePanelProps)
     const q = query(collection(db, 'colaboradores'), where('empresaId', '==', empresaId));
     const unsub = onSnapshot(q, (snap) => {
       const list = snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as any));
-      const ops = list
-        .filter(c => {
-          const f = (c.funcao || '').toLowerCase();
-          return f !== 'controle' && f !== 'conferente';
-        })
-        .map(c => normalizeOp(c.nome))
-        .filter(Boolean);
-      const uniqueOps = Array.from(new Set(ops));
-      if (uniqueOps.length > 0) {
-        setOperators(uniqueOps);
-      } else {
-        setOperators(allowedOps);
-      }
-
       const confs = list
         .filter(c => (c.funcao || '').toLowerCase() === 'conferente')
         .map(c => c.nome.toUpperCase());
@@ -234,7 +200,11 @@ export default function ConferentePanel({ user, empresa }: ConferentePanelProps)
         const current = [...tasks, { _docId: String(Date.now()), ...newRow }];
         setTasks(current);
         localStorage.setItem(`tasks_${empresaId}`, JSON.stringify(current));
+        localStorage.setItem(`tarefas_rows_${empresaId}`, JSON.stringify(current));
       }
+
+      window.dispatchEvent(new CustomEvent('app_data_updated'));
+      window.dispatchEvent(new CustomEvent('local_data_changed'));
 
       setSelectedProd(null);
       setSearchQuery('');

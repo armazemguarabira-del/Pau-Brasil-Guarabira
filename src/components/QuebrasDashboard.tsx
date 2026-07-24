@@ -114,8 +114,10 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
 
   const quebras = useMemo(() => {
     const companyId = empresa?.id || 'demo';
-    const mockRows = generateMockQuebras(companyId);
-    return [...actualQuebras, ...mockRows];
+    if (actualQuebras && actualQuebras.length > 0) {
+      return actualQuebras;
+    }
+    return generateMockQuebras(companyId);
   }, [actualQuebras, empresa?.id]);
 
   // Convert physical boxes to HE
@@ -195,16 +197,18 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
       
       // Date range filter
       if (startDate || endDate) {
+        let rowISO = '';
         if (q.dataISO) {
-          if (startDate && q.dataISO < startDate) return false;
-          if (endDate && q.dataISO > endDate) return false;
+          rowISO = q.dataISO.split('T')[0];
         } else if (q.data) {
           const parts = q.data.split('/');
           if (parts.length === 3) {
-            const rowISO = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
-            if (startDate && rowISO < startDate) return false;
-            if (endDate && rowISO > endDate) return false;
+            rowISO = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
           }
+        }
+        if (rowISO) {
+          if (startDate && rowISO < startDate) return false;
+          if (endDate && rowISO > endDate) return false;
         }
       }
       return true;
@@ -236,7 +240,7 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
       quant: viewUnit === 'cx' ? item.quantCx : Math.round(item.quantHE * 100) / 100,
       quantCx: item.quantCx
     }))
-    .sort((a, b) => b.quant - a.quant);
+    .sort((a, b) => b.quant - a.quant || b.quantCx - a.quantCx || a.cod.localeCompare(b.cod));
 
   const topSku = sortedSkus[0] || { cod: '-', desc: 'Nenhum', quant: 0, quantCx: 0 };
   const topSkuPct = totalQuantCx > 0 ? ((topSku.quantCx / totalQuantCx) * 100).toFixed(1) : '0';
@@ -415,8 +419,46 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
           <div className="flex flex-wrap items-center justify-between gap-4 bg-white p-3.5 rounded-xl border border-gray-200 shadow-sm">
             <div className="flex flex-wrap items-center gap-4 w-full md:w-auto">
               {/* Period selector */}
-              <div className="flex flex-col gap-1 min-w-[200px]">
-                <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Período</span>
+              <div className="flex flex-col gap-1 min-w-[260px]">
+                <div className="flex items-center justify-between">
+                  <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Período</span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const todayISO = new Date().toISOString().split('T')[0];
+                        setStartDate(todayISO);
+                        setEndDate(todayISO);
+                      }}
+                      className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase transition-all border cursor-pointer ${
+                        startDate === new Date().toISOString().split('T')[0] && endDate === new Date().toISOString().split('T')[0]
+                          ? 'bg-[#032b5e] text-white border-[#032b5e] shadow-sm'
+                          : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
+                      }`}
+                    >
+                      Hoje
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const today = new Date();
+                        const endISO = today.toISOString().split('T')[0];
+                        const d = new Date(today);
+                        d.setDate(d.getDate() - 30);
+                        const startISO = d.toISOString().split('T')[0];
+                        setStartDate(startISO);
+                        setEndDate(endISO);
+                      }}
+                      className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase transition-all border cursor-pointer ${
+                        startDate !== endDate
+                          ? 'bg-[#032b5e] text-white border-[#032b5e] shadow-sm'
+                          : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
+                      }`}
+                    >
+                      30 Dias
+                    </button>
+                  </div>
+                </div>
                 <CalendarFilter
                   startDate={startDate}
                   endDate={endDate}

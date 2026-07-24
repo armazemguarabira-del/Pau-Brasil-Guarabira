@@ -44,7 +44,12 @@ export function generateMockArmazemRows(empresaId: string): ArmazemRow[] {
       const palhete = 10 + ((dIdx * 7 + i * 13) % 20); // 10 to 29 pallets
       
       // Select standard operational start and end hours
-      const startHour = 8 + (i * 4) + (dIdx % 3);
+      let startHour = 8 + (i * 4) + (dIdx % 3);
+      const isToday = dIdx === dates.length - 1;
+      if (isToday) {
+        const currentHour = new Date().getHours();
+        startHour = Math.max(6, Math.min(startHour, Math.max(6, currentHour - (numOps - 1 - i))));
+      }
       const startMin = (dIdx * 15 + i * 20) % 60;
       const durationMin = 30 + ((dIdx * 11 + i * 17) % 80); // 30 to 110 minutes
       
@@ -106,12 +111,18 @@ export function generateMockTarefas(empresaId: string, customOperators?: string[
   const defaultOperators = ['MARIVALDO', 'RONILDO', 'PAULO PEREIRA'];
   const operators = customOperators && customOperators.length > 0 ? customOperators : defaultOperators;
   const conferentes = ['GILSON ROSA DA SILVA', 'MATHEUS'];
-  const descriptions = [
-    'PREPARAÇÃO ROTA 101 URBANA',
-    'SEPARAÇÃO MIX DISTRIBUIÇÃO',
-    'ORGANIZAÇÃO PALETE INTEIRO',
-    'REABASTECIMENTO PICKING ATIVO',
-    'PREPARAÇÃO INTERFÁBRICA CARRETA'
+  
+  const products = [
+    { cod: 2546, desc: 'ORIGINAL 600ML' },
+    { cod: 13205, desc: 'SKOL GFA VD 300ML CX C/23' },
+    { cod: 19164, desc: 'GUARANA CHP ANTARCTICA PET 200ML' },
+    { cod: 2548, desc: 'BUDWEISER 600ML' },
+    { cod: 1743, desc: 'ANTARCTICA PILSEN GFA VD 1L' },
+    { cod: 9067, desc: 'ANTARCTICA PILSEN LATA 350ML' },
+    { cod: 9068, desc: 'SKOL LATA 350ML SH C/12 NPAL' },
+    { cod: 34698, desc: 'SPATEN N 600ML CX C/24' },
+    { cod: 19225, desc: 'RED BULL ENERGY DRINK 250ML' },
+    { cod: 20530, desc: 'STELLA ARTOIS 269ML' }
   ];
   
   dates.forEach((d, dIdx) => {
@@ -120,7 +131,7 @@ export function generateMockTarefas(empresaId: string, customOperators?: string[
       const idx = dIdx * 3 + i;
       const operator = operators[idx % operators.length];
       const conferente = conferentes[idx % conferentes.length];
-      const desc = descriptions[idx % descriptions.length];
+      const prod = products[idx % products.length];
       const qty = 50 + ((idx * 23) % 400); // 50 to 450 cases
       const durationMin = 20 + ((idx * 13) % 45); // 20 to 65 min
       
@@ -137,8 +148,8 @@ export function generateMockTarefas(empresaId: string, customOperators?: string[
         _docId: `mock-pick-${idx}`,
         empresaId,
         id: 1000 + idx,
-        codigo: 20000 + idx,
-        descricao: desc,
+        codigo: prod.cod,
+        descricao: prod.desc,
         quantidade: qty,
         conferente,
         operador: operator,

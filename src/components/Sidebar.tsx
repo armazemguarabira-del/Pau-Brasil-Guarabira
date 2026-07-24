@@ -12,6 +12,7 @@ import {
   Package, 
   ClipboardCheck, 
   Download, 
+  ListChecks,
   LogOut,
   ChevronDown,
   ChevronRight,
@@ -212,6 +213,13 @@ export default function Sidebar({
       id: 'controle',
       label: 'Painel Controle',
       icon: <Sliders className="w-4 h-4 text-amber-500" />,
+      category: 'ADMINISTRAÇÃO & GESTÃO',
+      visible: isSupervisorOrAdmin
+    },
+    {
+      id: 'acoes',
+      label: 'Gestão de Ações',
+      icon: <ListChecks className="w-4 h-4 text-emerald-400" />,
       category: 'ADMINISTRAÇÃO & GESTÃO',
       visible: isSupervisorOrAdmin
     },

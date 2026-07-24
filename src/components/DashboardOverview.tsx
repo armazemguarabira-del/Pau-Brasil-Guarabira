@@ -37,7 +37,7 @@ import {
   Zap,
   Radio
 } from 'lucide-react';
-import { collection, query, where, addDoc, updateDoc, deleteDoc, doc, orderBy } from 'firebase/firestore';
+import { collection, query, where, addDoc, updateDoc, deleteDoc, doc, orderBy, onSnapshot } from 'firebase/firestore';
 import { db, isCustomFirebaseConnected } from '../firebase';
 import { fetchComCache } from '../utils/fetchComCache';
 
@@ -186,22 +186,118 @@ export default function DashboardOverview({
   };
 
   // Helper to format friendly relative time
-  const getRelativeTimeString = (timestamp: number) => {
-    if (!timestamp) return 'Agora';
-    const diff = Date.now() - timestamp;
+  const getRelativeTimeString = (timestamp: number, isToday?: boolean) => {
+    if (!timestamp) return 'Agora mesmo';
+    const now = Date.now();
+    const diff = now - timestamp;
+
+    // Slight future clock drift (up to 15 min) treated as "Agora mesmo"
+    if (diff < 0 && Math.abs(diff) <= 15 * 60000) {
+      return 'Agora mesmo';
+    }
+
+    if (diff < 0) {
+      return 'Agendado';
+    }
+
     if (diff < 60000) return 'Agora mesmo';
     const mins = Math.floor(diff / 60000);
     if (mins < 60) return `há ${mins} min`;
     const hours = Math.floor(mins / 60);
     if (hours < 24) return `há ${hours} h`;
     const days = Math.floor(hours / 24);
+    if (days === 1) return 'há 1 dia';
     return `há ${days} dias`;
   };
 
-  // 1. Establish the Firestore Data Fetching (Cache-First)
+  const getLocalTodayISO = () => {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+
+  const getItemDateInfo = (item: any) => {
+    if (!item) return { isoDate: '', timestamp: 0, isToday: false };
+    let isoDate = '';
+    let timestamp = 0;
+
+    const todayISO = getLocalTodayISO();
+    const now = Date.now();
+
+    // 1. Check data / dataISO for date string
+    if (item.dataISO && typeof item.dataISO === 'string') {
+      const parts = item.dataISO.split('T')[0].split('-');
+      if (parts.length === 3) {
+        isoDate = `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+      }
+    }
+    if (!isoDate && item.data && typeof item.data === 'string') {
+      const parts = item.data.split('/');
+      if (parts.length === 3) {
+        isoDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+      }
+    }
+
+    // 2. Check explicit ISO timestamp fields (_criadoEm, finalizadoEm, etc.)
+    const isoCandidate = item.finalizadoEm || item.iniciadoEm || item._criadoEm || item.criadoEm || item.cadastradoEm || item.dataCriacaoISO;
+    if (isoCandidate && typeof isoCandidate === 'string' && isoCandidate.includes('T')) {
+      const dt = new Date(isoCandidate);
+      if (!isNaN(dt.getTime())) {
+        timestamp = dt.getTime();
+        if (!isoDate) {
+          const y = dt.getFullYear();
+          const m = String(dt.getMonth() + 1).padStart(2, '0');
+          const day = String(dt.getDate()).padStart(2, '0');
+          isoDate = `${y}-${m}-${day}`;
+        }
+      }
+    }
+
+    // 3. Fallback timestamp if not explicitly set or to refine shift operational time
+    if (isoDate) {
+      let timeStr = item.fim || item.inicio || item.hora || '12:00';
+      if (timeStr.length === 5) timeStr += ':00';
+      const dt = new Date(`${isoDate}T${timeStr}`);
+      if (!isNaN(dt.getTime())) {
+        let opTimestamp = dt.getTime();
+        // If operation time string (e.g. 21:53) produces a future time under today's date during early morning hours,
+        // it belongs to the night shift of yesterday evening.
+        if (opTimestamp > now + 30 * 60000 && isoDate === todayISO) {
+          opTimestamp -= 24 * 60 * 60000;
+        }
+        if (!timestamp) {
+          timestamp = opTimestamp;
+        }
+      } else if (!timestamp) {
+        const dtFallback = new Date(`${isoDate}T12:00:00`);
+        if (!isNaN(dtFallback.getTime())) {
+          timestamp = dtFallback.getTime();
+        }
+      }
+    }
+
+    const isToday = isoDate === todayISO;
+
+    return { isoDate, timestamp, isToday };
+  };
+
+  const [ticker, setTicker] = useState(0);
+
+  // Live timer ticker to update relative time strings ("Agora mesmo", "há 1 min", etc.) every 10 seconds
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setTicker(t => t + 1);
+    }, 10000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // 1. Establish Real-Time Subscriptions & LocalStorage Synchronization
   useEffect(() => {
     const companyId = empresa?.id || 'demo';
-    if (!db) {
+
+    const carregarLocal = () => {
       const localRepack = localStorage.getItem(`repack_rows_${companyId}`);
       if (localRepack) setRepackList(JSON.parse(localRepack));
 
@@ -220,77 +316,84 @@ export default function DashboardOverview({
       const localBlitz = localStorage.getItem(`blitz_rows_${companyId}`);
       if (localBlitz) setBlitzList(JSON.parse(localBlitz));
 
-      const localTarefas = localStorage.getItem(`tarefas_rows_${companyId}`);
+      const localTarefas = localStorage.getItem(`tarefas_rows_${companyId}`) || localStorage.getItem(`tasks_${companyId}`);
       if (localTarefas) setTarefasList(JSON.parse(localTarefas));
 
       const localAcoes = localStorage.getItem(`acoes_rows_${companyId}`);
       if (localAcoes) setAcoesList(JSON.parse(localAcoes));
-      return;
+    };
+
+    // Load local storage cache immediately
+    carregarLocal();
+
+    // Event listeners for instant local changes
+    window.addEventListener('storage', carregarLocal);
+    window.addEventListener('app_data_updated', carregarLocal);
+    window.addEventListener('local_data_changed', carregarLocal);
+    const localInterval = setInterval(carregarLocal, 3000);
+
+    if (!db || !companyId) {
+      return () => {
+        window.removeEventListener('storage', carregarLocal);
+        window.removeEventListener('app_data_updated', carregarLocal);
+        window.removeEventListener('local_data_changed', carregarLocal);
+        clearInterval(localInterval);
+      };
     }
 
-    if (!companyId) return;
+    // Set up Firestore real-time onSnapshot listeners
+    const unsubs: Array<() => void> = [];
 
-    let cancelado = false;
+    try {
+      unsubs.push(onSnapshot(query(collection(db, 'repack'), where('empresaId', '==', companyId)), snap => {
+        setRepackList(snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as any)));
+      }, err => console.warn('Repack onSnapshot warn:', err)));
 
-    const carregarDados = async () => {
-      try {
-        const [
-          repackSnap,
-          despejoSnap,
-          quebrasSnap,
-          validadesSnap,
-          armazemSnap,
-          blitzSnap,
-          tarefasSnap,
-          usuariosSnap,
-          acoesSnap,
-          colaboradoresSnap
-        ] = await Promise.all([
-          fetchComCache(query(collection(db, 'repack'), where('empresaId', '==', companyId))),
-          fetchComCache(query(collection(db, 'despejo'), where('empresaId', '==', companyId))),
-          fetchComCache(query(collection(db, 'quebras'), where('empresaId', '==', companyId))),
-          fetchComCache(query(collection(db, 'validades'), where('empresaId', '==', companyId))),
-          fetchComCache(query(collection(db, 'armazem'), where('empresaId', '==', companyId))),
-          fetchComCache(query(collection(db, 'blitz_refugo'), where('empresaId', '==', companyId))),
-          fetchComCache(query(collection(db, 'tarefas'), where('empresaId', '==', companyId))),
-          fetchComCache(query(collection(db, 'usuarios'), where('empresaId', '==', companyId))),
-          fetchComCache(query(collection(db, 'acoes'), where('empresaId', '==', companyId))),
-          fetchComCache(query(collection(db, 'colaboradores'), where('empresaId', '==', companyId)))
-        ]);
+      unsubs.push(onSnapshot(query(collection(db, 'despejo'), where('empresaId', '==', companyId)), snap => {
+        setDespejoList(snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as any)));
+      }, err => console.warn('Despejo onSnapshot warn:', err)));
 
-        if (cancelado) return;
+      unsubs.push(onSnapshot(query(collection(db, 'quebras'), where('empresaId', '==', companyId)), snap => {
+        setQuebrasList(snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as any)));
+      }, err => console.warn('Quebras onSnapshot warn:', err)));
 
-        setRepackList(repackSnap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as any)));
-        setDespejoList(despejoSnap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as any)));
-        setQuebrasList(quebrasSnap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as any)));
-        setValidadesList(validadesSnap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as any)));
-        setArmazemList(armazemSnap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as any)));
-        setBlitzList(blitzSnap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as any)));
-        setTarefasList(tarefasSnap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as any)));
-        setUsuariosList(usuariosSnap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as any)));
-        setAcoesList(acoesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as any)));
-        setColaboradoresList(colaboradoresSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as any)));
-      } catch (err) {
-        console.error("Error in carregarDados", err);
-      }
-    };
+      unsubs.push(onSnapshot(query(collection(db, 'validades'), where('empresaId', '==', companyId)), snap => {
+        setValidadesList(snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as any)));
+      }, err => console.warn('Validades onSnapshot warn:', err)));
 
-    carregarDados();
+      unsubs.push(onSnapshot(query(collection(db, 'armazem'), where('empresaId', '==', companyId)), snap => {
+        setArmazemList(snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as any)));
+      }, err => console.warn('Armazem onSnapshot warn:', err)));
 
-    const intervalId = setInterval(carregarDados, 2 * 60 * 1000);
+      unsubs.push(onSnapshot(query(collection(db, 'blitz_refugo'), where('empresaId', '==', companyId)), snap => {
+        setBlitzList(snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as any)));
+      }, err => console.warn('Blitz onSnapshot warn:', err)));
 
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        carregarDados();
-      }
-    };
+      unsubs.push(onSnapshot(query(collection(db, 'tarefas'), where('empresaId', '==', companyId)), snap => {
+        setTarefasList(snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as any)));
+      }, err => console.warn('Tarefas onSnapshot warn:', err)));
 
-    document.addEventListener('visibilitychange', handleVisibilityChange);
+      unsubs.push(onSnapshot(query(collection(db, 'usuarios'), where('empresaId', '==', companyId)), snap => {
+        setUsuariosList(snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as any)));
+      }, err => console.warn('Usuarios onSnapshot warn:', err)));
+
+      unsubs.push(onSnapshot(query(collection(db, 'acoes'), where('empresaId', '==', companyId)), snap => {
+        setAcoesList(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as any)));
+      }, err => console.warn('Acoes onSnapshot warn:', err)));
+
+      unsubs.push(onSnapshot(query(collection(db, 'colaboradores'), where('empresaId', '==', companyId)), snap => {
+        setColaboradoresList(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as any)));
+      }, err => console.warn('Colaboradores onSnapshot warn:', err)));
+    } catch (e) {
+      console.error("Error setting up onSnapshot listeners:", e);
+    }
 
     return () => {
-      cancelado = true;
-      clearInterval(intervalId);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('storage', carregarLocal);
+      window.removeEventListener('app_data_updated', carregarLocal);
+      window.removeEventListener('local_data_changed', carregarLocal);
+      clearInterval(localInterval);
+      unsubs.forEach(unsub => unsub());
     };
   }, [empresa?.id]);
 
@@ -319,17 +422,14 @@ export default function DashboardOverview({
     // A. Count Critical Expirations (Vence em <= 30 dias)
     const alertasCount = validadesList.filter(v => getDaysRemaining(v.validade) <= 30).length;
 
-    // B. Count Shift Submissions (Created Today)
-    const todayISO = new Date().toISOString().split('T')[0];
-    const todayStr = new Date().toLocaleDateString('pt-BR');
-
-    const repackToday = repackList.filter(r => r.dataISO === todayISO || r.data === todayStr).length;
-    const despejoToday = despejoList.filter(d => d.dataISO === todayISO || d.data === todayStr).length;
-    const quebrasToday = quebrasList.filter(q => q.dataISO === todayISO || q.data === todayStr).length;
-    const validadesToday = validadesList.filter(v => v.cadastradoEm?.startsWith(todayISO)).length;
-    const armazemToday = armazemList.filter(a => a.dataISO === todayISO || a.data === todayStr).length;
-    const blitzToday = blitzList.filter(b => b.dataISO === todayISO || b.data === todayStr).length;
-    const tarefasToday = tarefasList.filter(t => t.criadoEm?.startsWith(todayISO)).length;
+    // B. Count Shift Submissions (Created / Dated Today)
+    const repackToday = repackList.filter(r => getItemDateInfo(r).isToday).length;
+    const despejoToday = despejoList.filter(d => getItemDateInfo(d).isToday).length;
+    const quebrasToday = quebrasList.filter(q => getItemDateInfo(q).isToday).length;
+    const validadesToday = validadesList.filter(v => getItemDateInfo(v).isToday).length;
+    const armazemToday = armazemList.filter(a => getItemDateInfo(a).isToday).length;
+    const blitzToday = blitzList.filter(b => getItemDateInfo(b).isToday).length;
+    const tarefasToday = tarefasList.filter(t => getItemDateInfo(t).isToday).length;
 
     const totalDocsHoje = repackToday + despejoToday + quebrasToday + validadesToday + armazemToday + blitzToday + tarefasToday;
 
@@ -341,97 +441,143 @@ export default function DashboardOverview({
     });
 
     // C. Synthesize feed logs from real data
-    const allLogs: Array<{ text: string, time: string, type: string, timestamp: number }> = [];
+    const allLogs: Array<{ text: string, time: string, type: string, timestamp: number, isToday: boolean }> = [];
 
     repackList.forEach(r => {
-      const timestamp = r._criadoEm ? new Date(r._criadoEm).getTime() : (r.dataISO ? new Date(r.dataISO + 'T' + (r.inicio || '00:00') + ':00').getTime() : 0);
-      if (timestamp) {
+      const info = getItemDateInfo(r);
+      if (info.timestamp) {
         allLogs.push({
           text: `${r.operador || 'Operador'} iniciou a reembalagem de ${r.quantidade} cx de ${r.embalagem}.`,
-          time: getRelativeTimeString(timestamp),
+          time: getRelativeTimeString(info.timestamp, info.isToday),
           type: 'repack',
-          timestamp
+          timestamp: info.timestamp,
+          isToday: info.isToday
         });
       }
     });
 
     despejoList.forEach(d => {
-      const timestamp = d._criadoEm ? new Date(d._criadoEm).getTime() : (d.dataISO ? new Date(d.dataISO + 'T' + (d.inicio || '00:00') + ':00').getTime() : 0);
-      if (timestamp) {
+      const info = getItemDateInfo(d);
+      if (info.timestamp) {
         allLogs.push({
           text: `${d.operador || 'Operador'} finalizou despejo de ${d.quantidade} cx de ${d.embalagem}.`,
-          time: getRelativeTimeString(timestamp),
+          time: getRelativeTimeString(info.timestamp, info.isToday),
           type: 'repack',
-          timestamp
+          timestamp: info.timestamp,
+          isToday: info.isToday
         });
       }
     });
 
     quebrasList.forEach(q => {
-      const timestamp = q._criadoEm ? new Date(q._criadoEm).getTime() : (q.dataISO ? new Date(q.dataISO + 'T00:00:00').getTime() : 0);
-      if (timestamp) {
+      const info = getItemDateInfo(q);
+      if (info.timestamp) {
         allLogs.push({
           text: `Registro de Quebra: SKU ${q.codProduto} - ${q.descricao} (${q.quantidade} un) na área ${q.area}.`,
-          time: getRelativeTimeString(timestamp),
+          time: getRelativeTimeString(info.timestamp, info.isToday),
           type: 'repack',
-          timestamp
+          timestamp: info.timestamp,
+          isToday: info.isToday
         });
       }
     });
 
     validadesList.forEach(v => {
-      const timestamp = v._criadoEm ? new Date(v._criadoEm).getTime() : (v.cadastradoEm ? new Date(v.cadastradoEm).getTime() : 0);
-      if (timestamp) {
+      const info = getItemDateInfo(v);
+      if (info.timestamp) {
         allLogs.push({
           text: `Novo registro de Validade cadastrado: ${v.descricao} (vence em ${v.validade}).`,
-          time: getRelativeTimeString(timestamp),
+          time: getRelativeTimeString(info.timestamp, info.isToday),
           type: 'validades',
-          timestamp
+          timestamp: info.timestamp,
+          isToday: info.isToday
         });
       }
     });
 
     armazemList.forEach(a => {
-      const timestamp = a._criadoEm ? new Date(a._criadoEm).getTime() : (a.dataISO ? new Date(a.dataISO + 'T' + (a.inicio || '00:00') + ':00').getTime() : 0);
-      if (timestamp) {
+      const info = getItemDateInfo(a);
+      if (info.timestamp) {
         allLogs.push({
           text: `Operação ${a.operacao} (${a.placa}) finalizada por ${a.empilhador} dentro da janela (${a.inicio} - ${a.fim}).`,
-          time: getRelativeTimeString(timestamp),
+          time: getRelativeTimeString(info.timestamp, info.isToday),
           type: 'armazem',
-          timestamp
+          timestamp: info.timestamp,
+          isToday: info.isToday
         });
       }
     });
 
     blitzList.forEach(b => {
-      const timestamp = b._criadoEm ? new Date(b._criadoEm).getTime() : (b.dataISO ? new Date(b.dataISO + 'T00:00:00').getTime() : 0);
-      if (timestamp) {
+      const info = getItemDateInfo(b);
+      if (info.timestamp) {
         allLogs.push({
           text: `Blitz de Refugo realizada na placa ${b.placa} com ajudante ${b.ajudante}.`,
-          time: getRelativeTimeString(timestamp),
+          time: getRelativeTimeString(info.timestamp, info.isToday),
           type: 'armazem',
-          timestamp
+          timestamp: info.timestamp,
+          isToday: info.isToday
         });
       }
     });
 
     tarefasList.forEach(t => {
-      const timestamp = t.criadoEm ? new Date(t.criadoEm).getTime() : 0;
-      if (timestamp) {
+      const info = getItemDateInfo(t);
+      if (info.timestamp) {
+        const isDone = t.status === 'done' || (t.status as string) === 'concluida';
+        const isInProgress = t.status === 'in_progress';
+        const statusLabel = isDone ? 'finalizada' : (isInProgress ? 'em andamento' : 'pendente');
+        
+        let opName = t.tipoOperacao || '';
+        if (!opName) {
+          const descLower = (t.descricao || '').toLowerCase();
+          if (descLower.includes('carregamento') || t.codigo?.toString().startsWith('3')) {
+            opName = 'Carregamento';
+          } else {
+            opName = 'Descarregamento';
+          }
+        }
+        
+        const user = t.operador || t.conferente || 'operador';
+        const desc = t.descricao || `Placa #${t.codigo}`;
+        
+        let janelaStr = '';
+        if (t.iniciadoEm || t.finalizadoEm) {
+          const startH = t.iniciadoEm ? new Date(t.iniciadoEm).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
+          const endH = t.finalizadoEm ? new Date(t.finalizadoEm).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
+          if (startH && endH) {
+            janelaStr = ` dentro da janela (${startH} - ${endH})`;
+          } else if (endH) {
+            janelaStr = ` às ${endH}`;
+          }
+        }
+
         allLogs.push({
-          text: `Tarefa #${t.codigo} (${t.descricao}) atualizada para o status: ${t.status} por ${t.operador || 'operador'}.`,
-          time: getRelativeTimeString(timestamp),
+          text: `Operação ${opName} (${desc}) ${statusLabel} por ${user}${janelaStr}.`,
+          time: getRelativeTimeString(info.timestamp, info.isToday),
           type: 'conferente',
-          timestamp
+          timestamp: info.timestamp,
+          isToday: info.isToday
         });
       }
     });
 
-    // Sort by descending timestamp
-    allLogs.sort((a, b) => b.timestamp - a.timestamp);
+    // Sort: Newest actual activity timestamp first
+    allLogs.sort((a, b) => {
+      if (b.timestamp !== a.timestamp) {
+        return b.timestamp - a.timestamp;
+      }
+      return a.text.localeCompare(b.text);
+    });
 
-    // Slice to top 4 logs
-    const topLogs = allLogs.slice(0, 4).map(l => ({
+    // Filter only Descarregamento and Carregamento operations
+    const opsLogs = allLogs.filter(l => {
+      const lower = l.text.toLowerCase();
+      return lower.includes('descarregamento') || lower.includes('carregamento');
+    });
+
+    // Slice to the last 5 records as requested
+    const topLogs = (opsLogs.length > 0 ? opsLogs : allLogs).slice(0, 5).map(l => ({
       text: l.text,
       time: l.time,
       type: l.type
@@ -443,7 +589,7 @@ export default function DashboardOverview({
       setLiveLogs([]);
     }
 
-  }, [repackList, despejoList, quebrasList, validadesList, armazemList, blitzList, tarefasList, usuariosList, kpiStats]);
+  }, [repackList, despejoList, quebrasList, validadesList, armazemList, blitzList, tarefasList, usuariosList, kpiStats, ticker]);
 
   useEffect(() => {
     if ('Notification' in window) {
@@ -711,15 +857,15 @@ export default function DashboardOverview({
               <span className="text-[9px] bg-[#22c55e]/15 border border-[#22c55e]/25 text-[#22c55e] px-2 py-0.5 rounded-full font-sans tracking-wide">● Sincronizado</span>
             </h3>
             
-            <div className="divide-y divide-[#1c2530]">
+            <div className="divide-y divide-[#1c2530] max-h-[500px] overflow-y-auto pr-1">
               {(liveLogs.length > 0 ? liveLogs : recentLogs).map((log, index) => (
-                <div key={index} className="flex gap-3 py-3 items-start">
-                  <span className="bg-[#151b23] border border-[#222d3a] p-2 rounded-lg flex-shrink-0 flex items-center justify-center">
+                <div key={index} className="flex gap-3 py-3 items-start hover:bg-white/[0.02] transition-colors rounded-lg px-1">
+                  <span className="bg-[#151b23] border border-[#222d3a] p-2 rounded-lg flex-shrink-0 flex items-center justify-center mt-0.5">
                     {logIconMap[log.type] || <Activity className="w-4 h-4 text-snow" />}
                   </span>
                   <div className="flex-1">
-                    <p className="text-xs text-[#e8eef5] leading-relaxed">{log.text}</p>
-                    <span className="text-[9px] text-[#6a7d92] mt-1 block">{log.time}</span>
+                    <p className="text-xs text-[#e8eef5] leading-relaxed font-medium">{log.text}</p>
+                    <span className="text-[9.5px] text-[#6a7d92] mt-1 block font-semibold">{log.time}</span>
                   </div>
                 </div>
               ))}

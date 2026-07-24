@@ -11,6 +11,7 @@ import {
   BookOpen, 
   ArrowLeft, 
   CheckCircle, 
+  CheckCircle2,
   AlertTriangle, 
   ShieldAlert,
   Zap, 
@@ -25,7 +26,23 @@ import {
   Sparkles,
   Layers,
   Users,
-  Plus
+  Plus,
+  Bell,
+  Target,
+  ListChecks,
+  Search,
+  Filter,
+  Calendar,
+  Check,
+  X,
+  AlertOctagon,
+  ArrowUpRight,
+  Send,
+  Flame,
+  ShieldCheck,
+  MapPin,
+  Package,
+  Tag
 } from 'lucide-react';
 import { 
   AreaChart, 
@@ -41,6 +58,7 @@ import {
 interface ControlePanelProps {
   user: Usuario;
   empresa: Empresa | null;
+  initialSection?: 'hub' | 'dash' | 'timer' | 'audit' | 'ranking' | 'normas' | 'colaboradores' | 'primeiro_acesso' | 'acoes' | 'alertas';
 }
 
 interface DpoAudit {
@@ -100,12 +118,278 @@ const getFormattedRoles = (funcaoStr?: string) => {
   return mapped.join(', ');
 };
 
-export default function ControlePanel({ user, empresa }: ControlePanelProps) {
-  // Navigation: 'hub' shows the main interactive landing dashboard
+const OPERATIONAL_ALERTS = [
+  {
+    id: 'alt_mov_1',
+    categoria: 'movimentacao',
+    categoriaNome: 'Quebras por Movimentação',
+    setor: 'Empilhadeira & Movimentação',
+    titulo: 'Pico de Avarias por Deslocamento de Empilhadeira',
+    severidade: 'CRÍTICO',
+    registroId: 'REG-2026-0722-014',
+    dataRegistro: '22/07/2026 às 14:35',
+    turno: '2º Turno (14:00 - 22:20)',
+    localizacao: 'Corredor 04 (Rua B) - Pos. 102 a 118',
+    equipamentoOp: 'Empilhadeira Elétrica #04 (Op. Carlos Silva - RE 3891)',
+    produtosEnvolvidos: 'SKU #2546 - ORIGINAL 600ML CX C/24 (14 caixas avariadas / 2 PL)',
+    registradoPor: 'Conferente Roberto Alves (RE 4819)',
+    impactoEstimado: 'Prejuízo de R$ 680,40 em produtos e risco de atraso na rota 104',
+    gatilho: 'Movimentação sem travamento de filme paletizado',
+    metricaAtual: '4.2 caixas/palete avariadas',
+    metaReferencia: '< 1.0 caixa/palete',
+    causaProvavel: 'Velocidade excessiva na transição entre corredores e falta de amarração no topo do palete.',
+    acaoRecomendada: 'Auditar velocidade dos operadores de empilhadeira e aplicar check de amarração de palete pré-transporte.'
+  },
+  {
+    id: 'alt_mov_2',
+    categoria: 'movimentacao',
+    categoriaNome: 'Quebras por Movimentação',
+    setor: 'Docas & Carga',
+    titulo: 'Avaria na Rampa de Transbordo de Insumos / Refugo',
+    severidade: 'ALERTA',
+    registroId: 'REG-2026-0723-002',
+    dataRegistro: '23/07/2026 às 07:15',
+    turno: '1º Turno (06:00 - 14:20)',
+    localizacao: 'Doca 04 (Rampa Sul de Transbordo)',
+    equipamentoOp: 'Paleteira Hidráulica #12 (Op. Marcos Souza - RE 5102)',
+    produtosEnvolvidos: 'SKU #19164 - GUARANA CHP ANTARCTICA PET 1L (8 caixas caídas)',
+    registradoPor: 'Supervisora Juliana Costa (RE 1204)',
+    impactoEstimado: 'Atraso de 25 min no descarregamento e paralisação temporária da Doca 04',
+    gatilho: 'Queda de garra de lata durante descarregamento',
+    metricaAtual: '2 incidentes na última semana',
+    metaReferencia: '0 incidentes',
+    causaProvavel: 'Superfície irregular da rampa e desacoplamento brusco do palete de garrafas/latas.',
+    acaoRecomendada: 'Realizar manutenção na rampa da doca 04 e reciclar treinamento de desacoplamento seguro.'
+  },
+  {
+    id: 'alt_repack_1',
+    categoria: 'repack',
+    categoriaNome: 'Metas Repack',
+    setor: 'Repack Operacional',
+    titulo: 'Desvio de Tempo Padrão na Embalagem LATA 350 / 473',
+    severidade: 'CRÍTICO',
+    registroId: 'REG-2026-0722-089',
+    dataRegistro: '22/07/2026 às 16:10',
+    turno: '2º Turno (14:00 - 22:20)',
+    localizacao: 'Mesa 02 de Salvamento (Módulo Repack Central)',
+    equipamentoOp: 'Equipe de Reembalagem Repack (3 Operadores)',
+    produtosEnvolvidos: 'SKU #9068 - SKOL LATA 350ML e SKU #20164 - SKOL LT 473ML',
+    registradoPor: 'Auditor de Qualidade Fernando Dias (RE 2930)',
+    impactoEstimado: 'Gargalo de 42 caixas acumuladas aguardando embalagem e estouro de SLA',
+    gatilho: 'Tempo médio de salvamento excede a meta estabelecida',
+    metricaAtual: '00:07:45 por caixa',
+    metaReferencia: '00:05:30 por caixa',
+    causaProvavel: 'Falta de fita stretch adequada na mesa de reembalagem e triagem manual de garrafas lentas.',
+    acaoRecomendada: 'Fornecer aplicadores ergonômicos de fita e reestruturar a triagem prévia antes da montagem.'
+  },
+  {
+    id: 'alt_repack_2',
+    categoria: 'repack',
+    categoriaNome: 'Metas Repack',
+    setor: 'Repack Operacional',
+    titulo: 'Baixa Taxa de Recuperação de Garrafas (Long Neck / 600 OW)',
+    severidade: 'ALERTA',
+    registroId: 'REG-2026-0723-005',
+    dataRegistro: '23/07/2026 às 08:30',
+    turno: '1º Turno (06:00 - 14:20)',
+    localizacao: 'Bancada 01 - Triagem de Vidro (Repack Entradas)',
+    equipamentoOp: 'Gabarito Manual de Triagem (Op. Rodrigo Lima - RE 6120)',
+    produtosEnvolvidos: 'SKU #1743 - ANTARCTICA PILSEN GFA 1L / SKU #13205 - SKOL 300ML',
+    registradoPor: 'Inspetora de Qualidade Luciana Melo (RE 3311)',
+    impactoEstimado: 'Descarte indevido de 120 vasilhames reaproveitáveis por falha na pré-triagem',
+    gatilho: 'Índice de aproveitamento abaixo do teto tático',
+    metricaAtual: '68% aproveitado',
+    metaReferencia: '>= 85% aproveitamento',
+    causaProvavel: 'Acúmulo de garrafas trincadas não separadas no descarte inicial.',
+    acaoRecomendada: 'Implementar inspeção visual padronizada com gabarito de trincas na entrada do Repack.'
+  },
+  {
+    id: 'alt_quebras_1',
+    categoria: 'quebras',
+    categoriaNome: 'Metas Quebras',
+    setor: 'Gestão de Quebras & Avarias',
+    titulo: 'Excesso de Refugo Não-Recuperável na Separação de Rota',
+    severidade: 'CRÍTICO',
+    registroId: 'REG-2026-0722-045',
+    dataRegistro: '22/07/2026 às 11:45',
+    turno: '1º Turno (06:00 - 14:20)',
+    localizacao: 'Placa de Separação de Rota - Setor de Quebras EFC',
+    equipamentoOp: 'Garra de Vidro da Paleteira Elétrica #08 (Op. André Neves)',
+    produtosEnvolvidos: 'SKU #1743 - ANTARCTICA PILSEN GFA 1L e SKU #504 - PEPSI COLA 2L',
+    registradoPor: 'Conferente de Quebras Marcelo Viana (RE 1982)',
+    impactoEstimado: 'Perda direta de R$ 1.240,00 no dia (1.85% da cota da unidade)',
+    gatilho: 'Volume diário de quebra direta excede a cota da unidade',
+    metricaAtual: '1.85% do faturamento diário',
+    metaReferencia: '<= 0.60% do faturamento',
+    causaProvavel: 'Manuseio inadequado de caixas de vidro na zona de transbordo e garra desgastada.',
+    acaoRecomendada: 'Substituir borrachas de garra das paleteiras manuais e intensificar auditoria EFC.'
+  },
+  {
+    id: 'alt_picking_1',
+    categoria: 'picking',
+    categoriaNome: 'Metas Picking',
+    setor: 'Picking & Separação',
+    titulo: 'EFC (Erros de Separação / Picking Fora da Meta)',
+    severidade: 'ALERTA',
+    registroId: 'REG-2026-0723-011',
+    dataRegistro: '23/07/2026 às 09:15',
+    turno: '1º Turno (06:00 - 14:20)',
+    localizacao: 'Rua B - Posições 045 a 060 (Picking Misto)',
+    equipamentoOp: 'Coletor de Dados RF #14 (Op. Gabriel Santos - RE 7140)',
+    produtosEnvolvidos: 'SKU #20164 - SKOL LT 473ML / SKU #9068 - SKOL LATA 350ML',
+    registradoPor: 'Supervisor de Operações Carlos Eduardo (RE 1002)',
+    impactoEstimado: '3.8 erros por 1000 caixas colhidas e 4 paletes retrabalhados na conferência',
+    gatilho: 'Conferência indicou divergência recorrente de SKUs',
+    metricaAtual: '3.8 erros / 1000 cx',
+    metaReferencia: '< 1.0 erro / 1000 cx',
+    causaProvavel: 'Endereçamento de gôndolas com etiquetas rasgadas ou sobrepostas na rua B.',
+    acaoRecomendada: 'Recadastrar e refazer a sinalização de código de barras nas posições de picking da rua B.'
+  }
+];
+
+const DEFAULT_ACOES = [
+  {
+    id: 'local_act_001',
+    titulo: 'Plano de Ação: Pico de Avarias por Deslocamento de Empilhadeira',
+    setor: 'Movimentação',
+    prioridade: 'alta',
+    responsavel: 'Carlos Eduardo (Supervisor)',
+    status: 'em_andamento',
+    limiteEm: '2026-07-28',
+    criadoEm: '2026-07-22T14:40:00.000Z',
+    origemAlertaId: 'alt_mov_1',
+    descricao: `[OCORRÊNCIA REGISTRADA #REG-2026-0722-014]
+📅 Data/Hora: 22/07/2026 às 14:35 | Turno: 2º Turno
+📍 Local: Corredor 04 (Rua B) - Pos. 102 a 118
+🚜 Equip/Op: Empilhadeira Elétrica #04 (Op. Carlos Silva - RE 3891)
+📦 SKUs: SKU #2546 - ORIGINAL 600ML CX C/24 (14 caixas avariadas / 2 PL)
+👤 Registrado por: Conferente Roberto Alves (RE 4819)
+💥 Impacto Estimado: Prejuízo de R$ 680,40 em produtos
+
+• Gatilho: Movimentação sem travamento de filme paletizado
+• Métrica Detectada: 4.2 caixas/palete avariadas (Meta: < 1.0 caixa/palete)
+• Causa Provável: Velocidade excessiva na transição entre corredores e falta de amarração no topo do palete.
+• Recomendação: Auditar velocidade dos operadores de empilhadeira e aplicar check de amarração de palete pré-transporte.`
+  },
+  {
+    id: 'local_act_002',
+    titulo: 'Plano de Ação: Avaria na Rampa de Transbordo de Insumos / Refugo',
+    setor: 'Movimentação',
+    prioridade: 'alta',
+    responsavel: 'Juliana Costa (Supervisora)',
+    status: 'pendente',
+    limiteEm: '2026-07-27',
+    criadoEm: '2026-07-23T07:20:00.000Z',
+    origemAlertaId: 'alt_mov_2',
+    descricao: `[OCORRÊNCIA REGISTRADA #REG-2026-0723-002]
+📅 Data/Hora: 23/07/2026 às 07:15 | Turno: 1º Turno
+📍 Local: Doca 04 (Rampa Sul de Transbordo)
+🚜 Equip/Op: Paleteira Hidráulica #12 (Op. Marcos Souza - RE 5102)
+📦 SKUs: SKU #19164 - GUARANA CHP ANTARCTICA PET 1L (8 caixas caídas)
+👤 Registrado por: Supervisora Juliana Costa (RE 1204)
+💥 Impacto Estimado: Atraso de 25 min no descarregamento e paralisação temporária da Doca 04
+
+• Gatilho: Queda de garra de lata durante descarregamento
+• Métrica Detectada: 2 incidentes na última semana (Meta: 0 incidentes)
+• Causa Provável: Superfície irregular da rampa e desacoplamento brusco do palete de garrafas/latas.
+• Recomendação: Realizar manutenção na rampa da doca 04 e reciclar treinamento de desacoplamento seguro.`
+  },
+  {
+    id: 'local_act_003',
+    titulo: 'Plano de Ação: Desvio de Tempo Padrão na Embalagem LATA 350 / 473',
+    setor: 'Repack',
+    prioridade: 'alta',
+    responsavel: 'Fernando Dias (Auditor Qualidade)',
+    status: 'em_andamento',
+    limiteEm: '2026-07-26',
+    criadoEm: '2026-07-22T16:15:00.000Z',
+    origemAlertaId: 'alt_rep_1',
+    descricao: `[OCORRÊNCIA REGISTRADA #REG-2026-0722-089]
+📅 Data/Hora: 22/07/2026 às 16:10 | Turno: 2º Turno
+📍 Local: Mesa 02 de Salvamento (Módulo Repack Central)
+🚜 Equip/Op: Equipe de Reembalagem Repack (3 Operadores)
+📦 SKUs: SKU #9068 - SKOL LATA 350ML / SKU #20164 - SKOL LT 473ML
+👤 Registrado por: Auditor de Qualidade Fernando Dias (RE 2930)
+💥 Impacto Estimado: Gargalo de 42 caixas acumuladas e estouro de SLA
+
+• Gatilho: Tempo médio de salvamento excede a meta estabelecida
+• Métrica Detectada: 00:07:45 por caixa (Meta: 00:05:30 por caixa)
+• Causa Provável: Falta de fita stretch adequada na mesa de reembalagem e triagem manual de garrafas lentas.
+• Recomendação: Fornecer aplicadores ergonômicos de fita e reestruturar a triagem prévia antes da montagem.`
+  },
+  {
+    id: 'local_act_004',
+    titulo: 'Plano de Ação: Excesso de Refugo Não-Recuperável na Separação de Rota',
+    setor: 'Quebras',
+    prioridade: 'alta',
+    responsavel: 'Marcelo Viana (Conferente)',
+    status: 'concluido',
+    limiteEm: '2026-07-25',
+    criadoEm: '2026-07-22T11:50:00.000Z',
+    origemAlertaId: 'alt_que_1',
+    descricao: `[OCORRÊNCIA REGISTRADA #REG-2026-0722-045]
+📅 Data/Hora: 22/07/2026 às 11:45 | Turno: 1º Turno
+📍 Local: Placa de Separação de Rota - Setor de Quebras EFC
+🚜 Equip/Op: Garra de Vidro da Paleteira Elétrica #08 (Op. André Neves)
+📦 SKUs: SKU #1743 - ANTARCTICA PILSEN GFA 1L e SKU #504 - PEPSI COLA 2L
+👤 Registrado por: Conferente de Quebras Marcelo Viana (RE 1982)
+💥 Impacto Estimado: Perda direta de R$ 1.240,00 no dia (1.85% da cota da unidade)
+
+• Gatilho: Volume diário de quebra direta excede a cota da unidade
+• Métrica Detectada: 1.85% do faturamento diário (Meta: <= 0.60% do faturamento)
+• Causa Provável: Manuseio inadequado de caixas de vidro na zona de transbordo e garra desgastada.
+• Recomendação: Substituir borrachas de garra das paleteiras manuais e intensificar auditoria EFC.`
+  },
+  {
+    id: 'local_act_005',
+    titulo: 'Plano de Ação: EFC (Erros de Separação / Picking Fora da Meta)',
+    setor: 'Picking',
+    prioridade: 'media',
+    responsavel: 'Gabriel Santos (Operador)',
+    status: 'pendente',
+    limiteEm: '2026-07-27',
+    criadoEm: '2026-07-23T09:20:00.000Z',
+    origemAlertaId: 'alt_pic_1',
+    descricao: `[OCORRÊNCIA REGISTRADA #REG-2026-0723-011]
+📅 Data/Hora: 23/07/2026 às 09:15 | Turno: 1º Turno
+📍 Local: Rua B - Posições 045 a 060 (Picking Misto)
+🚜 Equip/Op: Coletor de Dados RF #14 (Op. Gabriel Santos - RE 7140)
+📦 SKUs: SKU #20164 - SKOL LT 473ML / SKU #9068 - SKOL LATA 350ML
+👤 Registrado por: Supervisor de Operações Carlos Eduardo (RE 1002)
+💥 Impacto Estimado: 3.8 erros por 1000 caixas colhidas e 4 paletes retrabalhados
+
+• Gatilho: Conferência indicou divergência recorrente de SKUs
+• Métrica Detectada: 3.8 erros / 1000 cx (Meta: < 1.0 erro / 1000 cx)
+• Causa Provável: Endereçamento de gôndolas com etiquetas rasgadas ou sobrepostas na rua B.
+• Recomendação: Recadastrar e refazer a sinalização de código de barras nas posições de picking da rua B.`
+  }
+];
+
+export default function ControlePanel({ user, empresa, initialSection }: ControlePanelProps) {
   // Navigation: 'hub' shows the main interactive landing dashboard
   // 'dash', 'timer', 'audit', 'ranking', 'normas' represent the active functional views of Repack
-  const [currentSection, setCurrentSection] = useState<'hub' | 'dash' | 'timer' | 'audit' | 'ranking' | 'normas' | 'colaboradores' | 'primeiro_acesso'>('colaboradores');
+  const [currentSection, setCurrentSection] = useState<'hub' | 'dash' | 'timer' | 'audit' | 'ranking' | 'normas' | 'colaboradores' | 'primeiro_acesso' | 'acoes' | 'alertas'>(initialSection || 'colaboradores');
+  const [acoesSubTab, setAcoesSubTab] = useState<'planos' | 'alertas'>(initialSection === 'alertas' ? 'alertas' : 'planos');
   const [selectedMetricTab, setSelectedMetricTab] = useState<'logistica' | 'quebras' | 'repack' | 'outros'>('logistica');
+  
+  // Ações & Alertas State
+  const [acoesList, setAcoesList] = useState<any[]>(DEFAULT_ACOES);
+  const [selectedAcaoSetor, setSelectedAcaoSetor] = useState<string>('todos');
+  const [selectedAcaoStatus, setSelectedAcaoStatus] = useState<string>('todos');
+  const [acaoSearchQuery, setAcaoSearchQuery] = useState<string>('');
+  const [alertCategoriaFilter, setAlertCategoriaFilter] = useState<string>('todos');
+
+  // Modal State for creating/editing action
+  const [showAcaoModal, setShowAcaoModal] = useState(false);
+  const [acaoModalTitle, setAcaoModalTitle] = useState('');
+  const [acaoModalDesc, setAcaoModalDesc] = useState('');
+  const [acaoModalSetor, setAcaoModalSetor] = useState('Repack');
+  const [acaoModalResp, setAcaoModalResp] = useState('');
+  const [acaoModalPrioridade, setAcaoModalPrioridade] = useState<'alta' | 'media' | 'baixa'>('alta');
+  const [acaoModalLimite, setAcaoModalLimite] = useState('');
+  const [acaoModalOrigem, setAcaoModalOrigem] = useState<'alerta' | 'sugestao' | 'manual' | 'a3'>('manual');
+  const [acaoModalAlertId, setAcaoModalAlertId] = useState<string | undefined>(undefined);
+  const [savingAcao, setSavingAcao] = useState(false);
   
   // Collaborator Management State
   const [colaboradores, setColaboradores] = useState<any[]>([]);
@@ -229,12 +513,164 @@ export default function ControlePanel({ user, empresa }: ControlePanelProps) {
       rows.sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
       setColaboradores(rows);
       localStorage.setItem(`colaboradores_${empresaId}`, JSON.stringify(rows));
+    });
+    return () => unsub();
+  }, [empresaId]);
+
+  // 4. Sync Ações (collection: acoes)
+  useEffect(() => {
+    if (!db) {
+      const saved = localStorage.getItem(`acoes_rows_${empresaId}`);
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setAcoesList(parsed);
+          } else {
+            setAcoesList(DEFAULT_ACOES);
+            localStorage.setItem(`acoes_rows_${empresaId}`, JSON.stringify(DEFAULT_ACOES));
+          }
+        } catch {
+          setAcoesList(DEFAULT_ACOES);
+        }
+      } else {
+        setAcoesList(DEFAULT_ACOES);
+        localStorage.setItem(`acoes_rows_${empresaId}`, JSON.stringify(DEFAULT_ACOES));
+      }
+      return;
+    }
+
+    const q = query(collection(db, 'acoes'), where('empresaId', '==', empresaId));
+    const unsub = onSnapshot(q, (snap) => {
+      const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      list.sort((a: any, b: any) => new Date(b.criadoEm || 0).getTime() - new Date(a.criadoEm || 0).getTime());
+      if (list.length === 0) {
+        setAcoesList(DEFAULT_ACOES);
+        localStorage.setItem(`acoes_rows_${empresaId}`, JSON.stringify(DEFAULT_ACOES));
+      } else {
+        setAcoesList(list);
+        localStorage.setItem(`acoes_rows_${empresaId}`, JSON.stringify(list));
+      }
     }, (error) => {
-      console.error("Erro no onSnapshot de colaboradores", error);
+      console.error("Erro no onSnapshot de acoes", error);
+      const saved = localStorage.getItem(`acoes_rows_${empresaId}`);
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setAcoesList(parsed);
+          } else {
+            setAcoesList(DEFAULT_ACOES);
+          }
+        } catch {
+          setAcoesList(DEFAULT_ACOES);
+        }
+      } else {
+        setAcoesList(DEFAULT_ACOES);
+      }
     });
 
     return () => unsub();
   }, [empresaId]);
+
+  // Action Plan handlers
+  const handleCreateAcao = async () => {
+    if (!acaoModalTitle.trim() || !acaoModalDesc.trim()) return;
+    setSavingAcao(true);
+
+    const criadoEm = new Date().toISOString();
+    const limiteEm = acaoModalLimite || new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+    const newDoc = {
+      empresaId,
+      titulo: acaoModalTitle.trim(),
+      descricao: acaoModalDesc.trim(),
+      setor: acaoModalSetor,
+      responsavel: acaoModalResp.trim() || user.nome || 'Supervisor Controle',
+      prioridade: acaoModalPrioridade,
+      status: 'pendente',
+      origem: acaoModalOrigem,
+      origemAlertaId: acaoModalAlertId || null,
+      criadoEm,
+      limiteEm,
+      autorNome: user.nome || 'Gestor'
+    };
+
+    try {
+      if (db) {
+        await addDoc(collection(db, 'acoes'), newDoc);
+      } else {
+        const current = JSON.parse(localStorage.getItem(`acoes_rows_${empresaId}`) || '[]');
+        const updated = [{ id: 'local_' + Date.now(), ...newDoc }, ...current];
+        localStorage.setItem(`acoes_rows_${empresaId}`, JSON.stringify(updated));
+        setAcoesList(updated);
+      }
+      setShowAcaoModal(false);
+      setAcaoModalTitle('');
+      setAcaoModalDesc('');
+      setAcaoModalResp('');
+      setAcaoModalAlertId(undefined);
+      setAcoesSubTab('planos');
+      setCurrentSection('acoes');
+    } catch (err) {
+      console.error("Erro ao salvar ação:", err);
+    } finally {
+      setSavingAcao(false);
+    }
+  };
+
+  const handleUpdateAcaoStatus = async (id: string, newStatus: string) => {
+    try {
+      if (db && !id.startsWith('local_')) {
+        await updateDoc(doc(db, 'acoes', id), { status: newStatus });
+      } else {
+        const updated = acoesList.map(a => a.id === id ? { ...a, status: newStatus } : a);
+        setAcoesList(updated);
+        localStorage.setItem(`acoes_rows_${empresaId}`, JSON.stringify(updated));
+      }
+    } catch (err) {
+      console.error("Erro ao atualizar status da ação:", err);
+    }
+  };
+
+  const handleDeleteAcao = async (id: string) => {
+    try {
+      if (db && !id.startsWith('local_')) {
+        await deleteDoc(doc(db, 'acoes', id));
+      } else {
+        const updated = acoesList.filter(a => a.id !== id);
+        setAcoesList(updated);
+        localStorage.setItem(`acoes_rows_${empresaId}`, JSON.stringify(updated));
+      }
+    } catch (err) {
+      console.error("Erro ao deletar ação:", err);
+    }
+  };
+
+  const handleOpenAlertActionModal = (alert: any) => {
+    setAcaoModalTitle(`Plano de Ação: ${alert.titulo}`);
+    setAcaoModalSetor(alert.setor.includes('Repack') ? 'Repack' : alert.setor.includes('Quebras') ? 'Quebras' : alert.setor.includes('Picking') ? 'Picking' : 'Movimentação');
+    setAcaoModalDesc(
+`[OCORRÊNCIA REGISTRADA #${alert.registroId || 'S/N'}]
+📅 Data/Hora: ${alert.dataRegistro || 'Data Atual'} | Turno: ${alert.turno || '1º Turno'}
+📍 Local: ${alert.localizacao || 'Setor Operacional'}
+🚜 Equipamento/Op: ${alert.equipamentoOp || 'N/A'}
+📦 Produtos/SKUs: ${alert.produtosEnvolvidos || 'N/A'}
+👤 Registrado por: ${alert.registradoPor || 'Sistema'}
+💥 Impacto Estimado: ${alert.impactoEstimado || 'N/A'}
+
+• Gatilho do Desvio: ${alert.gatilho}
+• Métrica Detectada: ${alert.metricaAtual} (Meta: ${alert.metaReferencia})
+• Causa Provável: ${alert.causaProvavel}
+• Recomendação do Plano: ${alert.acaoRecomendada}`
+    );
+    setAcaoModalPrioridade(alert.severidade === 'CRÍTICO' ? 'alta' : 'media');
+    setAcaoModalResp(user.nome || 'Supervisor Controle');
+    setAcaoModalLimite(new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
+    setAcaoModalOrigem('alerta');
+    setAcaoModalAlertId(alert.id);
+    setShowAcaoModal(true);
+  };
 
   // Handle duration calculations
   useEffect(() => {
@@ -261,7 +697,7 @@ export default function ControlePanel({ user, empresa }: ControlePanelProps) {
 
     const today = new Date();
     const dataStr = today.toLocaleDateString('pt-BR');
-    const dataISO = today.toISOString().split('T')[0];
+    const dataISO = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
     const newRow: Omit<RepackRow, '_docId'> & { empresaId: string } = {
       empresaId,
@@ -309,7 +745,7 @@ export default function ControlePanel({ user, empresa }: ControlePanelProps) {
 
     const today = new Date();
     const dataStr = today.toLocaleDateString('pt-BR');
-    const dataISO = today.toISOString().split('T')[0];
+    const dataISO = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
     const totalPoints = Object.values(auditItems).filter(Boolean).length;
     const score = Math.round((totalPoints / 6) * 100);
@@ -672,7 +1108,21 @@ export default function ControlePanel({ user, empresa }: ControlePanelProps) {
               className={`py-2.5 px-4 font-sans font-bold text-xs uppercase cursor-pointer whitespace-nowrap transition-all rounded-lg flex items-center gap-1.5 ${currentSection === 'primeiro_acesso' ? 'text-[#f5a623] bg-[#f5a623]/10 border border-[#f5a623]/20' : 'text-[#6a7d92] hover:text-[#e8eef5]'}`}
             >
               <Plus className="w-3.5 h-3.5 text-[#f5a623]" />
-              Login pela Primeira Vez
+              Login 1º Acesso
+            </button>
+            <button 
+              onClick={() => {
+                setCurrentSection('acoes');
+              }}
+              className={`py-2.5 px-4 font-sans font-bold text-xs uppercase cursor-pointer whitespace-nowrap transition-all rounded-lg flex items-center gap-1.5 ${(currentSection === 'acoes' || currentSection === 'alertas') ? 'text-[#f5a623] bg-[#f5a623]/10 border border-[#f5a623]/20' : 'text-[#6a7d92] hover:text-[#e8eef5]'}`}
+            >
+              <ListChecks className="w-3.5 h-3.5 text-emerald-400" />
+              Gestão de Ações & Alertas
+              {acoesList.length > 0 && (
+                <span className="px-1.5 py-0.2 text-[9px] font-mono rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                  {acoesList.length}
+                </span>
+              )}
             </button>
             <button 
               onClick={() => setCurrentSection('normas')}
@@ -776,7 +1226,30 @@ export default function ControlePanel({ user, empresa }: ControlePanelProps) {
                   </div>
                 </div>
 
-                {/* 3. Dicionário de Fórmulas e Métricas card */}
+                {/* 3. Gestão de Ações & Alertas card */}
+                <div 
+                  onClick={() => {
+                    setCurrentSection('acoes');
+                  }}
+                  className="g-card p-5 border border-emerald-500/30 hover:border-emerald-400 bg-emerald-500/5 hover:bg-emerald-500/10 transition-all duration-300 rounded-2xl cursor-pointer group flex flex-col justify-between min-h-[170px]"
+                >
+                  <div className="flex justify-between items-start">
+                    <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
+                      <ListChecks className="w-5 h-5 text-emerald-400" />
+                    </div>
+                    <span className="font-mono text-[9px] text-emerald-400 font-black tracking-wider uppercase bg-emerald-500/20 px-2 py-0.5 rounded-full border border-emerald-500/30">AÇÕES & ALERTAS</span>
+                  </div>
+                  <div>
+                    <h3 className="font-sans font-bold text-sm text-snow uppercase tracking-wide group-hover:text-emerald-400 transition-colors mt-4">
+                      Gestão de Ações & Alertas
+                    </h3>
+                    <p className="text-[11px] text-[#6a7d92] mt-1 leading-relaxed">
+                      Painel unificado para monitoramento de desvios operacionais em tempo real e acompanhamento de todos os planos de ação da plataforma.
+                    </p>
+                  </div>
+                </div>
+
+                {/* 5. Dicionário de Fórmulas e Métricas card */}
                 <div 
                   onClick={() => setCurrentSection('normas')}
                   className="g-card p-5 border border-[#222d3a] hover:border-[#f5a623]/40 bg-[#11151c]/60 hover:bg-[#161c27] transition-all duration-300 rounded-2xl cursor-pointer group flex flex-col justify-between min-h-[170px]"
@@ -2152,9 +2625,563 @@ export default function ControlePanel({ user, empresa }: ControlePanelProps) {
             </div>
           )}
 
+          {/* ── SECTION: GESTÃO DE AÇÕES & ALERTAS OPERACIONAIS ── */}
+          {(currentSection === 'acoes' || currentSection === 'alertas') && (
+            <div className="flex flex-col gap-6">
+              {/* Header Card with Sub-tab Switcher */}
+              <div className="p-6 bg-white border border-slate-200/80 rounded-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
+                      <Zap className="w-3 h-3 text-emerald-600" />
+                      ADMINISTRAÇÃO & GESTÃO
+                    </span>
+                  </div>
+                  <h2 className="font-sans font-black text-xl text-slate-800 tracking-tight uppercase mt-1 flex items-center gap-2">
+                    <ListChecks className="w-5 h-5 text-emerald-600" />
+                    Gestão de Ações & Alertas Operacionais
+                  </h2>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Central de controle para acompanhamento dos planos de ação e monitoramento em tempo real de alertas e desvios operacionais.
+                  </p>
+                </div>
 
+                {/* Subtab Toggle Pills */}
+                <div className="flex items-center gap-1.5 bg-slate-100 p-1.5 rounded-xl border border-slate-200 self-stretch md:self-auto">
+                  <button
+                    onClick={() => setAcoesSubTab('planos')}
+                    className={`flex-1 md:flex-none px-4 py-2 rounded-lg text-xs font-black uppercase transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                      acoesSubTab === 'planos'
+                        ? 'bg-emerald-600 text-white shadow-sm'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                    }`}
+                  >
+                    <ListChecks className="w-4 h-4" />
+                    Acompanhamento de Ações
+                    <span className={`px-1.5 py-0.2 rounded text-[10px] font-mono ${acoesSubTab === 'planos' ? 'bg-emerald-700 text-emerald-100' : 'bg-slate-200 text-slate-700'}`}>
+                      {acoesList.length}
+                    </span>
+                  </button>
+
+                  <button
+                    onClick={() => setAcoesSubTab('alertas')}
+                    className={`flex-1 md:flex-none px-4 py-2 rounded-lg text-xs font-black uppercase transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                      acoesSubTab === 'alertas'
+                        ? 'bg-amber-500 text-white shadow-sm'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                    }`}
+                  >
+                    <Bell className="w-4 h-4 animate-pulse" />
+                    Central de Alertas
+                    <span className={`px-1.5 py-0.2 rounded text-[10px] font-mono ${acoesSubTab === 'alertas' ? 'bg-amber-600 text-amber-100' : 'bg-slate-200 text-slate-700'}`}>
+                      {OPERATIONAL_ALERTS.length}
+                    </span>
+                  </button>
+                </div>
+              </div>
+
+              {/* SUBTAB 1: ACOMPANHAMENTO DE AÇÕES */}
+              {acoesSubTab === 'planos' && (
+                <div className="flex flex-col gap-6">
+                  {/* Top Bar Action */}
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Planos de Ação Registrados</span>
+                    <button
+                      onClick={() => {
+                        setAcaoModalTitle('');
+                        setAcaoModalDesc('');
+                        setAcaoModalSetor('Repack');
+                        setAcaoModalResp(user.nome || 'Supervisor');
+                        setAcaoModalPrioridade('alta');
+                        setAcaoModalLimite(new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
+                        setAcaoModalOrigem('manual');
+                        setAcaoModalAlertId(undefined);
+                        setShowAcaoModal(true);
+                      }}
+                      className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs uppercase tracking-wider flex items-center gap-2 shadow-md cursor-pointer transition-all active:scale-95 whitespace-nowrap"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Nova Ação Manual
+                    </button>
+                  </div>
+
+                  {/* KPI Summary Row */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="p-4 bg-white border border-slate-200/80 rounded-xl flex flex-col gap-1 shadow-sm">
+                      <span className="text-[9px] font-mono font-black text-slate-400 uppercase tracking-wider">Total de Ações</span>
+                      <span className="font-mono text-2xl font-black text-slate-800">{acoesList.length}</span>
+                    </div>
+                    <div className="p-4 bg-white border border-amber-200 rounded-xl flex flex-col gap-1 shadow-sm">
+                      <span className="text-[9px] font-mono font-black text-amber-600 uppercase tracking-wider">Pendentes</span>
+                      <span className="font-mono text-2xl font-black text-amber-600">
+                        {acoesList.filter(a => a.status === 'pendente' || !a.status).length}
+                      </span>
+                    </div>
+                    <div className="p-4 bg-white border border-blue-200 rounded-xl flex flex-col gap-1 shadow-sm">
+                      <span className="text-[9px] font-mono font-black text-blue-600 uppercase tracking-wider">Em Andamento</span>
+                      <span className="font-mono text-2xl font-black text-blue-600">
+                        {acoesList.filter(a => a.status === 'em_andamento').length}
+                      </span>
+                    </div>
+                    <div className="p-4 bg-white border border-emerald-200 rounded-xl flex flex-col gap-1 shadow-sm">
+                      <span className="text-[9px] font-mono font-black text-emerald-600 uppercase tracking-wider">Concluídas</span>
+                      <span className="font-mono text-2xl font-black text-emerald-600">
+                        {acoesList.filter(a => a.status === 'concluido').length}
+                        <span className="text-xs text-slate-400 ml-2 font-normal">
+                          ({acoesList.length > 0 ? Math.round((acoesList.filter(a => a.status === 'concluido').length / acoesList.length) * 100) : 0}%)
+                        </span>
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Filters & Search */}
+                  <div className="p-4 bg-white border border-slate-200/80 rounded-xl flex flex-col md:flex-row items-center justify-between gap-3 shadow-sm">
+                    <div className="relative w-full md:w-72">
+                      <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                      <input
+                        type="text"
+                        value={acaoSearchQuery}
+                        onChange={e => setAcaoSearchQuery(e.target.value)}
+                        placeholder="Buscar ação por título, responsável..."
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-9 pr-3 py-1.5 text-xs text-slate-800 outline-none focus:border-emerald-500"
+                      />
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+                      <select
+                        value={selectedAcaoSetor}
+                        onChange={e => setSelectedAcaoSetor(e.target.value)}
+                        className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-700 outline-none cursor-pointer focus:border-emerald-500"
+                      >
+                        <option value="todos">Todos os Setores</option>
+                        <option value="Repack">Repack</option>
+                        <option value="Quebras">Quebras</option>
+                        <option value="Picking">Picking</option>
+                        <option value="Movimentação">Movimentação</option>
+                        <option value="Logística">Logística</option>
+                        <option value="Retorno">Retorno</option>
+                        <option value="Geral">Geral</option>
+                      </select>
+
+                      <select
+                        value={selectedAcaoStatus}
+                        onChange={e => setSelectedAcaoStatus(e.target.value)}
+                        className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-700 outline-none cursor-pointer focus:border-emerald-500"
+                      >
+                        <option value="todos">Todos os Status</option>
+                        <option value="pendente">Pendentes</option>
+                        <option value="em_andamento">Em Andamento</option>
+                        <option value="concluido">Concluídas</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Actions List Grid */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {acoesList
+                      .filter(a => {
+                        if (selectedAcaoSetor !== 'todos' && a.setor !== selectedAcaoSetor) return false;
+                        if (selectedAcaoStatus !== 'todos' && (a.status || 'pendente') !== selectedAcaoStatus) return false;
+                        if (acaoSearchQuery.trim()) {
+                          const q = acaoSearchQuery.toLowerCase();
+                          const matchTitle = (a.titulo || '').toLowerCase().includes(q);
+                          const matchDesc = (a.descricao || '').toLowerCase().includes(q);
+                          const matchResp = (a.responsavel || '').toLowerCase().includes(q);
+                          if (!matchTitle && !matchDesc && !matchResp) return false;
+                        }
+                        return true;
+                      })
+                      .map((acao, idx) => {
+                        const isOverdue = acao.limiteEm && new Date(acao.limiteEm).getTime() < Date.now() && acao.status !== 'concluido';
+                        return (
+                          <div
+                            key={acao.id || idx}
+                            className={`p-4 bg-white border rounded-2xl flex flex-col justify-between gap-3 shadow-sm hover:shadow-md transition-all ${
+                              acao.status === 'concluido'
+                                ? 'border-emerald-200 opacity-90 bg-emerald-50/20'
+                                : isOverdue
+                                ? 'border-rose-300 bg-rose-50/30'
+                                : 'border-slate-200/80 hover:border-emerald-400'
+                            }`}
+                          >
+                            <div className="flex flex-col gap-2">
+                              <div className="flex items-center justify-between flex-wrap gap-1">
+                                <span className="px-2 py-0.5 rounded text-[8px] font-mono font-black uppercase bg-slate-100 text-slate-600 border border-slate-200">
+                                  #{acao.id ? acao.id.slice(-6) : idx + 1}
+                                </span>
+
+                                <div className="flex items-center gap-1.5">
+                                  <span className={`px-2 py-0.5 rounded text-[8px] font-bold uppercase border ${
+                                    acao.prioridade === 'alta'
+                                      ? 'bg-rose-100 text-rose-700 border-rose-200'
+                                      : 'bg-amber-100 text-amber-800 border-amber-200'
+                                  }`}>
+                                    {acao.prioridade || 'Alta'}
+                                  </span>
+
+                                  <span className="px-2 py-0.5 rounded text-[8px] font-bold uppercase bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                    {acao.setor || 'Geral'}
+                                  </span>
+                                </div>
+                              </div>
+
+                              <h3 className="font-sans font-bold text-sm text-slate-800 leading-snug">
+                                {acao.titulo}
+                              </h3>
+
+                              <p className="text-xs text-slate-600 whitespace-pre-line line-clamp-3 leading-relaxed">
+                                {acao.descricao}
+                              </p>
+
+                              <div className="flex items-center justify-between text-[10px] text-slate-500 pt-2 border-t border-slate-100">
+                                <span className="flex items-center gap-1 font-semibold">
+                                  <User className="w-3 h-3 text-slate-400" />
+                                  {acao.responsavel || 'Não atribuído'}
+                                </span>
+
+                                <span className={`flex items-center gap-1 font-mono font-bold ${isOverdue ? 'text-rose-600 animate-pulse' : 'text-slate-500'}`}>
+                                  <Calendar className="w-3 h-3" />
+                                  Limite: {acao.limiteEm ? acao.limiteEm.split('T')[0] : '—'}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Status Updater & Delete Action */}
+                            <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-100">
+                              <div className="flex items-center gap-1.5 flex-1">
+                                <span className="text-[9px] font-bold text-slate-500 uppercase">Status:</span>
+                                <select
+                                  value={acao.status || 'pendente'}
+                                  onChange={e => handleUpdateAcaoStatus(acao.id, e.target.value)}
+                                  className={`text-[10px] font-bold uppercase rounded px-2 py-1 outline-none border cursor-pointer ${
+                                    acao.status === 'concluido'
+                                      ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                      : acao.status === 'em_andamento'
+                                      ? 'bg-blue-100 text-blue-800 border-blue-300'
+                                      : 'bg-amber-100 text-amber-800 border-amber-300'
+                                  }`}
+                                >
+                                  <option value="pendente" className="bg-white text-amber-800">Pendente</option>
+                                  <option value="em_andamento" className="bg-white text-blue-800">Em Andamento</option>
+                                  <option value="concluido" className="bg-white text-emerald-800">Concluído</option>
+                                </select>
+                              </div>
+
+                              <button
+                                onClick={() => handleDeleteAcao(acao.id)}
+                                className="p-1.5 rounded border border-slate-200 hover:border-rose-300 bg-slate-50 text-slate-400 hover:text-rose-600 transition-all cursor-pointer"
+                                title="Excluir ação"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+
+                    {acoesList.length === 0 && (
+                      <div className="col-span-full p-12 bg-white border border-slate-200/80 rounded-2xl text-center text-slate-500 flex flex-col items-center justify-center gap-3 shadow-sm">
+                        <ListChecks className="w-8 h-8 text-slate-300" />
+                        <p className="text-sm font-semibold">Nenhuma ação registrada no momento.</p>
+                        <p className="text-xs">Crie ações manuais ou clique na aba "Central de Alertas" para transformar alertas em planos de ação.</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* SUBTAB 2: CENTRAL DE ALERTAS OPERACIONAIS */}
+              {acoesSubTab === 'alertas' && (
+                <div className="flex flex-col gap-6">
+                  {/* Info Banner */}
+                  <div className="p-4 bg-amber-50 border border-amber-200/80 rounded-xl flex items-center justify-between text-xs text-amber-900 shadow-sm">
+                    <div className="flex items-center gap-2">
+                      <Flame className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                      <span>
+                        Ocorrências com desvios operacionais mapeados. Clique em <strong>"Criar Plano de Ação Imediato"</strong> para vincular uma ação preventiva ou corretiva.
+                      </span>
+                    </div>
+                    <span className="font-mono text-xs font-bold bg-amber-100 px-2.5 py-1 rounded-md text-amber-800 border border-amber-300 whitespace-nowrap">
+                      {OPERATIONAL_ALERTS.length} Alertas Ativos
+                    </span>
+                  </div>
+
+                  {/* Alert Cards Grid */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {OPERATIONAL_ALERTS
+                      .map((alert) => {
+                        const existingAcao = acoesList.find(a => a.origemAlertaId === alert.id);
+                        return (
+                          <div
+                            key={alert.id}
+                            className={`p-5 bg-white border rounded-2xl flex flex-col justify-between gap-4 shadow-sm hover:shadow-md transition-all ${
+                              alert.severidade === 'CRÍTICO'
+                                ? 'border-rose-300'
+                                : 'border-amber-300'
+                            }`}
+                          >
+                            <div className="flex flex-col gap-3">
+                              <div className="flex items-center justify-between flex-wrap gap-2">
+                                <span className="px-2.5 py-1 rounded-full text-[9px] font-black uppercase bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                  {alert.setor}
+                                </span>
+
+                                <div className="flex items-center gap-2">
+                                  <span className="font-mono text-[10px] font-black text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">
+                                    #{alert.registroId}
+                                  </span>
+                                  <span className={`px-2.5 py-1 rounded-full text-[9px] font-black uppercase border ${
+                                    alert.severidade === 'CRÍTICO'
+                                      ? 'bg-rose-100 text-rose-700 border-rose-200 animate-pulse'
+                                      : 'bg-amber-100 text-amber-800 border-amber-200'
+                                  }`}>
+                                    {alert.severidade}
+                                  </span>
+                                </div>
+                              </div>
+
+                              <h3 className="font-sans font-black text-base text-slate-800 leading-snug">
+                                {alert.titulo}
+                              </h3>
+
+                              {/* Detailed Record Info Card */}
+                              <div className="p-3.5 bg-slate-50/90 border border-slate-200/90 rounded-xl flex flex-col gap-2 text-xs">
+                                <div className="flex items-center justify-between border-b border-slate-200/60 pb-2 text-[11px] text-slate-500">
+                                  <span className="flex items-center gap-1 font-semibold text-slate-700">
+                                    <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                                    {alert.dataRegistro}
+                                  </span>
+                                  <span className="font-semibold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
+                                    {alert.turno}
+                                  </span>
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                                  <div className="flex flex-col">
+                                    <span className="text-[10px] uppercase font-bold text-slate-400 flex items-center gap-1">
+                                      <MapPin className="w-3 h-3 text-slate-400" /> Localização
+                                    </span>
+                                    <span className="font-medium text-slate-700">{alert.localizacao}</span>
+                                  </div>
+
+                                  <div className="flex flex-col">
+                                    <span className="text-[10px] uppercase font-bold text-slate-400 flex items-center gap-1">
+                                      <User className="w-3 h-3 text-slate-400" /> Inspector / Resp.
+                                    </span>
+                                    <span className="font-medium text-slate-700">{alert.registradoPor}</span>
+                                  </div>
+                                </div>
+
+                                <div className="flex flex-col text-[11px] pt-1 border-t border-slate-100">
+                                  <span className="text-[10px] uppercase font-bold text-slate-400 flex items-center gap-1">
+                                    <Truck className="w-3 h-3 text-slate-400" /> Equipamento & Operador
+                                  </span>
+                                  <span className="font-medium text-slate-800">{alert.equipamentoOp}</span>
+                                </div>
+
+                                <div className="flex flex-col text-[11px] pt-1 border-t border-slate-100">
+                                  <span className="text-[10px] uppercase font-bold text-amber-500 flex items-center gap-1">
+                                    <Package className="w-3 h-3 text-amber-500" /> Produtos & SKUs Afetados
+                                  </span>
+                                  <span className="font-semibold text-slate-900 bg-amber-50/60 p-1.5 rounded border border-amber-200/50 mt-0.5">
+                                    {alert.produtosEnvolvidos}
+                                  </span>
+                                </div>
+
+                                <div className="flex flex-col text-[11px] pt-1 border-t border-slate-100">
+                                  <span className="text-[10px] uppercase font-bold text-rose-500 flex items-center gap-1">
+                                    <AlertOctagon className="w-3 h-3 text-rose-500" /> Impacto Estimado
+                                  </span>
+                                  <span className="font-bold text-rose-700 bg-rose-50/60 p-1.5 rounded border border-rose-200/50 mt-0.5">
+                                    {alert.impactoEstimado}
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Trigger and Metrics */}
+                              <div className="p-3 bg-amber-50/40 border border-amber-200/60 rounded-xl flex flex-col gap-1.5">
+                                <div className="text-[11px] text-amber-900 font-medium">
+                                  <strong className="text-amber-700">Gatilho de Detecção: </strong>
+                                  {alert.gatilho}
+                                </div>
+                                <div className="flex items-center justify-between text-xs pt-1.5 border-t border-amber-200/40">
+                                  <span className="text-slate-600 font-semibold">Métrica Detectada:</span>
+                                  <span className="font-mono font-bold text-rose-600">{alert.metricaAtual}</span>
+                                </div>
+                                <div className="flex items-center justify-between text-[11px]">
+                                  <span className="text-slate-400">Meta Referência:</span>
+                                  <span className="font-mono text-emerald-700 font-bold">{alert.metaReferencia}</span>
+                                </div>
+                              </div>
+
+                              {/* Root Cause & Recommended Action */}
+                              <div className="flex flex-col gap-1.5 text-xs">
+                                <div className="text-slate-600">
+                                  <strong className="text-slate-800">Causa Provável: </strong>
+                                  {alert.causaProvavel}
+                                </div>
+                                <div className="text-emerald-800 bg-emerald-50/80 border border-emerald-200 p-2.5 rounded-lg text-[11px] leading-relaxed">
+                                  <strong className="text-emerald-700 uppercase font-black block mb-0.5">Recomendação:</strong>
+                                  {alert.acaoRecomendada}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Action Creator / Status badge */}
+                            <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-3">
+                              {existingAcao ? (
+                                <div className="flex items-center justify-between w-full p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold">
+                                  <span className="flex items-center gap-1.5">
+                                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                                    Ação Registrada (#{existingAcao.id ? existingAcao.id.slice(-6) : 'Ativa'})
+                                  </span>
+                                  <span className="uppercase text-[9px] px-2 py-0.5 rounded bg-emerald-100 border border-emerald-300 text-emerald-800 font-extrabold">
+                                    {existingAcao.status || 'Pendente'}
+                                  </span>
+                                </div>
+                              ) : (
+                                <button
+                                  onClick={() => handleOpenAlertActionModal(alert)}
+                                  className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-sans font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer shadow-md transition-all active:scale-95"
+                                >
+                                  <Zap className="w-4 h-4 fill-current" />
+                                  Criar Plano de Ação Imediato
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
         </motion.div>
+      </AnimatePresence>
+
+      {/* ── MODAL: CRIAR / EDITAR PLANO DE AÇÃO ── */}
+      <AnimatePresence>
+        {showAcaoModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="w-full max-w-lg bg-[#11151c] border border-[#222d3a] rounded-2xl p-6 shadow-2xl flex flex-col gap-4 text-snow"
+            >
+              <div className="flex items-center justify-between border-b border-[#222d3a] pb-3">
+                <h3 className="font-sans font-black text-base uppercase tracking-tight flex items-center gap-2 text-[#f5a623]">
+                  <ListChecks className="w-5 h-5 text-[#f5a623]" />
+                  Plano de Ação Integrado
+                </h3>
+                <button
+                  onClick={() => setShowAcaoModal(false)}
+                  className="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-all cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="flex flex-col gap-3">
+                <div>
+                  <label className="text-[10px] font-black text-[#6a7d92] uppercase block mb-1">Título da Ação</label>
+                  <input
+                    type="text"
+                    value={acaoModalTitle}
+                    onChange={e => setAcaoModalTitle(e.target.value)}
+                    placeholder="Ex: Treinamento de Redução de Velocidade nas Empilhadeiras"
+                    className="w-full bg-[#161c27] border border-[#222d3a] rounded-xl px-3 py-2 text-xs text-snow outline-none focus:border-[#f5a623]"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[10px] font-black text-[#6a7d92] uppercase block mb-1">Setor Responsável</label>
+                    <select
+                      value={acaoModalSetor}
+                      onChange={e => setAcaoModalSetor(e.target.value)}
+                      className="w-full bg-[#161c27] border border-[#222d3a] rounded-xl px-3 py-2 text-xs text-snow outline-none cursor-pointer focus:border-[#f5a623]"
+                    >
+                      <option value="Repack">Repack</option>
+                      <option value="Quebras">Quebras</option>
+                      <option value="Picking">Picking</option>
+                      <option value="Movimentação">Movimentação</option>
+                      <option value="Logística">Logística</option>
+                      <option value="Retorno">Retorno</option>
+                      <option value="Geral">Geral</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-black text-[#6a7d92] uppercase block mb-1">Prioridade</label>
+                    <select
+                      value={acaoModalPrioridade}
+                      onChange={e => setAcaoModalPrioridade(e.target.value as any)}
+                      className="w-full bg-[#161c27] border border-[#222d3a] rounded-xl px-3 py-2 text-xs text-snow outline-none cursor-pointer focus:border-[#f5a623]"
+                    >
+                      <option value="alta">Alta</option>
+                      <option value="media">Média</option>
+                      <option value="baixa">Baixa</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[10px] font-black text-[#6a7d92] uppercase block mb-1">Responsável pela Execução</label>
+                    <input
+                      type="text"
+                      value={acaoModalResp}
+                      onChange={e => setAcaoModalResp(e.target.value)}
+                      placeholder="Nome do Supervisor / Operador"
+                      className="w-full bg-[#161c27] border border-[#222d3a] rounded-xl px-3 py-2 text-xs text-snow outline-none focus:border-[#f5a623]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-black text-[#6a7d92] uppercase block mb-1">Data Limite</label>
+                    <input
+                      type="date"
+                      value={acaoModalLimite}
+                      onChange={e => setAcaoModalLimite(e.target.value)}
+                      className="w-full bg-[#161c27] border border-[#222d3a] rounded-xl px-3 py-2 text-xs text-snow outline-none focus:border-[#f5a623]"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-black text-[#6a7d92] uppercase block mb-1">Descrição & Recomendações</label>
+                  <textarea
+                    rows={4}
+                    value={acaoModalDesc}
+                    onChange={e => setAcaoModalDesc(e.target.value)}
+                    placeholder="Descreva o plano de ação, procedimentos e metas de correção..."
+                    className="w-full bg-[#161c27] border border-[#222d3a] rounded-xl p-3 text-xs text-snow outline-none focus:border-[#f5a623] resize-none"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#222d3a]">
+                <button
+                  onClick={() => setShowAcaoModal(false)}
+                  className="px-4 py-2 rounded-xl border border-[#222d3a] bg-[#161c27] text-slate-300 hover:text-white font-bold text-xs uppercase cursor-pointer"
+                >
+                  Cancelar
+                </button>
+
+                <button
+                  disabled={savingAcao || !acaoModalTitle.trim() || !acaoModalDesc.trim()}
+                  onClick={handleCreateAcao}
+                  className="px-5 py-2 rounded-xl bg-gradient-to-r from-[#f5a623] to-[#d4780a] hover:from-[#f5a623] hover:to-[#f5a623] text-slate-950 font-black text-xs uppercase cursor-pointer transition-all active:scale-95 disabled:opacity-50"
+                >
+                  {savingAcao ? 'Salva...' : 'Salvar Plano de Ação'}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
       </AnimatePresence>
 
     </div>

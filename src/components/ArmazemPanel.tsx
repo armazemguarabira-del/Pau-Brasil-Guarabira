@@ -298,7 +298,7 @@ export default function ArmazemPanel({ user, empresa }: ArmazemPanelProps) {
 
     setRegistering(true);
     const today = new Date();
-    const dataISO = today.toISOString().split('T')[0];
+    const dataISO = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
     const dataStr = today.toLocaleDateString('pt-BR');
 
     const finalPlaca = placaSelection === 'Outra...' ? placaOutro.toUpperCase() : placaSelection;
@@ -317,7 +317,8 @@ export default function ArmazemPanel({ user, empresa }: ArmazemPanelProps) {
       tipo,
       palhete: Number(palhete),
       pernoite: operacao === 'Descarregamento' ? pernoiteSelection : "",
-      obs: obs.trim()
+      obs: obs.trim(),
+      _criadoEm: today.toISOString()
     };
 
     try {
@@ -329,6 +330,8 @@ export default function ArmazemPanel({ user, empresa }: ArmazemPanelProps) {
         localStorage.setItem(`armazem_rows_${empresaId}`, JSON.stringify(current));
       }
       
+      window.dispatchEvent(new CustomEvent('app_data_updated'));
+      window.dispatchEvent(new CustomEvent('local_data_changed'));
       setSuccessMsg('Lançamento de pátio salvo com sucesso!');
       // Reset form
       setInicio('');

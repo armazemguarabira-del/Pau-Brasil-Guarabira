@@ -245,7 +245,7 @@ export default function RepackPanel({ user, empresa }: RepackPanelProps) {
 
     const today = new Date();
     const dataStr = today.toLocaleDateString('pt-BR');
-    const dataISO = today.toISOString().split('T')[0];
+    const dataISO = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
     const qtyNum = quantidade === '' ? 1 : quantidade;
 
