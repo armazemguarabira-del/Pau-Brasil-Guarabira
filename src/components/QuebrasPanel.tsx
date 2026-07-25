@@ -6,6 +6,7 @@ import { useEmpresaData } from '../context/EmpresaDataContext';
 import { PRODUCTS } from '../planosData';
 import { TrendingUp, CheckCircle, Clock, Award, BarChart2, AlertTriangle } from 'lucide-react';
 import SugerirMelhoriaCard from './SugerirMelhoriaCard';
+import { getBaseQuebrasRows } from '../data/baseQuebras';
 
 interface QuebrasPanelProps {
   user: Usuario;
@@ -233,19 +234,51 @@ export default function QuebrasPanel({ user, empresa }: QuebrasPanelProps) {
 
   const empresaData = useEmpresaData();
 
-  // Sync with Firestore (scoped to company)
+  // Sync with Firestore (scoped to company) and merge with base dataset
   useEffect(() => {
-    if (!db || !empresa?.id) {
-      const saved = localStorage.getItem(`quebras_${empresa?.id || 'demo'}`);
-      if (saved) setQuebras(JSON.parse(saved));
-      return;
+    const companyId = empresa?.id || 'demo';
+    const baseRows = getBaseQuebrasRows(companyId);
+
+    // Get rows from Firestore if connected
+    const firestoreRows = (db && empresa?.id) ? (empresaData.quebras || []) : [];
+
+    // Get rows from LocalStorage
+    let localRows: QuebraRow[] = [];
+    const saved = localStorage.getItem(`quebras_${companyId}`) || localStorage.getItem(`quebras_rows_${companyId}`);
+    if (saved) {
+      try {
+        localRows = JSON.parse(saved);
+      } catch (e) {
+        console.error(e);
+      }
     }
 
-    const companyId = empresa?.id || 'demo';
-    const rows = [...empresaData.quebras];
-    rows.sort((a, b) => (b.dataISO || '').localeCompare(a.dataISO || ''));
-    setQuebras(rows);
-    localStorage.setItem(`quebras_${companyId}`, JSON.stringify(rows));
+    const isCustomRow = (r: QuebraRow) => {
+      const id = String(r._docId || (r as any).id || '');
+      if (!id) return false;
+      if (id.startsWith('base-quebra-') || id.startsWith('base-') || id.startsWith('base_')) return false;
+      if (r.fiscal === 'SISTEMA') return false;
+      return true;
+    };
+
+    const userCustomRows: QuebraRow[] = [];
+    const customIds = new Set<string>();
+
+    [...firestoreRows, ...localRows].forEach(r => {
+      if (isCustomRow(r)) {
+        const id = String(r._docId || (r as any).id);
+        if (!customIds.has(id)) {
+          customIds.add(id);
+          userCustomRows.push(r);
+        }
+      }
+    });
+
+    const merged = [...userCustomRows, ...baseRows];
+    merged.sort((a, b) => (b.dataISO || '').localeCompare(a.dataISO || ''));
+    setQuebras(merged);
+    localStorage.setItem(`quebras_${companyId}`, JSON.stringify(merged));
+    localStorage.setItem(`quebras_rows_${companyId}`, JSON.stringify(merged));
   }, [empresaData.quebras, empresa?.id]);
 
   const handleSelectProd = (p: { codigo: number, descricao: string }) => {
@@ -290,13 +323,19 @@ export default function QuebrasPanel({ user, empresa }: QuebrasPanelProps) {
     };
 
     try {
+      let insertedDocId = String(Date.now());
       if (db) {
-        await addDoc(collection(db, 'quebras'), newRow);
-      } else {
-        const current = [...quebras, { _docId: String(Date.now()), ...newRow }];
-        setQuebras(current);
-        localStorage.setItem(`quebras_${empresa?.id || 'demo'}`, JSON.stringify(current));
+        const docRef = await addDoc(collection(db, 'quebras'), newRow);
+        if (docRef?.id) insertedDocId = docRef.id;
       }
+      const createdRow: QuebraRow = { _docId: insertedDocId, ...newRow };
+      const companyId = empresa?.id || 'demo';
+      const current = [createdRow, ...quebras.filter(r => r._docId !== insertedDocId)];
+      setQuebras(current);
+      localStorage.setItem(`quebras_${companyId}`, JSON.stringify(current));
+      localStorage.setItem(`quebras_rows_${companyId}`, JSON.stringify(current));
+      window.dispatchEvent(new Event('app_data_updated'));
+      window.dispatchEvent(new Event('local_data_changed'));
 
       setProdutoBusca('');
       setSelectedProd(null);

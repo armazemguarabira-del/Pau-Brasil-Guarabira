@@ -36,7 +36,10 @@ export default function ConferentePanel({ user, empresa }: ConferentePanelProps)
 
   const [searchQuery, setSearchQuery] = useState<string>(() => getDraftValue('searchQuery', ''));
   const [selectedProd, setSelectedProd] = useState<{ codigo: number, descricao: string } | null>(() => getDraftValue('selectedProd', null));
-  const [quantidade, setQuantidade] = useState<number>(() => getDraftValue('quantidade', 1));
+  const [quantidade, setQuantidade] = useState<number | ''>(() => {
+    const val = getDraftValue('quantidade', '');
+    return val === 1 ? '' : (val || '');
+  });
   const [operator, setOperator] = useState<string>(() => getDraftValue('operator', ''));
   const [operators, setOperators] = useState<string[]>(['MARIVALDO', 'RONILDO', 'PAULO PEREIRA']);
 
@@ -49,7 +52,7 @@ export default function ConferentePanel({ user, empresa }: ConferentePanelProps)
       const saved = localStorage.getItem(draftKey);
       if (saved) {
         const parsed = JSON.parse(saved);
-        return !!(parsed.searchQuery || parsed.selectedProd || parsed.quantidade > 1 || parsed.operator);
+        return !!(parsed.searchQuery || parsed.selectedProd || (parsed.quantidade && parsed.quantidade !== 1) || parsed.operator);
       }
     } catch (e) {}
     return false;
@@ -76,14 +79,14 @@ export default function ConferentePanel({ user, empresa }: ConferentePanelProps)
         setConferente(parsed.conferente || '');
         setSearchQuery(parsed.searchQuery || '');
         setSelectedProd(parsed.selectedProd || null);
-        setQuantidade(parsed.quantidade || 1);
+        setQuantidade(parsed.quantidade === 1 ? '' : (parsed.quantidade || ''));
         setOperator(parsed.operator || '');
-        setDraftRestored(!!(parsed.searchQuery || parsed.selectedProd || parsed.quantidade > 1 || parsed.operator));
+        setDraftRestored(!!(parsed.searchQuery || parsed.selectedProd || (parsed.quantidade && parsed.quantidade !== 1) || parsed.operator));
       } else {
         setConferente('');
         setSearchQuery('');
         setSelectedProd(null);
-        setQuantidade(1);
+        setQuantidade('');
         setOperator('');
         setDraftRestored(false);
       }
@@ -202,7 +205,7 @@ export default function ConferentePanel({ user, empresa }: ConferentePanelProps)
 
       setSelectedProd(null);
       setSearchQuery('');
-      setQuantidade(1);
+      setQuantidade('');
       setOperator('');
       setDraftRestored(false);
       localStorage.removeItem(draftKey);
@@ -322,7 +325,7 @@ export default function ConferentePanel({ user, empresa }: ConferentePanelProps)
               onClick={() => {
                 setSearchQuery('');
                 setSelectedProd(null);
-                setQuantidade(1);
+                setQuantidade('');
                 setOperator('');
                 setDraftRestored(false);
                 localStorage.removeItem(draftKey);
@@ -370,8 +373,17 @@ export default function ConferentePanel({ user, empresa }: ConferentePanelProps)
             <input 
               type="number"
               min={1}
+              placeholder="Digite a quantidade..."
               value={quantidade}
-              onChange={e => setQuantidade(Math.max(1, parseInt(e.target.value) || 0))}
+              onChange={e => {
+                const val = e.target.value;
+                if (val === '') {
+                  setQuantidade('');
+                } else {
+                  const num = parseInt(val, 10);
+                  setQuantidade(isNaN(num) ? '' : Math.max(1, num));
+                }
+              }}
               className="g-input text-center text-snow font-bold text-sm bg-[#151b23]"
             />
           </div>

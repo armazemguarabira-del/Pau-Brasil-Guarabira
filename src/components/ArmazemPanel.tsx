@@ -334,7 +334,6 @@ export default function ArmazemPanel({ user, empresa }: ArmazemPanelProps) {
       setObs('');
       setPlacaOutro('');
       setStatusChip('—');
-      setActiveTab('hist');
       setDraftRestored(false);
       localStorage.removeItem(draftKey);
     } catch (e) {

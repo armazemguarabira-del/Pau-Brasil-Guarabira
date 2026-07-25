@@ -41,6 +41,7 @@ import {
 import { Usuario, Empresa, QuebraRow } from '../types';
 import { db, isCustomFirebaseConnected } from '../firebase';
 import { useEmpresaData } from '../context/EmpresaDataContext';
+import { getBaseQuebrasRows } from '../data/baseQuebras';
 import { generateMockQuebras } from '../mockDataGenerator';
 import A3BoardComponent from './A3BoardComponent';
 import CalendarFilter from './CalendarFilter';
@@ -120,12 +121,8 @@ const getEmbalagemName = (desc: string): string => {
 
 export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashboardProps) {
   const [actualQuebras, setActualQuebras] = useState<QuebraRow[]>([]);
-  const [startDate, setStartDate] = useState<string>(() => {
-    const d = new Date();
-    d.setDate(d.getDate() - 30);
-    return d.toISOString().split('T')[0];
-  });
-  const [endDate, setEndDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [startDate, setStartDate] = useState<string>('');
+  const [endDate, setEndDate] = useState<string>('');
   const [filterArea, setFilterArea] = useState<string>('TODAS');
   const [filterTurno, setFilterTurno] = useState<string>('TODOS');
   const [filterEmbalagem, setFilterEmbalagem] = useState<string>('TODAS');
@@ -143,10 +140,18 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
 
   const quebras = useMemo(() => {
     const companyId = empresa?.id || 'demo';
-    if (actualQuebras && actualQuebras.length > 0) {
-      return actualQuebras;
+    const baseRows = generateMockQuebras(companyId);
+    if (!actualQuebras || actualQuebras.length === 0) {
+      return baseRows;
     }
-    return generateMockQuebras(companyId);
+    const existingIds = new Set(actualQuebras.map(r => r._docId || (r as any).id));
+    const merged = [...actualQuebras];
+    baseRows.forEach(baseRow => {
+      if (!existingIds.has(baseRow._docId)) {
+        merged.push(baseRow);
+      }
+    });
+    return merged;
   }, [actualQuebras, empresa?.id]);
 
   // Convert physical boxes to HE
@@ -182,17 +187,63 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
 
   const empresaData = useEmpresaData();
 
-  // Sync Quebras
+  // Sync Quebras from Firestore and LocalStorage
   useEffect(() => {
-    if (!db || !empresa?.id) {
-      const saved = localStorage.getItem(`quebras_${empresa?.id || 'demo'}`);
-      if (saved) setActualQuebras(JSON.parse(saved));
-      return;
-    }
+    const companyId = empresa?.id || 'demo';
+    const syncRecords = () => {
+      const baseRows = getBaseQuebrasRows(companyId);
+      const firestoreRows = (db && empresa?.id) ? (empresaData.quebras || []) : [];
+      let localRows: QuebraRow[] = [];
+      const saved = localStorage.getItem(`quebras_${companyId}`) || localStorage.getItem(`quebras_rows_${companyId}`);
+      if (saved) {
+        try {
+          localRows = JSON.parse(saved);
+        } catch (e) {
+          console.error(e);
+        }
+      }
 
-    const rows = [...empresaData.quebras];
-    rows.sort((a, b) => (b.dataISO || '').localeCompare(a.dataISO || ''));
-    setActualQuebras(rows);
+      const isCustomRow = (r: QuebraRow) => {
+        const id = String(r._docId || (r as any).id || '');
+        if (!id) return false;
+        if (id.startsWith('base-quebra-') || id.startsWith('base-') || id.startsWith('base_')) return false;
+        if (r.fiscal === 'SISTEMA') return false;
+        return true;
+      };
+
+      const userCustomRows: QuebraRow[] = [];
+      const customIds = new Set<string>();
+
+      [...firestoreRows, ...localRows].forEach(r => {
+        if (isCustomRow(r)) {
+          const id = String(r._docId || (r as any).id);
+          if (!customIds.has(id)) {
+            customIds.add(id);
+            userCustomRows.push(r);
+          }
+        }
+      });
+
+      const merged = [...userCustomRows, ...baseRows];
+      merged.sort((a, b) => (b.dataISO || '').localeCompare(a.dataISO || ''));
+      setActualQuebras(merged);
+      try {
+        localStorage.setItem(`quebras_${companyId}`, JSON.stringify(merged));
+        localStorage.setItem(`quebras_rows_${companyId}`, JSON.stringify(merged));
+      } catch (e) {}
+    };
+
+    syncRecords();
+
+    window.addEventListener('local_data_changed', syncRecords);
+    window.addEventListener('app_data_updated', syncRecords);
+    window.addEventListener('storage', syncRecords);
+
+    return () => {
+      window.removeEventListener('local_data_changed', syncRecords);
+      window.removeEventListener('app_data_updated', syncRecords);
+      window.removeEventListener('storage', syncRecords);
+    };
   }, [empresaData.quebras, empresa?.id]);
 
   // Sync Action Plans 5W2H

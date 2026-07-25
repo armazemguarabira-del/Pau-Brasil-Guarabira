@@ -151,17 +151,38 @@ export default function ValidadesPanel({ user, empresa }: ValidadesPanelProps) {
 
   const empresaData = useEmpresaData();
 
-  // Sync with Firestore (scoped to company)
+  // Sync with Firestore (scoped to company) - Filter out repack validades
   useEffect(() => {
+    let rows: ValidadeRow[] = [];
     if (!db) {
       const saved = localStorage.getItem(`validades_${empresaId}`);
-      if (saved) setValidadesList(JSON.parse(saved));
-      return;
+      if (saved) {
+        try {
+          rows = JSON.parse(saved);
+        } catch (e) {
+          console.error(e);
+        }
+      }
+    } else {
+      rows = empresaData.validades || [];
     }
 
-    const rows = empresaData.validades;
-    setValidadesList(rows);
-    localStorage.setItem(`validades_${empresaId}`, JSON.stringify(rows));
+    // Exclude any repack validades so this panel ONLY shows conferente validades
+    const conferenteRows = rows.filter((r: any) => {
+      const loc = String(r.localizacao || '').toLowerCase();
+      const origem = String(r.origem || '').toLowerCase();
+      const setor = String(r.setor || '').toLowerCase();
+      const tipo = String(r.tipo || '').toLowerCase();
+      if (loc.includes('repack') || origem.includes('repack') || setor.includes('repack') || tipo.includes('repack') || r.isRepack) {
+        return false;
+      }
+      return true;
+    });
+
+    setValidadesList(conferenteRows);
+    if (!db) {
+      localStorage.setItem(`validades_${empresaId}`, JSON.stringify(conferenteRows));
+    }
   }, [empresaData.validades, empresaId]);
 
   const getDaysRemaining = (expDate: string) => {

@@ -335,7 +335,7 @@ export default function DashboardOverview({
       checkAndSet(`repack_rows_${companyId}`, setRepackList);
       checkAndSet(`despejo_rows_${companyId}`, setDespejoList);
 
-      const rawQ = localStorage.getItem(`quebras_rows_${companyId}`) || localStorage.getItem(`quebras_list_${companyId}`);
+      const rawQ = localStorage.getItem(`quebras_${companyId}`) || localStorage.getItem(`quebras_rows_${companyId}`) || localStorage.getItem(`quebras_list_${companyId}`);
       if (rawQ && rawQ !== lastRawData.current['quebras']) {
         lastRawData.current['quebras'] = rawQ;
         try { setQuebrasList(JSON.parse(rawQ)); } catch (e) {}
