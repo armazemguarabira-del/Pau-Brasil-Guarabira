@@ -121,7 +121,7 @@ body.light-theme::before {
 /* Animations */
 @keyframes pulse {
   0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: .5; transform: scale(.95); }
+  50% { opacity: 1; transform: scale(1); }
 }
 
 @keyframes spin {
@@ -134,8 +134,13 @@ body.light-theme::before {
   75% { transform: translateX(4px); }
 }
 
-.animate-pulse-slow {
-  animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+.animate-pulse,
+.animate-pulse-slow,
+.animate-ping,
+.animate-bounce {
+  animation: none !important;
+  opacity: 1 !important;
+  transform: none !important;
 }
 
 .animate-shake {

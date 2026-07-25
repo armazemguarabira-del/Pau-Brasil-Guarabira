@@ -3,7 +3,11 @@ import { db, isCustomFirebaseConnected, getActiveConfig, isUsingCustomFirebase }
 import { doc, getDocFromServer } from 'firebase/firestore';
 import { Save, RefreshCw, Trash2, Database, AlertCircle, CheckCircle2 } from 'lucide-react';
 
-export default function FirebasePanel() {
+interface FirebasePanelProps {
+  theme?: 'light' | 'dark';
+}
+
+export default function FirebasePanel({ theme }: FirebasePanelProps = {}) {
   const [apiKey, setApiKey] = useState('');
   const [authDomain, setAuthDomain] = useState('');
   const [projectId, setProjectId] = useState('');

@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { db, isCustomFirebaseConnected } from '../firebase';
-import { collection, addDoc, onSnapshot, query, where, deleteDoc, doc, updateDoc } from 'firebase/firestore';
+import { collection, addDoc, deleteDoc, doc, updateDoc } from 'firebase/firestore';
 import { Usuario, Empresa, RepackRow } from '../types';
+import { useEmpresaData } from '../context/EmpresaDataContext';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   BarChart2, 
@@ -59,6 +60,7 @@ interface ControlePanelProps {
   user: Usuario;
   empresa: Empresa | null;
   initialSection?: 'hub' | 'dash' | 'timer' | 'audit' | 'ranking' | 'normas' | 'colaboradores' | 'primeiro_acesso' | 'acoes' | 'alertas';
+  theme?: 'light' | 'dark';
 }
 
 interface DpoAudit {
@@ -491,6 +493,8 @@ export default function ControlePanel({ user, empresa, initialSection }: Control
 
   const empresaId = empresa?.id || 'demo';
 
+  const empresaData = useEmpresaData();
+
   // 1. Sync Repack collection
   useEffect(() => {
     if (!db) {
@@ -499,16 +503,11 @@ export default function ControlePanel({ user, empresa, initialSection }: Control
       return;
     }
 
-    const q = query(collection(db, 'repack'), where('empresaId', '==', empresaId));
-    const unsub = onSnapshot(q, (snap) => {
-      const rows = snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as RepackRow));
-      rows.sort((a, b) => (b.dataISO || '').localeCompare(a.dataISO || '') || (b.inicio || '').localeCompare(a.inicio || ''));
-      setRepackRows(rows);
-      localStorage.setItem(`repack_rows_${empresaId}`, JSON.stringify(rows));
-    });
-
-    return () => unsub();
-  }, [empresaId]);
+    const rows = [...empresaData.repack];
+    rows.sort((a, b) => (b.dataISO || '').localeCompare(a.dataISO || '') || (b.inicio || '').localeCompare(a.inicio || ''));
+    setRepackRows(rows);
+    localStorage.setItem(`repack_rows_${empresaId}`, JSON.stringify(rows));
+  }, [empresaData.repack, empresaId]);
 
   // 2. Sync DPO Audits collection
   useEffect(() => {
@@ -518,16 +517,11 @@ export default function ControlePanel({ user, empresa, initialSection }: Control
       return;
     }
 
-    const q = query(collection(db, 'dpo_audits'), where('empresaId', '==', empresaId));
-    const unsub = onSnapshot(q, (snap) => {
-      const rows = snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as DpoAudit));
-      rows.sort((a, b) => (b.dataISO || '').localeCompare(a.dataISO || ''));
-      setAuditRows(rows);
-      localStorage.setItem(`dpo_audits_${empresaId}`, JSON.stringify(rows));
-    });
-
-    return () => unsub();
-  }, [empresaId]);
+    const rows = [...empresaData.dpoAudits];
+    rows.sort((a, b) => (b.dataISO || '').localeCompare(a.dataISO || ''));
+    setAuditRows(rows);
+    localStorage.setItem(`dpo_audits_${empresaId}`, JSON.stringify(rows));
+  }, [empresaData.dpoAudits, empresaId]);
 
   // 3. Sync Colaboradores collection
   useEffect(() => {
@@ -537,15 +531,11 @@ export default function ControlePanel({ user, empresa, initialSection }: Control
       return;
     }
 
-    const q = query(collection(db, 'colaboradores'), where('empresaId', '==', empresaId));
-    const unsub = onSnapshot(q, (snap) => {
-      const rows = snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as any));
-      rows.sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
-      setColaboradores(rows);
-      localStorage.setItem(`colaboradores_${empresaId}`, JSON.stringify(rows));
-    });
-    return () => unsub();
-  }, [empresaId]);
+    const rows = [...empresaData.colaboradores];
+    rows.sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
+    setColaboradores(rows);
+    localStorage.setItem(`colaboradores_${empresaId}`, JSON.stringify(rows));
+  }, [empresaData.colaboradores, empresaId]);
 
   // 4. Sync Ações (collection: acoes)
   useEffect(() => {
@@ -570,38 +560,16 @@ export default function ControlePanel({ user, empresa, initialSection }: Control
       return;
     }
 
-    const q = query(collection(db, 'acoes'), where('empresaId', '==', empresaId));
-    const unsub = onSnapshot(q, (snap) => {
-      const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      list.sort((a: any, b: any) => new Date(b.criadoEm || 0).getTime() - new Date(a.criadoEm || 0).getTime());
-      if (list.length === 0) {
-        setAcoesList(DEFAULT_ACOES);
-        localStorage.setItem(`acoes_rows_${empresaId}`, JSON.stringify(DEFAULT_ACOES));
-      } else {
-        setAcoesList(list);
-        localStorage.setItem(`acoes_rows_${empresaId}`, JSON.stringify(list));
-      }
-    }, (error) => {
-      console.error("Erro no onSnapshot de acoes", error);
-      const saved = localStorage.getItem(`acoes_rows_${empresaId}`);
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            setAcoesList(parsed);
-          } else {
-            setAcoesList(DEFAULT_ACOES);
-          }
-        } catch {
-          setAcoesList(DEFAULT_ACOES);
-        }
-      } else {
-        setAcoesList(DEFAULT_ACOES);
-      }
-    });
-
-    return () => unsub();
-  }, [empresaId]);
+    const list = [...empresaData.acoes];
+    list.sort((a: any, b: any) => new Date(b.criadoEm || 0).getTime() - new Date(a.criadoEm || 0).getTime());
+    if (list.length === 0) {
+      setAcoesList(DEFAULT_ACOES);
+      localStorage.setItem(`acoes_rows_${empresaId}`, JSON.stringify(DEFAULT_ACOES));
+    } else {
+      setAcoesList(list);
+      localStorage.setItem(`acoes_rows_${empresaId}`, JSON.stringify(list));
+    }
+  }, [empresaData.acoes, empresaId]);
 
   // Action Plan handlers
   const handleCreateAcao = async () => {

@@ -39,7 +39,8 @@ import {
 } from 'lucide-react';
 import { Usuario, Empresa, DespejoRow } from '../types';
 import { db, isCustomFirebaseConnected } from '../firebase';
-import { collection, query, onSnapshot, deleteDoc, doc, where } from 'firebase/firestore';
+import { deleteDoc, doc } from 'firebase/firestore';
+import { useEmpresaData } from '../context/EmpresaDataContext';
 import { generateMockDespejoRows } from '../mockDataGenerator';
 import A3BoardComponent from './A3BoardComponent';
 import CalendarFilter from './CalendarFilter';
@@ -48,6 +49,7 @@ interface DespejoDashboardProps {
   user: Usuario;
   empresa: Empresa | null;
   onBack?: () => void;
+  theme?: 'light' | 'dark';
 }
 
 // Meta times in seconds per box for standard packaging
@@ -261,6 +263,8 @@ export default function DespejoDashboard({ user, empresa, onBack }: DespejoDashb
     return [h, m, s].map(pad2).join(':');
   };
 
+  const empresaData = useEmpresaData();
+
   // Listen to Firestore real-time updates
   useEffect(() => {
     const companyId = empresa?.id || 'demo';
@@ -276,18 +280,10 @@ export default function DespejoDashboard({ user, empresa, onBack }: DespejoDashb
       return;
     }
 
-    const q = query(collection(db, 'despejo'), where('empresaId', '==', companyId));
-    const unsub = onSnapshot(q, (snap) => {
-       const rows = snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as DespejoRow));
-       // Sort chronologically desc
-       rows.sort((a, b) => (b.dataISO || '').localeCompare(a.dataISO || '') || (b.inicio || '').localeCompare(a.inicio || ''));
-       setDespejoRows(rows);
-    }, (error) => {
-       console.error("Error loading despejo rows from firestore: ", error);
-    });
-
-    return () => unsub();
-  }, [empresa?.id]);
+    const rows = [...empresaData.despejo];
+    rows.sort((a, b) => (b.dataISO || '').localeCompare(a.dataISO || '') || (b.inicio || '').localeCompare(a.inicio || ''));
+    setDespejoRows(rows);
+  }, [empresaData.despejo, empresa?.id]);
 
   // Combine real database rows and demo rows
   const activeRows = useMemo(() => {

@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../firebase';
-import { collection, onSnapshot, query, addDoc, where } from 'firebase/firestore';
+import { collection, addDoc } from 'firebase/firestore';
 import { Usuario, Empresa, Tarefa } from '../types';
+import { useEmpresaData } from '../context/EmpresaDataContext';
 import { generateMockTarefas } from '../mockDataGenerator';
 import { PRODUCTS } from '../planosData';
 import A3BoardComponent from './A3BoardComponent';
@@ -56,6 +57,7 @@ interface PickingDashboardProps {
   user: Usuario;
   empresa: Empresa | null;
   onBack?: () => void;
+  theme?: 'light' | 'dark';
 }
 
 interface NormalizedTask {
@@ -110,6 +112,8 @@ export default function PickingDashboard({ user, empresa, onBack }: PickingDashb
 
   const [colaboradores, setColaboradores] = useState<any[]>([]);
 
+  const empresaData = useEmpresaData();
+
   // Synchronize colaboradores from Firestore
   useEffect(() => {
     if (!db) {
@@ -119,15 +123,8 @@ export default function PickingDashboard({ user, empresa, onBack }: PickingDashb
       }
       return;
     }
-    const q = query(collection(db, 'colaboradores'), where('empresaId', '==', empresaId));
-    const unsub = onSnapshot(q, (snap) => {
-      const rows = snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() }));
-      setColaboradores(rows);
-    }, (error) => {
-      console.error("Error reading colaboradores in PickingDashboard:", error);
-    });
-    return () => unsub();
-  }, [empresaId]);
+    setColaboradores(empresaData.colaboradores);
+  }, [empresaData.colaboradores, empresaId]);
 
   const registeredEmpilhadores = useMemo(() => {
     const allowed = ['MARIVALDO', 'RONILDO', 'PAULO PEREIRA'];
@@ -173,21 +170,11 @@ export default function PickingDashboard({ user, empresa, onBack }: PickingDashb
       return;
     }
 
-    setLoading(true);
-    const q = query(collection(db, 'tarefas'), where('empresaId', '==', empresaId));
-    const unsub = onSnapshot(q, (snap) => {
-      const rows = snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as Tarefa));
-      
-      rows.sort((a, b) => (b.criadoEm || '').localeCompare(a.criadoEm || ''));
-      setActualTasks(rows);
-      setLoading(false);
-    }, (error) => {
-      console.error("Error reading tasks:", error);
-      setLoading(false);
-    });
-
-    return () => unsub();
-  }, [empresaId]);
+    const rows = [...empresaData.tarefas];
+    rows.sort((a, b) => (b.criadoEm || '').localeCompare(a.criadoEm || ''));
+    setActualTasks(rows);
+    setLoading(false);
+  }, [empresaData.tarefas, empresaId]);
 
   // Handle Preset Dates
   useEffect(() => {

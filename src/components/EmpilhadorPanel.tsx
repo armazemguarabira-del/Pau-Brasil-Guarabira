@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { db, isCustomFirebaseConnected } from '../firebase';
-import { collection, onSnapshot, query, where, updateDoc, doc, addDoc } from 'firebase/firestore';
+import { collection, updateDoc, doc, addDoc } from 'firebase/firestore';
 import { Usuario, Empresa, Tarefa } from '../types';
+import { useEmpresaData } from '../context/EmpresaDataContext';
 import SugerirMelhoriaCard from './SugerirMelhoriaCard';
 
 interface EmpilhadorPanelProps {
   user: Usuario;
   empresa: Empresa | null;
+  theme?: 'light' | 'dark';
 }
 
 export default function EmpilhadorPanel({ user, empresa }: EmpilhadorPanelProps) {
@@ -103,6 +105,8 @@ export default function EmpilhadorPanel({ user, empresa }: EmpilhadorPanelProps)
     }
   }, [draftKey]);
 
+  const empresaData = useEmpresaData();
+
   // Sync with Firestore Tasks (scoped to company matching operator)
   useEffect(() => {
     if (!db) {
@@ -111,15 +115,9 @@ export default function EmpilhadorPanel({ user, empresa }: EmpilhadorPanelProps)
       return;
     }
 
-    const q = query(collection(db, 'tarefas'), where('empresaId', '==', empresaId));
-    const unsub = onSnapshot(q, (snap) => {
-      const rows = snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as Tarefa));
-      setTasks(rows);
-      localStorage.setItem(`tasks_${empresaId}`, JSON.stringify(rows));
-    });
-
-    return () => unsub();
-  }, [empresaId]);
+    setTasks(empresaData.tarefas);
+    localStorage.setItem(`tasks_${empresaId}`, JSON.stringify(empresaData.tarefas));
+  }, [empresaData.tarefas, empresaId]);
 
   // Sync operators from Firestore 'colaboradores' collection
   useEffect(() => {

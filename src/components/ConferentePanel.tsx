@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { db, isCustomFirebaseConnected } from '../firebase';
-import { collection, addDoc, onSnapshot, query, where, deleteDoc, doc } from 'firebase/firestore';
+import { collection, addDoc, deleteDoc, doc } from 'firebase/firestore';
 import { Usuario, Empresa, Tarefa } from '../types';
+import { useEmpresaData } from '../context/EmpresaDataContext';
 import { PRODUCTS } from '../planosData';
 import SugerirMelhoriaCard from './SugerirMelhoriaCard';
 
 interface ConferentePanelProps {
   user: Usuario;
   empresa: Empresa | null;
+  theme?: 'light' | 'dark';
 }
 
 export default function ConferentePanel({ user, empresa }: ConferentePanelProps) {
@@ -103,6 +105,8 @@ export default function ConferentePanel({ user, empresa }: ConferentePanelProps)
     }
   }, [empresaId]);
 
+  const empresaData = useEmpresaData();
+
   // Sync with Firestore Tasks (scoped to company)
   useEffect(() => {
     if (!db) {
@@ -111,16 +115,11 @@ export default function ConferentePanel({ user, empresa }: ConferentePanelProps)
       return;
     }
 
-    const q = query(collection(db, 'tarefas'), where('empresaId', '==', empresaId));
-    const unsub = onSnapshot(q, (snap) => {
-      const rows = snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as Tarefa));
-      rows.sort((a, b) => (b.criadoEm || '').localeCompare(a.criadoEm || ''));
-      setTasks(rows);
-      localStorage.setItem(`tasks_${empresaId}`, JSON.stringify(rows));
-    });
-
-    return () => unsub();
-  }, [empresaId]);
+    const rows = [...empresaData.tarefas];
+    rows.sort((a, b) => (b.criadoEm || '').localeCompare(a.criadoEm || ''));
+    setTasks(rows);
+    localStorage.setItem(`tasks_${empresaId}`, JSON.stringify(rows));
+  }, [empresaData.tarefas, empresaId]);
 
   // Sync colaboradores from Firestore/localStorage to use as operators and conferentes
   useEffect(() => {
@@ -138,18 +137,13 @@ export default function ConferentePanel({ user, empresa }: ConferentePanelProps)
       }
       return;
     }
-    const q = query(collection(db, 'colaboradores'), where('empresaId', '==', empresaId));
-    const unsub = onSnapshot(q, (snap) => {
-      const list = snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as any));
-      const confs = list
-        .filter(c => (c.funcao || '').toLowerCase() === 'conferente')
-        .map(c => c.nome.toUpperCase());
-      if (confs.length > 0) setConferentes(confs);
-    }, (error) => {
-      console.error("Error reading colaboradores in ConferentePanel:", error);
-    });
-    return () => unsub();
-  }, [empresaId]);
+
+    const list = empresaData.colaboradores;
+    const confs = list
+      .filter((c: any) => (c.funcao || '').toLowerCase() === 'conferente')
+      .map((c: any) => c.nome.toUpperCase());
+    if (confs.length > 0) setConferentes(confs);
+  }, [empresaData.colaboradores, empresaId]);
 
   const persistState = (extra: Record<string, any> = {}) => {
     localStorage.setItem(`conferente_state_${empresaId}`, JSON.stringify({

@@ -37,6 +37,7 @@ interface WqiTabProps {
   endDate: string;
   onDateChange: (start: string, end: string) => void;
   viewUnit: 'cx' | 'he';
+  theme?: 'light' | 'dark';
 }
 
 const COLORS = ['#032b5e', '#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#64748b'];
@@ -71,8 +72,10 @@ export default function WqiTab({
   startDate,
   endDate,
   onDateChange,
-  viewUnit
+  viewUnit,
+  theme = 'light'
 }: WqiTabProps) {
+  const isDark = theme === 'dark';
   const [data, setData] = useState<QuebraRow[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [filterArea, setFilterArea] = useState<string>('TODAS');
@@ -291,13 +294,13 @@ export default function WqiTab({
     <div className="flex flex-col gap-5">
       
       {/* FILTERS & REFRESH BAR */}
-      <div className="flex flex-wrap items-center justify-between gap-4 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+      <div className={`flex flex-wrap items-center justify-between gap-4 p-4 rounded-xl border shadow-sm transition-colors ${isDark ? 'bg-[#131d38] border-slate-700/80 text-slate-100' : 'bg-white border-gray-200'}`}>
         <div className="flex flex-wrap items-center gap-4 w-full lg:w-auto">
           
           {/* Calendar Period */}
           <div className="flex flex-col gap-1 min-w-[260px]">
-            <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-1">
-              <Filter className="w-3 h-3 text-[#032b5e]" /> Período
+            <span className={`text-[9px] font-black uppercase tracking-widest flex items-center gap-1 ${isDark ? 'text-slate-400' : 'text-gray-400'}`}>
+              <Filter className={`w-3 h-3 ${isDark ? 'text-blue-400' : 'text-[#032b5e]'}`} /> Período
             </span>
             <CalendarFilter
               startDate={startDate}
@@ -308,11 +311,15 @@ export default function WqiTab({
 
           {/* Area Filter */}
           <div className="flex flex-col gap-1 w-[150px]">
-            <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Setor / Área</span>
+            <span className={`text-[9px] font-black uppercase tracking-widest ${isDark ? 'text-slate-400' : 'text-gray-400'}`}>Setor / Área</span>
             <select 
               value={filterArea} 
               onChange={e => setFilterArea(e.target.value)} 
-              className="w-full bg-white border border-gray-200 text-[#032b5e] font-sans font-bold rounded-lg outline-none px-2.5 py-1 text-[10px] h-[32px] cursor-pointer hover:border-blue-400 focus:border-[#032b5e]"
+              className={`w-full font-sans font-bold rounded-lg outline-none px-2.5 py-1 text-[10px] h-[32px] cursor-pointer transition-colors ${
+                isDark 
+                  ? 'bg-[#1e2942] border border-slate-600 text-slate-100 hover:border-blue-400' 
+                  : 'bg-white border border-gray-200 text-[#032b5e] hover:border-blue-400 focus:border-[#032b5e]'
+              }`}
             >
               <option value="TODAS">Todas as Áreas</option>
               <option value="ARMAZEM">Armazém</option>
@@ -323,11 +330,15 @@ export default function WqiTab({
 
           {/* Embalagem Filter */}
           <div className="flex flex-col gap-1 w-[160px]">
-            <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Embalagem</span>
+            <span className={`text-[9px] font-black uppercase tracking-widest ${isDark ? 'text-slate-400' : 'text-gray-400'}`}>Embalagem</span>
             <select 
               value={filterEmbalagem} 
               onChange={e => setFilterEmbalagem(e.target.value)} 
-              className="w-full bg-white border border-gray-200 text-[#032b5e] font-sans font-bold rounded-lg outline-none px-2.5 py-1 text-[10px] h-[32px] cursor-pointer hover:border-blue-400 focus:border-[#032b5e]"
+              className={`w-full font-sans font-bold rounded-lg outline-none px-2.5 py-1 text-[10px] h-[32px] cursor-pointer transition-colors ${
+                isDark 
+                  ? 'bg-[#1e2942] border border-slate-600 text-slate-100 hover:border-blue-400' 
+                  : 'bg-white border border-gray-200 text-[#032b5e] hover:border-blue-400 focus:border-[#032b5e]'
+              }`}
             >
               <option value="TODAS">Todas Embalagens</option>
               <option value="Garrafa 600ml">Garrafa 600ml</option>
@@ -347,7 +358,7 @@ export default function WqiTab({
         <div className="flex items-center gap-3">
           <div className="text-right">
             <span className="text-[9px] text-slate-400 font-bold uppercase block">Modo Analítico BI</span>
-            <span className="text-[10px] font-mono font-black text-[#032b5e] bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+            <span className={`text-[10px] font-mono font-black px-2 py-0.5 rounded border ${isDark ? 'text-blue-300 bg-slate-800 border-slate-700' : 'text-[#032b5e] bg-slate-100 border-slate-200'}`}>
               Leitura Única (getDocs)
             </span>
           </div>
@@ -355,7 +366,9 @@ export default function WqiTab({
             type="button"
             onClick={fetchWqiData}
             disabled={loading}
-            className="flex items-center gap-1.5 bg-[#032b5e] hover:bg-[#021f44] text-white text-[11px] font-bold px-3.5 py-1.5 rounded-lg border-none cursor-pointer transition-all disabled:opacity-50"
+            className={`flex items-center gap-1.5 text-[11px] font-bold px-3.5 py-1.5 rounded-lg border-none cursor-pointer transition-all disabled:opacity-50 ${
+              isDark ? 'bg-blue-600 hover:bg-blue-500 text-white' : 'bg-[#032b5e] hover:bg-[#021f44] text-white'
+            }`}
             title="Atualizar dados analíticos de quebras"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
@@ -368,52 +381,52 @@ export default function WqiTab({
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         
         {/* KPI 1 */}
-        <div className="bg-white p-4.5 rounded-xl border border-gray-200 shadow-sm flex items-center justify-between">
+        <div className={`p-4.5 rounded-xl border shadow-sm flex items-center justify-between transition-colors ${isDark ? 'bg-[#131d38] border-slate-700/80 text-slate-100' : 'bg-white border-gray-200'}`}>
           <div>
-            <span className="text-[9px] font-black text-gray-400 uppercase tracking-wider block">Total de Ocorrências</span>
+            <span className={`text-[9px] font-black uppercase tracking-wider block ${isDark ? 'text-slate-400' : 'text-gray-400'}`}>Total de Ocorrências</span>
             <div className="flex items-baseline gap-2 mt-1">
-              <span className="text-2xl font-black font-mono text-[#032b5e]">
+              <span className={`text-2xl font-black font-mono ${isDark ? 'text-blue-300' : 'text-[#032b5e]'}`}>
                 {totalOcorrencias.toLocaleString('pt-BR')}
               </span>
-              <span className="text-xs font-bold text-slate-500">registros</span>
+              <span className={`text-xs font-bold ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>registros</span>
             </div>
             <span className="text-[9px] text-slate-400 mt-0.5 block font-semibold">No período selecionado</span>
           </div>
-          <div className="p-3 bg-blue-50 text-[#032b5e] rounded-xl">
+          <div className={`p-3 rounded-xl ${isDark ? 'bg-blue-950/60 text-blue-400' : 'bg-blue-50 text-[#032b5e]'}`}>
             <BarChart2 className="w-6 h-6" />
           </div>
         </div>
 
         {/* KPI 2 */}
-        <div className="bg-white p-4.5 rounded-xl border border-gray-200 shadow-sm flex items-center justify-between">
+        <div className={`p-4.5 rounded-xl border shadow-sm flex items-center justify-between transition-colors ${isDark ? 'bg-[#131d38] border-slate-700/80 text-slate-100' : 'bg-white border-gray-200'}`}>
           <div>
-            <span className="text-[9px] font-black text-gray-400 uppercase tracking-wider block">Volume Total de Perdas</span>
+            <span className={`text-[9px] font-black uppercase tracking-wider block ${isDark ? 'text-slate-400' : 'text-gray-400'}`}>Volume Total de Perdas</span>
             <div className="flex items-baseline gap-2 mt-1">
               <span className="text-2xl font-black font-mono text-[#ef4444]">
                 {totalVolume.toLocaleString('pt-BR')}
               </span>
-              <span className="text-xs font-bold text-slate-500">{viewUnit === 'cx' ? 'caixas' : 'HL'}</span>
+              <span className={`text-xs font-bold ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{viewUnit === 'cx' ? 'caixas' : 'HL'}</span>
             </div>
             <span className="text-[9px] text-slate-400 mt-0.5 block font-semibold">Volume acumulado de descartes</span>
           </div>
-          <div className="p-3 bg-red-50 text-[#ef4444] rounded-xl">
+          <div className={`p-3 rounded-xl ${isDark ? 'bg-red-950/60 text-red-400' : 'bg-red-50 text-[#ef4444]'}`}>
             <TrendingUp className="w-6 h-6" />
           </div>
         </div>
 
         {/* KPI 3 */}
-        <div className="bg-white p-4.5 rounded-xl border border-gray-200 shadow-sm flex items-center justify-between">
+        <div className={`p-4.5 rounded-xl border shadow-sm flex items-center justify-between transition-colors ${isDark ? 'bg-[#131d38] border-slate-700/80 text-slate-100' : 'bg-white border-gray-200'}`}>
           <div>
-            <span className="text-[9px] font-black text-gray-400 uppercase tracking-wider block">Ajudantes & Empilhadores</span>
+            <span className={`text-[9px] font-black uppercase tracking-wider block ${isDark ? 'text-slate-400' : 'text-gray-400'}`}>Ajudantes & Empilhadores</span>
             <div className="flex items-baseline gap-2 mt-1">
-              <span className="text-2xl font-black font-mono text-emerald-600">
+              <span className="text-2xl font-black font-mono text-emerald-500">
                 {ajudantesChartData.length + empilhadoresChartData.length}
               </span>
-              <span className="text-xs font-bold text-slate-500">colaboradores envolvidos</span>
+              <span className={`text-xs font-bold ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>colaboradores envolvidos</span>
             </div>
             <span className="text-[9px] text-slate-400 mt-0.5 block font-semibold">Análise individualizada WQI</span>
           </div>
-          <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl">
+          <div className={`p-3 rounded-xl ${isDark ? 'bg-emerald-950/60 text-emerald-400' : 'bg-emerald-50 text-emerald-600'}`}>
             <Users className="w-6 h-6" />
           </div>
         </div>
@@ -424,17 +437,17 @@ export default function WqiTab({
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         
         {/* CHART 1: Quantidade de Ocorrências (Evolução Mensal) */}
-        <div className="lg:col-span-2 bg-white p-4.5 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between min-h-[340px]">
+        <div className={`lg:col-span-2 p-4.5 rounded-xl border shadow-sm flex flex-col justify-between min-h-[340px] transition-colors ${isDark ? 'bg-[#131d38] border-slate-700/80 text-slate-100' : 'bg-white border-gray-200'}`}>
           <div>
             <div className="flex items-center justify-between">
-              <h3 className="font-sans font-black text-[12px] uppercase text-[#032b5e] tracking-wider flex items-center gap-1.5">
-                <BarChart2 className="w-4 h-4 text-[#032b5e]" /> 1. QUANTIDADE DE OCORRÊNCIAS (EVOLUÇÃO MENSAL)
+              <h3 className={`font-sans font-black text-[12px] uppercase tracking-wider flex items-center gap-1.5 ${isDark ? 'text-blue-300' : 'text-[#032b5e]'}`}>
+                <BarChart2 className={`w-4 h-4 ${isDark ? 'text-blue-400' : 'text-[#032b5e]'}`} /> 1. QUANTIDADE DE OCORRÊNCIAS (EVOLUÇÃO MENSAL)
               </h3>
-              <span className="text-[10px] font-mono font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
+              <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded ${isDark ? 'text-slate-300 bg-slate-800' : 'text-slate-500 bg-slate-100'}`}>
                 Total: {totalOcorrencias} registros
               </span>
             </div>
-            <span className="text-[9px] text-gray-400 font-bold mt-0.5 block">
+            <span className={`text-[9px] font-bold mt-0.5 block ${isDark ? 'text-slate-400' : 'text-gray-400'}`}>
               Evolução do número de registros de quebra por mês no período
             </span>
           </div>
@@ -447,18 +460,18 @@ export default function WqiTab({
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={monthlyChartData} margin={{ top: 15, right: 20, left: 0, bottom: 5 }}>
-                  <CartesianGrid stroke="#f1f5f9" vertical={false} />
-                  <XAxis dataKey="monthLabel" stroke="#475569" fontSize={10} fontWeight={700} tickLine={false} axisLine={false} />
-                  <YAxis stroke="#94a3b8" fontSize={9} tickLine={false} axisLine={false} />
+                  <CartesianGrid stroke={isDark ? '#1e293b' : '#f1f5f9'} vertical={false} />
+                  <XAxis dataKey="monthLabel" stroke={isDark ? '#94a3b8' : '#475569'} fontSize={10} fontWeight={700} tickLine={false} axisLine={false} />
+                  <YAxis stroke={isDark ? '#64748b' : '#94a3b8'} fontSize={9} tickLine={false} axisLine={false} />
                   <Tooltip 
-                    contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', fontSize: 10, color: '#fff' }}
+                    contentStyle={{ backgroundColor: isDark ? '#030712' : '#0f172a', border: '1px solid #334155', borderRadius: '8px', fontSize: 10, color: '#fff' }}
                     labelStyle={{ color: '#38bdf8', fontWeight: 'bold' }}
                     formatter={(val: any) => [`${val} ocorrências`, 'Ocorrências']}
                   />
-                  <Bar dataKey="count" fill="#032b5e" radius={[6, 6, 0, 0]} barSize={28}>
-                    <LabelList dataKey="count" position="top" fontSize={10} fontWeight={800} fill="#032b5e" />
+                  <Bar dataKey="count" fill={isDark ? '#3b82f6' : '#032b5e'} radius={[6, 6, 0, 0]} barSize={28}>
+                    <LabelList dataKey="count" position="top" fontSize={10} fontWeight={800} fill={isDark ? '#93c5fd' : '#032b5e'} />
                     {monthlyChartData.map((_, index) => (
-                      <Cell key={`cell-m-${index}`} fill={index % 2 === 0 ? '#032b5e' : '#3b82f6'} />
+                      <Cell key={`cell-m-${index}`} fill={index % 2 === 0 ? (isDark ? '#3b82f6' : '#032b5e') : (isDark ? '#60a5fa' : '#3b82f6')} />
                     ))}
                   </Bar>
                 </BarChart>
@@ -466,19 +479,19 @@ export default function WqiTab({
             )}
           </div>
 
-          <div className="text-[9px] text-gray-400 font-semibold border-t border-gray-100 pt-1.5 flex items-center justify-between">
+          <div className={`text-[9px] font-semibold border-t pt-1.5 flex items-center justify-between ${isDark ? 'border-slate-800 text-slate-400' : 'border-gray-100 text-gray-400'}`}>
             <span>Volume total acumulado: {totalVolume.toLocaleString('pt-BR')} {viewUnit === 'cx' ? 'CX' : 'HL'}</span>
-            <span className="font-mono font-bold text-[#032b5e]">Contagem de registros</span>
+            <span className={`font-mono font-bold ${isDark ? 'text-blue-400' : 'text-[#032b5e]'}`}>Contagem de registros</span>
           </div>
         </div>
 
         {/* CHART 6: Ocorrências por Setor */}
-        <div className="bg-white p-4.5 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between min-h-[340px]">
+        <div className={`p-4.5 rounded-xl border shadow-sm flex flex-col justify-between min-h-[340px] transition-colors ${isDark ? 'bg-[#131d38] border-slate-700/80 text-slate-100' : 'bg-white border-gray-200'}`}>
           <div>
-            <h3 className="font-sans font-black text-[12px] uppercase text-[#032b5e] tracking-wider flex items-center gap-1.5">
+            <h3 className={`font-sans font-black text-[12px] uppercase tracking-wider flex items-center gap-1.5 ${isDark ? 'text-blue-300' : 'text-[#032b5e]'}`}>
               <PieIcon className="w-4 h-4 text-[#10b981]" /> 6. OCORRÊNCIA POR SETOR
             </h3>
-            <span className="text-[9px] text-gray-400 font-bold mt-0.5 block">
+            <span className={`text-[9px] font-bold mt-0.5 block ${isDark ? 'text-slate-400' : 'text-gray-400'}`}>
               Distribuição física dos eventos (Armazém / Entrega / Puxada)
             </span>
           </div>
@@ -503,7 +516,7 @@ export default function WqiTab({
                     ))}
                   </Pie>
                   <Tooltip 
-                    contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', fontSize: 10, color: '#fff' }}
+                    contentStyle={{ backgroundColor: isDark ? '#030712' : '#0f172a', border: '1px solid #334155', borderRadius: '8px', fontSize: 10, color: '#fff' }}
                     formatter={(val: any) => [`${val} ocorrências`, 'Total']}
                   />
                 </PieChart>
@@ -511,14 +524,14 @@ export default function WqiTab({
             )}
           </div>
 
-          <div className="flex flex-wrap items-center justify-center gap-2 border-t border-gray-100 pt-2">
+          <div className={`flex flex-wrap items-center justify-center gap-2 border-t pt-2 ${isDark ? 'border-slate-800' : 'border-gray-100'}`}>
             {setorChartData.map((item, idx) => {
               const pct = totalOcorrencias > 0 ? Math.round((item.value / totalOcorrencias) * 100) : 0;
               return (
                 <div key={item.name} className="flex items-center gap-1.5 text-[9px] font-bold">
                   <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ backgroundColor: COLORS[idx % COLORS.length] }}></span>
-                  <span className="text-slate-600">{item.name}:</span>
-                  <span className="font-mono text-[#032b5e]">{item.value} ({pct}%)</span>
+                  <span className={isDark ? 'text-slate-300' : 'text-slate-600'}>{item.name}:</span>
+                  <span className={`font-mono ${isDark ? 'text-blue-300' : 'text-[#032b5e]'}`}>{item.value} ({pct}%)</span>
                 </div>
               );
             })}
@@ -531,17 +544,17 @@ export default function WqiTab({
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
 
         {/* CHART 2: Ocorrência por Ajudantes */}
-        <div className="bg-white p-4.5 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between min-h-[350px]">
+        <div className={`p-4.5 rounded-xl border shadow-sm flex flex-col justify-between min-h-[350px] transition-colors ${isDark ? 'bg-[#131d38] border-slate-700/80 text-slate-100' : 'bg-white border-gray-200'}`}>
           <div>
             <div className="flex items-center justify-between">
-              <h3 className="font-sans font-black text-[12px] uppercase text-[#032b5e] tracking-wider flex items-center gap-1.5">
+              <h3 className={`font-sans font-black text-[12px] uppercase tracking-wider flex items-center gap-1.5 ${isDark ? 'text-blue-300' : 'text-[#032b5e]'}`}>
                 <Truck className="w-4 h-4 text-[#ef4444]" /> 2. OCORRÊNCIA POR AJUDANTES
               </h3>
-              <span className="text-[9px] font-mono font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded">
+              <span className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded ${isDark ? 'text-red-400 bg-red-950/60' : 'text-red-600 bg-red-50'}`}>
                 Ranking Ajudantes
               </span>
             </div>
-            <span className="text-[9px] text-gray-400 font-bold mt-0.5 block">
+            <span className={`text-[9px] font-bold mt-0.5 block ${isDark ? 'text-slate-400' : 'text-gray-400'}`}>
               Contagem de registros de quebra atribuídos a Ajudantes de Entrega/Rota
             </span>
           </div>
@@ -554,12 +567,12 @@ export default function WqiTab({
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={ajudantesChartData} layout="vertical" margin={{ top: 5, right: 35, left: 10, bottom: 5 }}>
-                  <CartesianGrid stroke="#f1f5f9" horizontal={false} />
-                  <XAxis type="number" stroke="#94a3b8" fontSize={8} tickLine={false} axisLine={false} />
+                  <CartesianGrid stroke={isDark ? '#1e293b' : '#f1f5f9'} horizontal={false} />
+                  <XAxis type="number" stroke={isDark ? '#64748b' : '#94a3b8'} fontSize={8} tickLine={false} axisLine={false} />
                   <YAxis 
                     type="category" 
                     dataKey="name" 
-                    stroke="#334155" 
+                    stroke={isDark ? '#cbd5e1' : '#334155'} 
                     fontSize={9} 
                     fontWeight={700}
                     tickLine={false} 
@@ -567,11 +580,11 @@ export default function WqiTab({
                     width={110}
                   />
                   <Tooltip 
-                    contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', fontSize: 10, color: '#fff' }}
+                    contentStyle={{ backgroundColor: isDark ? '#030712' : '#0f172a', border: '1px solid #334155', borderRadius: '8px', fontSize: 10, color: '#fff' }}
                     formatter={(val: any) => [`${val} ocorrências`, 'Quebras']}
                   />
                   <Bar dataKey="count" fill="#ef4444" radius={[0, 6, 6, 0]} barSize={16}>
-                    <LabelList dataKey="count" position="right" fontSize={9} fontWeight={800} fill="#ef4444" />
+                    <LabelList dataKey="count" position="right" fontSize={9} fontWeight={800} fill={isDark ? '#f87171' : '#ef4444'} />
                     {ajudantesChartData.map((_, index) => (
                       <Cell key={`cell-aj-${index}`} fill={index === 0 ? '#ef4444' : index === 1 ? '#f97316' : '#3b82f6'} />
                     ))}
@@ -581,24 +594,24 @@ export default function WqiTab({
             )}
           </div>
 
-          <div className="text-[9px] text-gray-400 font-semibold border-t border-gray-100 pt-1.5 flex items-center justify-between">
+          <div className={`text-[9px] font-semibold border-t pt-1.5 flex items-center justify-between ${isDark ? 'border-slate-800 text-slate-400' : 'border-gray-100 text-gray-400'}`}>
             <span>Identificação por responsável / colaborador</span>
-            <span className="font-mono font-bold text-red-600">Top {ajudantesChartData.length} Ajudantes</span>
+            <span className="font-mono font-bold text-red-500">Top {ajudantesChartData.length} Ajudantes</span>
           </div>
         </div>
 
         {/* CHART 3: Ocorrência por Empilhadores */}
-        <div className="bg-white p-4.5 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between min-h-[350px]">
+        <div className={`p-4.5 rounded-xl border shadow-sm flex flex-col justify-between min-h-[350px] transition-colors ${isDark ? 'bg-[#131d38] border-slate-700/80 text-slate-100' : 'bg-white border-gray-200'}`}>
           <div>
             <div className="flex items-center justify-between">
-              <h3 className="font-sans font-black text-[12px] uppercase text-[#032b5e] tracking-wider flex items-center gap-1.5">
+              <h3 className={`font-sans font-black text-[12px] uppercase tracking-wider flex items-center gap-1.5 ${isDark ? 'text-blue-300' : 'text-[#032b5e]'}`}>
                 <Users className="w-4 h-4 text-[#3b82f6]" /> 3. OCORRÊNCIA POR EMPILHADORES
               </h3>
-              <span className="text-[9px] font-mono font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded">
+              <span className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded ${isDark ? 'text-blue-300 bg-blue-950/60' : 'text-blue-600 bg-blue-50'}`}>
                 Ranking Empilhadores
               </span>
             </div>
-            <span className="text-[9px] text-gray-400 font-bold mt-0.5 block">
+            <span className={`text-[9px] font-bold mt-0.5 block ${isDark ? 'text-slate-400' : 'text-gray-400'}`}>
               Contagem de registros de quebra em operações de Armazém / Movimentação
             </span>
           </div>
@@ -611,12 +624,12 @@ export default function WqiTab({
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={empilhadoresChartData} layout="vertical" margin={{ top: 5, right: 35, left: 10, bottom: 5 }}>
-                  <CartesianGrid stroke="#f1f5f9" horizontal={false} />
-                  <XAxis type="number" stroke="#94a3b8" fontSize={8} tickLine={false} axisLine={false} />
+                  <CartesianGrid stroke={isDark ? '#1e293b' : '#f1f5f9'} horizontal={false} />
+                  <XAxis type="number" stroke={isDark ? '#64748b' : '#94a3b8'} fontSize={8} tickLine={false} axisLine={false} />
                   <YAxis 
                     type="category" 
                     dataKey="name" 
-                    stroke="#334155" 
+                    stroke={isDark ? '#cbd5e1' : '#334155'} 
                     fontSize={9} 
                     fontWeight={700}
                     tickLine={false} 
@@ -624,13 +637,13 @@ export default function WqiTab({
                     width={110}
                   />
                   <Tooltip 
-                    contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', fontSize: 10, color: '#fff' }}
+                    contentStyle={{ backgroundColor: isDark ? '#030712' : '#0f172a', border: '1px solid #334155', borderRadius: '8px', fontSize: 10, color: '#fff' }}
                     formatter={(val: any) => [`${val} ocorrências`, 'Quebras']}
                   />
                   <Bar dataKey="count" fill="#3b82f6" radius={[0, 6, 6, 0]} barSize={16}>
-                    <LabelList dataKey="count" position="right" fontSize={9} fontWeight={800} fill="#3b82f6" />
+                    <LabelList dataKey="count" position="right" fontSize={9} fontWeight={800} fill={isDark ? '#60a5fa' : '#3b82f6'} />
                     {empilhadoresChartData.map((_, index) => (
-                      <Cell key={`cell-[#3b82f6]-${index}`} fill={index === 0 ? '#032b5e' : index === 1 ? '#2563eb' : '#60a5fa'} />
+                      <Cell key={`cell-[#3b82f6]-${index}`} fill={index === 0 ? (isDark ? '#3b82f6' : '#032b5e') : index === 1 ? '#2563eb' : '#60a5fa'} />
                     ))}
                   </Bar>
                 </BarChart>
@@ -638,9 +651,9 @@ export default function WqiTab({
             )}
           </div>
 
-          <div className="text-[9px] text-gray-400 font-semibold border-t border-gray-100 pt-1.5 flex items-center justify-between">
+          <div className={`text-[9px] font-semibold border-t pt-1.5 flex items-center justify-between ${isDark ? 'border-slate-800 text-slate-400' : 'border-gray-100 text-gray-400'}`}>
             <span>Operadores de empilhadeira habilitados</span>
-            <span className="font-mono font-bold text-blue-600">Top {empilhadoresChartData.length} Empilhadores</span>
+            <span className={`font-mono font-bold ${isDark ? 'text-blue-400' : 'text-blue-600'}`}>Top {empilhadoresChartData.length} Empilhadores</span>
           </div>
         </div>
 
@@ -650,12 +663,12 @@ export default function WqiTab({
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
 
         {/* CHART 4: Ocorrência por Embalagens */}
-        <div className="bg-white p-4.5 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between min-h-[360px]">
+        <div className={`p-4.5 rounded-xl border shadow-sm flex flex-col justify-between min-h-[360px] transition-colors ${isDark ? 'bg-[#131d38] border-slate-700/80 text-slate-100' : 'bg-white border-gray-200'}`}>
           <div>
-            <h3 className="font-sans font-black text-[12px] uppercase text-[#032b5e] tracking-wider flex items-center gap-1.5">
+            <h3 className={`font-sans font-black text-[12px] uppercase tracking-wider flex items-center gap-1.5 ${isDark ? 'text-blue-300' : 'text-[#032b5e]'}`}>
               <Package className="w-4 h-4 text-[#8b5cf6]" /> 4. OCORRÊNCIA POR EMBALAGENS
             </h3>
-            <span className="text-[9px] text-gray-400 font-bold mt-0.5 block">
+            <span className={`text-[9px] font-bold mt-0.5 block ${isDark ? 'text-slate-400' : 'text-gray-400'}`}>
               Top embalagens/vasilhames com maior número de ocorrências de quebra
             </span>
           </div>
@@ -668,12 +681,12 @@ export default function WqiTab({
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={embalagemChartData} layout="vertical" margin={{ top: 5, right: 35, left: 10, bottom: 5 }}>
-                  <CartesianGrid stroke="#f1f5f9" horizontal={false} />
-                  <XAxis type="number" stroke="#94a3b8" fontSize={8} tickLine={false} axisLine={false} />
+                  <CartesianGrid stroke={isDark ? '#1e293b' : '#f1f5f9'} horizontal={false} />
+                  <XAxis type="number" stroke={isDark ? '#64748b' : '#94a3b8'} fontSize={8} tickLine={false} axisLine={false} />
                   <YAxis 
                     type="category" 
                     dataKey="name" 
-                    stroke="#334155" 
+                    stroke={isDark ? '#cbd5e1' : '#334155'} 
                     fontSize={9} 
                     fontWeight={700}
                     tickLine={false} 
@@ -681,11 +694,11 @@ export default function WqiTab({
                     width={110}
                   />
                   <Tooltip 
-                    contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', fontSize: 10, color: '#fff' }}
+                    contentStyle={{ backgroundColor: isDark ? '#030712' : '#0f172a', border: '1px solid #334155', borderRadius: '8px', fontSize: 10, color: '#fff' }}
                     formatter={(val: any) => [`${val} ocorrências`, 'Ocorrências']}
                   />
                   <Bar dataKey="count" fill="#8b5cf6" radius={[0, 6, 6, 0]} barSize={16}>
-                    <LabelList dataKey="count" position="right" fontSize={9} fontWeight={800} fill="#8b5cf6" />
+                    <LabelList dataKey="count" position="right" fontSize={9} fontWeight={800} fill={isDark ? '#a78bfa' : '#8b5cf6'} />
                     {embalagemChartData.map((_, index) => (
                       <Cell key={`cell-emb-wqi-${index}`} fill={COLORS[(index + 3) % COLORS.length]} />
                     ))}
@@ -695,19 +708,19 @@ export default function WqiTab({
             )}
           </div>
 
-          <div className="text-[9px] text-gray-400 font-semibold border-t border-gray-100 pt-1.5 flex items-center justify-between">
+          <div className={`text-[9px] font-semibold border-t pt-1.5 flex items-center justify-between ${isDark ? 'border-slate-800 text-slate-400' : 'border-gray-100 text-gray-400'}`}>
             <span>Classificação automatizada por descrição do produto</span>
             <span className="font-mono font-bold text-[#8b5cf6]">Top Embalagens</span>
           </div>
         </div>
 
         {/* CHART 5: Ocorrência por Produto */}
-        <div className="bg-white p-4.5 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between min-h-[360px]">
+        <div className={`p-4.5 rounded-xl border shadow-sm flex flex-col justify-between min-h-[360px] transition-colors ${isDark ? 'bg-[#131d38] border-slate-700/80 text-slate-100' : 'bg-white border-gray-200'}`}>
           <div>
-            <h3 className="font-sans font-black text-[12px] uppercase text-[#032b5e] tracking-wider flex items-center gap-1.5">
+            <h3 className={`font-sans font-black text-[12px] uppercase tracking-wider flex items-center gap-1.5 ${isDark ? 'text-blue-300' : 'text-[#032b5e]'}`}>
               <Award className="w-4 h-4 text-[#f59e0b]" /> 5. OCORRÊNCIA POR PRODUTO
             </h3>
-            <span className="text-[9px] text-gray-400 font-bold mt-0.5 block">
+            <span className={`text-[9px] font-bold mt-0.5 block ${isDark ? 'text-slate-400' : 'text-gray-400'}`}>
               Top produtos (SKUs) com maior número de registros de perda
             </span>
           </div>
@@ -720,12 +733,12 @@ export default function WqiTab({
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={produtoChartData} layout="vertical" margin={{ top: 5, right: 35, left: 10, bottom: 5 }}>
-                  <CartesianGrid stroke="#f1f5f9" horizontal={false} />
-                  <XAxis type="number" stroke="#94a3b8" fontSize={8} tickLine={false} axisLine={false} />
+                  <CartesianGrid stroke={isDark ? '#1e293b' : '#f1f5f9'} horizontal={false} />
+                  <XAxis type="number" stroke={isDark ? '#64748b' : '#94a3b8'} fontSize={8} tickLine={false} axisLine={false} />
                   <YAxis 
                     type="category" 
                     dataKey="name" 
-                    stroke="#334155" 
+                    stroke={isDark ? '#cbd5e1' : '#334155'} 
                     fontSize={8.5} 
                     fontWeight={700}
                     tickLine={false} 
@@ -733,12 +746,12 @@ export default function WqiTab({
                     width={130}
                   />
                   <Tooltip 
-                    contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', fontSize: 10, color: '#fff' }}
+                    contentStyle={{ backgroundColor: isDark ? '#030712' : '#0f172a', border: '1px solid #334155', borderRadius: '8px', fontSize: 10, color: '#fff' }}
                     labelFormatter={(_, payload) => payload?.[0]?.payload?.fullName || ''}
                     formatter={(val: any) => [`${val} ocorrências`, 'Total Ocorrências']}
                   />
                   <Bar dataKey="count" fill="#f59e0b" radius={[0, 6, 6, 0]} barSize={14}>
-                    <LabelList dataKey="count" position="right" fontSize={9} fontWeight={800} fill="#d97706" />
+                    <LabelList dataKey="count" position="right" fontSize={9} fontWeight={800} fill={isDark ? '#fbbf24' : '#d97706'} />
                     {produtoChartData.map((_, index) => (
                       <Cell key={`cell-[#f59e0b]-${index}`} fill={COLORS[index % COLORS.length]} />
                     ))}
@@ -748,9 +761,9 @@ export default function WqiTab({
             )}
           </div>
 
-          <div className="text-[9px] text-gray-400 font-semibold border-t border-gray-100 pt-1.5 flex items-center justify-between">
+          <div className={`text-[9px] font-semibold border-t pt-1.5 flex items-center justify-between ${isDark ? 'border-slate-800 text-slate-400' : 'border-gray-100 text-gray-400'}`}>
             <span>Agrupamento por descrição oficial do catálogo</span>
-            <span className="font-mono font-bold text-[#d97706]">Top {produtoChartData.length} Produtos</span>
+            <span className={`font-mono font-bold ${isDark ? 'text-amber-400' : 'text-[#d97706]'}`}>Top {produtoChartData.length} Produtos</span>
           </div>
         </div>
 

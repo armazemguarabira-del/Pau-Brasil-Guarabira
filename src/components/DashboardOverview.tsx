@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Usuario, 
   Empresa, 
@@ -37,9 +37,10 @@ import {
   Zap,
   Radio
 } from 'lucide-react';
-import { collection, query, where, addDoc, updateDoc, deleteDoc, doc, orderBy, onSnapshot } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 import { db, isCustomFirebaseConnected } from '../firebase';
 import { fetchComCache } from '../utils/fetchComCache';
+import { useEmpresaData } from '../context/EmpresaDataContext';
 
 const getRoleLabel = (role?: string) => {
   if (!role) return '';
@@ -102,6 +103,7 @@ interface DashboardOverviewProps {
   user: Usuario;
   empresa: Empresa | null;
   onNavigate: (tabId: string) => void;
+  theme?: 'light' | 'dark';
   kpiStats: {
     usuarios: number;
     modulos: number;
@@ -114,6 +116,7 @@ export default function DashboardOverview({
   user,
   empresa,
   onNavigate,
+  theme,
   kpiStats
 }: DashboardOverviewProps) {
   const [pushStatus, setPushStatus] = useState<string>('default');
@@ -131,6 +134,18 @@ export default function DashboardOverview({
   // Action Plans states
   const [acoesList, setAcoesList] = useState<any[]>([]);
   const [colaboradoresList, setColaboradoresList] = useState<any[]>([]);
+
+  const empresaData = useEmpresaData();
+  useEffect(() => { if (db) setRepackList(empresaData.repack); }, [empresaData.repack]);
+  useEffect(() => { if (db) setDespejoList(empresaData.despejo); }, [empresaData.despejo]);
+  useEffect(() => { if (db) setQuebrasList(empresaData.quebras); }, [empresaData.quebras]);
+  useEffect(() => { if (db) setValidadesList(empresaData.validades); }, [empresaData.validades]);
+  useEffect(() => { if (db) setArmazemList(empresaData.armazem); }, [empresaData.armazem]);
+  useEffect(() => { if (db) setBlitzList(empresaData.blitz); }, [empresaData.blitz]);
+  useEffect(() => { if (db) setTarefasList(empresaData.tarefas); }, [empresaData.tarefas]);
+  useEffect(() => { if (db) setUsuariosList(empresaData.usuarios); }, [empresaData.usuarios]);
+  useEffect(() => { if (db) setAcoesList(empresaData.acoes); }, [empresaData.acoes]);
+  useEffect(() => { if (db) setColaboradoresList(empresaData.colaboradores); }, [empresaData.colaboradores]);
   const [activeActionTab, setActiveActionTab] = useState<'colaborador' | 'supervisor'>('colaborador');
   const [selectedColabId, setSelectedColabId] = useState('');
   const [newActionTitle, setNewActionTitle] = useState('');
@@ -302,34 +317,41 @@ export default function DashboardOverview({
     return () => clearInterval(timer);
   }, []);
 
+  const lastRawData = useRef<Record<string, string>>({});
+
   // 1. Establish Real-Time Subscriptions & LocalStorage Synchronization
   useEffect(() => {
     const companyId = empresa?.id || 'demo';
 
     const carregarLocal = () => {
-      const localRepack = localStorage.getItem(`repack_rows_${companyId}`);
-      if (localRepack) setRepackList(JSON.parse(localRepack));
+      const checkAndSet = (key: string, setter: (val: any) => void) => {
+        const raw = localStorage.getItem(key);
+        if (raw && raw !== lastRawData.current[key]) {
+          lastRawData.current[key] = raw;
+          try { setter(JSON.parse(raw)); } catch (e) {}
+        }
+      };
 
-      const localDespejo = localStorage.getItem(`despejo_rows_${companyId}`);
-      if (localDespejo) setDespejoList(JSON.parse(localDespejo));
+      checkAndSet(`repack_rows_${companyId}`, setRepackList);
+      checkAndSet(`despejo_rows_${companyId}`, setDespejoList);
 
-      const localQuebras = localStorage.getItem(`quebras_rows_${companyId}`) || localStorage.getItem(`quebras_list_${companyId}`);
-      if (localQuebras) setQuebrasList(JSON.parse(localQuebras));
+      const rawQ = localStorage.getItem(`quebras_rows_${companyId}`) || localStorage.getItem(`quebras_list_${companyId}`);
+      if (rawQ && rawQ !== lastRawData.current['quebras']) {
+        lastRawData.current['quebras'] = rawQ;
+        try { setQuebrasList(JSON.parse(rawQ)); } catch (e) {}
+      }
 
-      const localValidades = localStorage.getItem(`validades_rows_${companyId}`);
-      if (localValidades) setValidadesList(JSON.parse(localValidades));
+      checkAndSet(`validades_rows_${companyId}`, setValidadesList);
+      checkAndSet(`armazem_rows_${companyId}`, setArmazemList);
+      checkAndSet(`blitz_rows_${companyId}`, setBlitzList);
 
-      const localArmazem = localStorage.getItem(`armazem_rows_${companyId}`);
-      if (localArmazem) setArmazemList(JSON.parse(localArmazem));
+      const rawT = localStorage.getItem(`tarefas_rows_${companyId}`) || localStorage.getItem(`tasks_${companyId}`);
+      if (rawT && rawT !== lastRawData.current['tarefas']) {
+        lastRawData.current['tarefas'] = rawT;
+        try { setTarefasList(JSON.parse(rawT)); } catch (e) {}
+      }
 
-      const localBlitz = localStorage.getItem(`blitz_rows_${companyId}`);
-      if (localBlitz) setBlitzList(JSON.parse(localBlitz));
-
-      const localTarefas = localStorage.getItem(`tarefas_rows_${companyId}`) || localStorage.getItem(`tasks_${companyId}`);
-      if (localTarefas) setTarefasList(JSON.parse(localTarefas));
-
-      const localAcoes = localStorage.getItem(`acoes_rows_${companyId}`);
-      if (localAcoes) setAcoesList(JSON.parse(localAcoes));
+      checkAndSet(`acoes_rows_${companyId}`, setAcoesList);
     };
 
     // Load local storage cache immediately
@@ -341,68 +363,11 @@ export default function DashboardOverview({
     window.addEventListener('local_data_changed', carregarLocal);
     const localInterval = setInterval(carregarLocal, 3000);
 
-    if (!db || !companyId) {
-      return () => {
-        window.removeEventListener('storage', carregarLocal);
-        window.removeEventListener('app_data_updated', carregarLocal);
-        window.removeEventListener('local_data_changed', carregarLocal);
-        clearInterval(localInterval);
-      };
-    }
-
-    // Set up Firestore real-time onSnapshot listeners
-    const unsubs: Array<() => void> = [];
-
-    try {
-      unsubs.push(onSnapshot(query(collection(db, 'repack'), where('empresaId', '==', companyId)), snap => {
-        setRepackList(snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as any)));
-      }, err => console.warn('Repack onSnapshot warn:', err)));
-
-      unsubs.push(onSnapshot(query(collection(db, 'despejo'), where('empresaId', '==', companyId)), snap => {
-        setDespejoList(snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as any)));
-      }, err => console.warn('Despejo onSnapshot warn:', err)));
-
-      unsubs.push(onSnapshot(query(collection(db, 'quebras'), where('empresaId', '==', companyId)), snap => {
-        setQuebrasList(snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as any)));
-      }, err => console.warn('Quebras onSnapshot warn:', err)));
-
-      unsubs.push(onSnapshot(query(collection(db, 'validades'), where('empresaId', '==', companyId)), snap => {
-        setValidadesList(snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as any)));
-      }, err => console.warn('Validades onSnapshot warn:', err)));
-
-      unsubs.push(onSnapshot(query(collection(db, 'armazem'), where('empresaId', '==', companyId)), snap => {
-        setArmazemList(snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as any)));
-      }, err => console.warn('Armazem onSnapshot warn:', err)));
-
-      unsubs.push(onSnapshot(query(collection(db, 'blitz_refugo'), where('empresaId', '==', companyId)), snap => {
-        setBlitzList(snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as any)));
-      }, err => console.warn('Blitz onSnapshot warn:', err)));
-
-      unsubs.push(onSnapshot(query(collection(db, 'tarefas'), where('empresaId', '==', companyId)), snap => {
-        setTarefasList(snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as any)));
-      }, err => console.warn('Tarefas onSnapshot warn:', err)));
-
-      unsubs.push(onSnapshot(query(collection(db, 'usuarios'), where('empresaId', '==', companyId)), snap => {
-        setUsuariosList(snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as any)));
-      }, err => console.warn('Usuarios onSnapshot warn:', err)));
-
-      unsubs.push(onSnapshot(query(collection(db, 'acoes'), where('empresaId', '==', companyId)), snap => {
-        setAcoesList(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as any)));
-      }, err => console.warn('Acoes onSnapshot warn:', err)));
-
-      unsubs.push(onSnapshot(query(collection(db, 'colaboradores'), where('empresaId', '==', companyId)), snap => {
-        setColaboradoresList(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as any)));
-      }, err => console.warn('Colaboradores onSnapshot warn:', err)));
-    } catch (e) {
-      console.error("Error setting up onSnapshot listeners:", e);
-    }
-
     return () => {
       window.removeEventListener('storage', carregarLocal);
       window.removeEventListener('app_data_updated', carregarLocal);
       window.removeEventListener('local_data_changed', carregarLocal);
       clearInterval(localInterval);
-      unsubs.forEach(unsub => unsub());
     };
   }, [empresa?.id]);
 

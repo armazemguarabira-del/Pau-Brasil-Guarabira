@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { db, isCustomFirebaseConnected } from '../firebase';
-import { collection, onSnapshot, query, where, addDoc, deleteDoc, doc } from 'firebase/firestore';
+import { collection, addDoc, deleteDoc, doc } from 'firebase/firestore';
 import { Usuario, Empresa, RepackRow, DespejoRow, QuebraRow, ValidadeRow, ArmazemRow, BlitzRefugoRow, Tarefa } from '../types';
+import { useEmpresaData } from '../context/EmpresaDataContext';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 import { 
@@ -21,6 +22,7 @@ import {
 interface ExportarPanelProps {
   user: Usuario;
   empresa: Empresa | null;
+  theme?: 'light' | 'dark';
 }
 
 interface BackupLog {
@@ -73,7 +75,27 @@ export default function ExportarPanel({ user, empresa }: ExportarPanelProps) {
 
   const empresaId = empresa?.id || 'demo';
 
-  // Format display date helper
+  const empresaData = useEmpresaData();
+  useEffect(() => { if (db) setRepack(empresaData.repack); }, [empresaData.repack]);
+  useEffect(() => { if (db) setDespejo(empresaData.despejo); }, [empresaData.despejo]);
+  useEffect(() => { if (db) setQuebras(empresaData.quebras); }, [empresaData.quebras]);
+  useEffect(() => { if (db) setValidades(empresaData.validades); }, [empresaData.validades]);
+  useEffect(() => { if (db) setArmazem(empresaData.armazem); }, [empresaData.armazem]);
+  useEffect(() => { if (db) setBlitz(empresaData.blitz); }, [empresaData.blitz]);
+  useEffect(() => { if (db) setTasks(empresaData.tarefas); }, [empresaData.tarefas]);
+
+  // Sync databases lines from LocalStorage when offline
+  useEffect(() => {
+    if (!db) {
+      setRepack(JSON.parse(localStorage.getItem(`repack_${empresaId}`) || '[]'));
+      setDespejo(JSON.parse(localStorage.getItem(`despejo_${empresaId}`) || '[]'));
+      setQuebras(JSON.parse(localStorage.getItem(`quebras_${empresaId}`) || '[]'));
+      setValidades(JSON.parse(localStorage.getItem(`validades_${empresaId}`) || '[]'));
+      setArmazem(JSON.parse(localStorage.getItem(`armazem_rows_${empresaId}`) || '[]'));
+      setBlitz(JSON.parse(localStorage.getItem(`blitz_${empresaId}`) || '[]'));
+      setTasks(JSON.parse(localStorage.getItem(`tasks_${empresaId}`) || '[]'));
+    }
+  }, [empresaId]);
   const formatDisplayDate = (isoDate: string): string => {
     if (!isoDate) return '—';
     const parts = isoDate.split('-');
@@ -136,77 +158,7 @@ export default function ExportarPanel({ user, empresa }: ExportarPanelProps) {
     }
   }, [empresaId]);
 
-  // Sync databases lines from Firestore/LocalStorage
-  useEffect(() => {
-    if (!db) {
-      setRepack(JSON.parse(localStorage.getItem(`repack_${empresaId}`) || '[]'));
-      setDespejo(JSON.parse(localStorage.getItem(`despejo_${empresaId}`) || '[]'));
-      setQuebras(JSON.parse(localStorage.getItem(`quebras_${empresaId}`) || '[]'));
-      setValidades(JSON.parse(localStorage.getItem(`validades_${empresaId}`) || '[]'));
-      setArmazem(JSON.parse(localStorage.getItem(`armazem_rows_${empresaId}`) || '[]'));
-      setBlitz(JSON.parse(localStorage.getItem(`blitz_${empresaId}`) || '[]'));
-      setTasks(JSON.parse(localStorage.getItem(`tasks_${empresaId}`) || '[]'));
-      return;
-    }
-
-    // Não assina nenhum listener sem empresaId definido: evita cair num
-    // fallback que buscaria as coleções inteiras sem filtro.
-    if (!empresaId) {
-      return;
-    }
-
-    const qRepack = query(collection(db, 'repack'), where('empresaId', '==', empresaId));
-    const unsubRepack = onSnapshot(qRepack, s => {
-      const rows = s.docs.map(d => ({ _docId: d.id, ...d.data() } as RepackRow));
-      setRepack(rows);
-    });
-
-    const qDespejo = query(collection(db, 'despejo'), where('empresaId', '==', empresaId));
-    const unsubDespejo = onSnapshot(qDespejo, s => {
-      const rows = s.docs.map(d => ({ _docId: d.id, ...d.data() } as DespejoRow));
-      setDespejo(rows);
-    });
-
-    const qQuebras = query(collection(db, 'quebras'), where('empresaId', '==', empresaId));
-    const unsubQuebras = onSnapshot(qQuebras, s => {
-      const rows = s.docs.map(d => ({ _docId: d.id, ...d.data() } as QuebraRow));
-      setQuebras(rows);
-    });
-
-    const qValidades = query(collection(db, 'validades'), where('empresaId', '==', empresaId));
-    const unsubValidades = onSnapshot(qValidades, s => {
-      const rows = s.docs.map(d => ({ _docId: d.id, ...d.data() } as ValidadeRow));
-      setValidades(rows);
-    });
-
-    const qArmazem = query(collection(db, 'armazem'), where('empresaId', '==', empresaId));
-    const unsubArmazem = onSnapshot(qArmazem, s => {
-      const rows = s.docs.map(d => ({ _docId: d.id, ...d.data() } as ArmazemRow));
-      setArmazem(rows);
-    });
-
-    const qBlitz = query(collection(db, 'blitz_refugo'), where('empresaId', '==', empresaId));
-    const unsubBlitz = onSnapshot(qBlitz, s => {
-      const rows = s.docs.map(d => ({ _docId: d.id, ...d.data() } as BlitzRefugoRow));
-      setBlitz(rows);
-    });
-
-    const qTasks = query(collection(db, 'tarefas'), where('empresaId', '==', empresaId));
-    const unsubTasks = onSnapshot(qTasks, s => {
-      const rows = s.docs.map(d => ({ _docId: d.id, ...d.data() } as Tarefa));
-      setTasks(rows);
-    });
-
-    return () => {
-      unsubRepack();
-      unsubDespejo();
-      unsubQuebras();
-      unsubValidades();
-      unsubArmazem();
-      unsubBlitz();
-      unsubTasks();
-    };
-  }, [empresaId]);
+  // Dados sincronizados do EmpresaDataContext
 
   // Export functions with Interval Filter Applied
   const exportPickingCSV = () => {

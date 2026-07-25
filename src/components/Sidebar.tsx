@@ -44,6 +44,29 @@ interface SidebarProps {
   onToggleTheme: () => void;
 }
 
+function SidebarClock({ theme, collapsed }: { theme?: 'light' | 'dark'; collapsed: boolean }) {
+  const [timeStr, setTimeStr] = useState('');
+  useEffect(() => {
+    const tick = () => {
+      setTimeStr(new Date().toLocaleTimeString('pt-BR', { hour12: false }));
+    };
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <div className={`font-mono text-xs sm:text-sm tracking-wider select-none font-black flex items-center gap-1.5 justify-center ${
+      theme === 'dark' ? 'text-blue-400' : 'text-[#1e56f0]'
+    }`}>
+      <Clock className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${
+        theme === 'dark' ? 'text-blue-400' : 'text-[#1e56f0]'
+      }`} />
+      {!collapsed && <span>{timeStr}</span>}
+    </div>
+  );
+}
+
 export default function Sidebar({
   user,
   empresa,
@@ -61,7 +84,6 @@ export default function Sidebar({
   const isControleOuSupervisor = user.isControle || hasRole('controle');
   const isSupervisorOrAdmin = user.isControle || hasRole('admin') || hasRole('controle') || isNixon;
 
-  const [timeStr, setTimeStr] = useState('');
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({
@@ -69,16 +91,6 @@ export default function Sidebar({
     'SETORES DE OPERAÇÃO': !isControleOuSupervisor ? true : false,
     'ADMINISTRAÇÃO & GESTÃO': false
   });
-
-  // Tick clock effect
-  useEffect(() => {
-    const tick = () => {
-      setTimeStr(new Date().toLocaleTimeString('pt-BR', { hour12: false }));
-    };
-    tick();
-    const interval = setInterval(tick, 1000);
-    return () => clearInterval(interval);
-  }, []);
 
   const handleNavClick = (tabId: string) => {
     onSelectTab(tabId);
@@ -408,18 +420,31 @@ export default function Sidebar({
               }`}>
                 ✓ ATIVO
               </span>
-              <button 
-                onClick={onLogout}
-                className={`text-xs font-bold rounded-md px-2 py-1 flex items-center gap-1.5 cursor-pointer transition-colors ml-auto border-none ${
-                  theme === 'dark'
-                    ? 'text-[#8a9db2] hover:text-rose-400 hover:bg-[#ef4444]/10'
-                    : 'text-slate-600 hover:text-red-600 hover:bg-red-500/10'
-                }`}
-                title="Sair da Conta"
-              >
-                <LogOut className="w-3.5 h-3.5" />
-                <span>SAIR</span>
-              </button>
+              <div className="flex items-center gap-1.5 ml-auto">
+                <button 
+                  onClick={onToggleTheme}
+                  className={`text-xs font-bold rounded-md px-2 py-1 flex items-center gap-1 cursor-pointer transition-colors border ${
+                    theme === 'dark'
+                      ? 'bg-[#151b23] border-[#222d3a] text-amber-400 hover:text-amber-300'
+                      : 'bg-slate-100 border-slate-200 text-slate-700 hover:text-[#1e56f0]'
+                  }`}
+                  title={theme === 'dark' ? 'Mudar para Tema Claro' : 'Mudar para Tema Escuro'}
+                >
+                  {theme === 'dark' ? <Sun className="w-3.5 h-3.5 text-amber-400" /> : <Moon className="w-3.5 h-3.5 text-slate-700" />}
+                </button>
+                <button 
+                  onClick={onLogout}
+                  className={`text-xs font-bold rounded-md px-2 py-1 flex items-center gap-1.5 cursor-pointer transition-colors border-none ${
+                    theme === 'dark'
+                      ? 'text-[#8a9db2] hover:text-rose-400 hover:bg-[#ef4444]/10'
+                      : 'text-slate-600 hover:text-red-600 hover:bg-red-500/10'
+                  }`}
+                  title="Sair da Conta"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span>SAIR</span>
+                </button>
+              </div>
             </div>
           </div>
         ) : (
@@ -531,14 +556,7 @@ export default function Sidebar({
             ? 'border-[#1c2530] bg-[#07090d]/40'
             : 'border-slate-100 bg-white'
         }`}>
-          <div className={`font-mono text-xs sm:text-sm tracking-wider select-none font-black flex items-center gap-1.5 justify-center ${
-            theme === 'dark' ? 'text-blue-400' : 'text-[#1e56f0]'
-          }`}>
-            <Clock className={`w-3.5 h-3.5 sm:w-4 sm:h-4 animate-pulse-slow ${
-              theme === 'dark' ? 'text-blue-400' : 'text-[#1e56f0]'
-            }`} />
-            {!collapsed && <span>{timeStr}</span>}
-          </div>
+          <SidebarClock theme={theme} collapsed={collapsed} />
 
           {!collapsed && (
             <div className={`w-full py-1.5 px-2 rounded-md font-sans font-black text-[9.5px] sm:text-[10px] tracking-widest text-center border transition-all flex items-center justify-center gap-1.5 ${
@@ -547,10 +565,10 @@ export default function Sidebar({
                   ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/20'
                   : 'bg-emerald-500/10 text-emerald-600 border-emerald-500/15'
                 : theme === 'dark'
-                  ? 'bg-rose-500/20 text-rose-400 border-rose-500/20 animate-pulse'
-                  : 'bg-rose-500/10 text-rose-600 border-rose-500/15 animate-pulse'
+                  ? 'bg-rose-500/20 text-rose-400 border-rose-500/20'
+                  : 'bg-rose-500/10 text-rose-600 border-rose-500/15'
             }`}>
-              <span className={`w-1.5 h-1.5 rounded-full ${isFbOnline ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} />
+              <span className={`w-1.5 h-1.5 rounded-full ${isFbOnline ? 'bg-emerald-500' : 'bg-rose-500'}`} />
               <span>{isFbOnline ? 'ONLINE' : 'DESCONECTADO'}</span>
             </div>
           )}

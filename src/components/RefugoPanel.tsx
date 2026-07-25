@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { db, isCustomFirebaseConnected } from '../firebase';
-import { collection, addDoc, onSnapshot, query, where, deleteDoc, doc } from 'firebase/firestore';
+import { collection, addDoc, deleteDoc, doc } from 'firebase/firestore';
 import { Usuario, Empresa, BlitzRefugoRow } from '../types';
+import { useEmpresaData } from '../context/EmpresaDataContext';
 import { TrendingUp, CheckCircle, Clock, Award, BarChart2 } from 'lucide-react';
 import SugerirMelhoriaCard from './SugerirMelhoriaCard';
 
 interface RefugoPanelProps {
   user: Usuario;
   empresa: Empresa | null;
+  theme?: 'light' | 'dark';
 }
 
 const RFG_DEFEITOS = [
@@ -142,6 +144,8 @@ export default function RefugoPanel({ user, empresa }: RefugoPanelProps) {
     }
   }, [draftKey]);
 
+  const empresaData = useEmpresaData();
+
   // Sync with Firestore (scoped to company)
   useEffect(() => {
     if (!db) {
@@ -150,16 +154,11 @@ export default function RefugoPanel({ user, empresa }: RefugoPanelProps) {
       return;
     }
 
-    const q = query(collection(db, 'blitz_refugo'), where('empresaId', '==', empresaId));
-    const unsub = onSnapshot(q, (snap) => {
-      const rows = snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as BlitzRefugoRow));
-      rows.sort((a, b) => (b.dataISO || '').localeCompare(a.dataISO || ''));
-      setBlitzRows(rows);
-      localStorage.setItem(`blitz_${empresaId}`, JSON.stringify(rows));
-    });
-
-    return () => unsub();
-  }, [empresaId]);
+    const rows = [...empresaData.blitz];
+    rows.sort((a, b) => (b.dataISO || '').localeCompare(a.dataISO || ''));
+    setBlitzRows(rows);
+    localStorage.setItem(`blitz_${empresaId}`, JSON.stringify(rows));
+  }, [empresaData.blitz, empresaId]);
 
   const handleInputChange = (tipoId: string, field: string, val: number) => {
     setInputs(prev => ({

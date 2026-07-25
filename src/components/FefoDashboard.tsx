@@ -50,7 +50,7 @@ import {
 } from 'lucide-react';
 import { Usuario, Empresa, ValidadeRow } from '../types';
 import { db, isCustomFirebaseConnected } from '../firebase';
-import { collection, onSnapshot, query, where } from 'firebase/firestore';
+import { useEmpresaData } from '../context/EmpresaDataContext';
 import { generateMockValidades } from '../mockDataGenerator';
 import { PRODUCTS } from '../planosData';
 import A3BoardComponent from './A3BoardComponent';
@@ -60,6 +60,7 @@ interface FefoDashboardProps {
   user: Usuario;
   empresa: Empresa | null;
   onBack?: () => void;
+  theme?: 'light' | 'dark';
 }
 
 // Sub-pages defined by user
@@ -360,6 +361,8 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
 
   const companyId = empresa?.id || 'demo';
 
+  const empresaData = useEmpresaData();
+
   // 1. Sync & Seed Data
   useEffect(() => {
     // Sync validades (dynamic)
@@ -369,14 +372,8 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
       return;
     }
 
-    const q = query(collection(db, 'validades'), where('empresaId', '==', companyId));
-    const unsub = onSnapshot(q, (snap) => {
-      const rows = snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as ValidadeRow));
-      setActualValidades(rows);
-    });
-
-    return () => unsub();
-  }, [companyId]);
+    setActualValidades(empresaData.validades);
+  }, [empresaData.validades, companyId]);
 
   // Sync other sub-tables with localstorage (to keep editing interactive and high fidelity)
   useEffect(() => {

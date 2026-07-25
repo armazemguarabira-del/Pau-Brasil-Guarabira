@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
-import { collection, onSnapshot, query, where, deleteDoc, doc } from 'firebase/firestore';
+import { deleteDoc, doc } from 'firebase/firestore';
 import { Usuario, Empresa } from '../types';
+import { useEmpresaData } from '../context/EmpresaDataContext';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Shield, 
@@ -28,6 +29,7 @@ import {
 interface AcessosPanelProps {
   user: Usuario;
   empresa: Empresa | null;
+  theme?: 'light' | 'dark';
 }
 
 interface ActivityItem {
@@ -92,6 +94,8 @@ export default function AcessosPanel({ user, empresa }: AcessosPanelProps) {
     return mapping[tabId] || tabId.toUpperCase();
   };
 
+  const empresaData = useEmpresaData();
+
   // Sync access sessions from Firestore or fallback
   useEffect(() => {
     setLoading(true);
@@ -130,26 +134,11 @@ export default function AcessosPanel({ user, empresa }: AcessosPanelProps) {
       return;
     }
 
-    const q = query(collection(db, 'acessos'), where('empresaId', '==', empresaId));
-    
-    const unsub = onSnapshot(q, (snap) => {
-      const rows = snap.docs.map(doc => ({ 
-        id: doc.id,
-        _docId: doc.id, 
-        ...doc.data() 
-      } as AcessoSession));
-
-      // Sort by login time descending
-      rows.sort((a, b) => (b.loginEm || '').localeCompare(a.loginEm || ''));
-      setSessions(rows);
-      setLoading(false);
-    }, (error) => {
-      console.error("Error loading access sessions from Firestore:", error);
-      setLoading(false);
-    });
-
-    return () => unsub();
-  }, [empresaId]);
+    const rows = [...empresaData.acessos];
+    rows.sort((a, b) => (b.loginEm || '').localeCompare(a.loginEm || ''));
+    setSessions(rows);
+    setLoading(false);
+  }, [empresaData.acessos, empresaId, user]);
 
   // Clean a session log safely
   const handleDeleteSession = async (sessId: string) => {

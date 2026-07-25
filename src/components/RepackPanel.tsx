@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { db, isCustomFirebaseConnected } from '../firebase';
-import { collection, addDoc, onSnapshot, query, where, deleteDoc, doc } from 'firebase/firestore';
+import { collection, addDoc, deleteDoc, doc } from 'firebase/firestore';
 import { Usuario, Empresa, RepackRow, RepackValidadeRow } from '../types';
+import { useEmpresaData } from '../context/EmpresaDataContext';
 import { PRODUCTS } from '../planosData';
 import { TrendingUp, CheckCircle, Clock, Award, BarChart2, BookOpen, Users, FileText, ChevronDown, ChevronUp, AlertCircle, ShieldAlert } from 'lucide-react';
 import SugerirMelhoriaCard from './SugerirMelhoriaCard';
@@ -9,6 +10,7 @@ import SugerirMelhoriaCard from './SugerirMelhoriaCard';
 interface RepackPanelProps {
   user: Usuario;
   empresa: Empresa | null;
+  theme?: 'light' | 'dark';
 }
 
 const REPACK_EMBALAGENS = [
@@ -169,6 +171,8 @@ export default function RepackPanel({ user, empresa }: RepackPanelProps) {
     return [n.getHours(), n.getMinutes(), n.getSeconds()].map(pad2).join(':');
   };
 
+  const empresaData = useEmpresaData();
+
   // Sync with Firestore (scoped to company)
   useEffect(() => {
     if (!db || !empresa?.id) {
@@ -179,16 +183,11 @@ export default function RepackPanel({ user, empresa }: RepackPanelProps) {
     }
 
     const companyId = empresa?.id || 'demo';
-    const q = query(collection(db, 'repack'), where('empresaId', '==', companyId));
-    const unsub = onSnapshot(q, (snap) => {
-      const rows = snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as RepackRow));
-      rows.sort((a, b) => (b.dataISO || '').localeCompare(a.dataISO || '') || (b.inicio || '').localeCompare(a.inicio || ''));
-      setRepackRows(rows);
-      localStorage.setItem(`repack_rows_${companyId}`, JSON.stringify(rows));
-    });
-
-    return () => unsub();
-  }, [empresa?.id]);
+    const rows = [...empresaData.repack];
+    rows.sort((a, b) => (b.dataISO || '').localeCompare(a.dataISO || '') || (b.inicio || '').localeCompare(a.inicio || ''));
+    setRepackRows(rows);
+    localStorage.setItem(`repack_rows_${companyId}`, JSON.stringify(rows));
+  }, [empresaData.repack, empresa?.id]);
 
   // Listen for repack_validades
   useEffect(() => {
@@ -199,16 +198,11 @@ export default function RepackPanel({ user, empresa }: RepackPanelProps) {
     }
 
     const companyId = empresa?.id || 'demo';
-    const q = query(collection(db, 'repack_validades'), where('empresaId', '==', companyId));
-    const unsub = onSnapshot(q, (snap) => {
-      const rows = snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as RepackValidadeRow));
-      rows.sort((a, b) => (a.validade || '').localeCompare(b.validade || '') || (a.descricao || '').localeCompare(b.descricao || ''));
-      setRepackValidades(rows);
-      localStorage.setItem(`repack_validades_${companyId}`, JSON.stringify(rows));
-    });
-
-    return () => unsub();
-  }, [empresa?.id]);
+    const rows = [...empresaData.repackValidades];
+    rows.sort((a, b) => (a.validade || '').localeCompare(b.validade || '') || (a.descricao || '').localeCompare(b.descricao || ''));
+    setRepackValidades(rows);
+    localStorage.setItem(`repack_validades_${companyId}`, JSON.stringify(rows));
+  }, [empresaData.repackValidades, empresa?.id]);
 
   useEffect(() => {
     calcDuration();

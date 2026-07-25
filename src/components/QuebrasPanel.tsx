@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { db, isCustomFirebaseConnected } from '../firebase';
-import { collection, addDoc, onSnapshot, query, where, deleteDoc, doc } from 'firebase/firestore';
+import { collection, addDoc, deleteDoc, doc } from 'firebase/firestore';
 import { Usuario, Empresa, QuebraRow } from '../types';
+import { useEmpresaData } from '../context/EmpresaDataContext';
 import { PRODUCTS } from '../planosData';
 import { TrendingUp, CheckCircle, Clock, Award, BarChart2, AlertTriangle } from 'lucide-react';
 import SugerirMelhoriaCard from './SugerirMelhoriaCard';
@@ -9,6 +10,7 @@ import SugerirMelhoriaCard from './SugerirMelhoriaCard';
 interface QuebrasPanelProps {
   user: Usuario;
   empresa: Empresa | null;
+  theme?: 'light' | 'dark';
 }
 
 const QB_TIPOS: Record<string, Array<{ cod: number; motivo: string }>> = {
@@ -229,6 +231,8 @@ export default function QuebrasPanel({ user, empresa }: QuebrasPanelProps) {
     }
   }, [draftKey]);
 
+  const empresaData = useEmpresaData();
+
   // Sync with Firestore (scoped to company)
   useEffect(() => {
     if (!db || !empresa?.id) {
@@ -238,16 +242,11 @@ export default function QuebrasPanel({ user, empresa }: QuebrasPanelProps) {
     }
 
     const companyId = empresa?.id || 'demo';
-    const q = query(collection(db, 'quebras'), where('empresaId', '==', companyId));
-    const unsub = onSnapshot(q, (snap) => {
-      const rows = snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as QuebraRow));
-      rows.sort((a, b) => (b.dataISO || '').localeCompare(a.dataISO || ''));
-      setQuebras(rows);
-      localStorage.setItem(`quebras_${companyId}`, JSON.stringify(rows));
-    });
-
-    return () => unsub();
-  }, [empresa?.id]);
+    const rows = [...empresaData.quebras];
+    rows.sort((a, b) => (b.dataISO || '').localeCompare(a.dataISO || ''));
+    setQuebras(rows);
+    localStorage.setItem(`quebras_${companyId}`, JSON.stringify(rows));
+  }, [empresaData.quebras, empresa?.id]);
 
   const handleSelectProd = (p: { codigo: number, descricao: string }) => {
     setSelectedProd(p);

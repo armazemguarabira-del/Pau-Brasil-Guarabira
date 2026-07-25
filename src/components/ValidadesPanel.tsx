@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { db, isCustomFirebaseConnected } from '../firebase';
-import { collection, addDoc, onSnapshot, query, where, deleteDoc, doc, updateDoc } from 'firebase/firestore';
+import { collection, addDoc, deleteDoc, doc, updateDoc } from 'firebase/firestore';
 import { Usuario, Empresa, ValidadeRow } from '../types';
+import { useEmpresaData } from '../context/EmpresaDataContext';
 import { PRODUCTS } from '../planosData';
 import SugerirMelhoriaCard from './SugerirMelhoriaCard';
 
 interface ValidadesPanelProps {
   user: Usuario;
   empresa: Empresa | null;
+  theme?: 'light' | 'dark';
 }
 
 export default function ValidadesPanel({ user, empresa }: ValidadesPanelProps) {
@@ -147,6 +149,8 @@ export default function ValidadesPanel({ user, empresa }: ValidadesPanelProps) {
     }
   }, [draftKey]);
 
+  const empresaData = useEmpresaData();
+
   // Sync with Firestore (scoped to company)
   useEffect(() => {
     if (!db) {
@@ -155,15 +159,10 @@ export default function ValidadesPanel({ user, empresa }: ValidadesPanelProps) {
       return;
     }
 
-    const q = query(collection(db, 'validades'), where('empresaId', '==', empresaId));
-    const unsub = onSnapshot(q, (snap) => {
-      const rows = snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as ValidadeRow));
-      setValidadesList(rows);
-      localStorage.setItem(`validades_${empresaId}`, JSON.stringify(rows));
-    });
-
-    return () => unsub();
-  }, [empresaId]);
+    const rows = empresaData.validades;
+    setValidadesList(rows);
+    localStorage.setItem(`validades_${empresaId}`, JSON.stringify(rows));
+  }, [empresaData.validades, empresaId]);
 
   const getDaysRemaining = (expDate: string) => {
     if (!expDate) return 0;

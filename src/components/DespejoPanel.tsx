@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { db, isCustomFirebaseConnected } from '../firebase';
-import { collection, addDoc, onSnapshot, query, where, deleteDoc, doc } from 'firebase/firestore';
+import { collection, addDoc, deleteDoc, doc } from 'firebase/firestore';
 import { Usuario, Empresa, DespejoRow } from '../types';
+import { useEmpresaData } from '../context/EmpresaDataContext';
 import DespejoDashboard from './DespejoDashboard';
 import { TrendingUp, CheckCircle, Clock, Award, BarChart2 } from 'lucide-react';
 import SugerirMelhoriaCard from './SugerirMelhoriaCard';
@@ -9,6 +10,7 @@ import SugerirMelhoriaCard from './SugerirMelhoriaCard';
 interface DespejoPanelProps {
   user: Usuario;
   empresa: Empresa | null;
+  theme?: 'light' | 'dark';
 }
 
 const DESPEJO_EMBALAGENS = [
@@ -117,6 +119,8 @@ export default function DespejoPanel({ user, empresa }: DespejoPanelProps) {
     return [n.getHours(), n.getMinutes(), n.getSeconds()].map(pad2).join(':');
   };
 
+  const empresaData = useEmpresaData();
+
   // Sync with Firestore (scoped to company)
   useEffect(() => {
     if (!db || !empresa?.id) {
@@ -127,16 +131,11 @@ export default function DespejoPanel({ user, empresa }: DespejoPanelProps) {
     }
 
     const companyId = empresa?.id || 'demo';
-    const q = query(collection(db, 'despejo'), where('empresaId', '==', companyId));
-    const unsub = onSnapshot(q, (snap) => {
-      const rows = snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as DespejoRow));
-      rows.sort((a, b) => (b.dataISO || '').localeCompare(a.dataISO || '') || (b.inicio || '').localeCompare(a.inicio || ''));
-      setDespejoRows(rows);
-      localStorage.setItem(`despejo_rows_${companyId}`, JSON.stringify(rows));
-    });
-
-    return () => unsub();
-  }, [empresa?.id]);
+    const rows = [...empresaData.despejo];
+    rows.sort((a, b) => (b.dataISO || '').localeCompare(a.dataISO || '') || (b.inicio || '').localeCompare(a.inicio || ''));
+    setDespejoRows(rows);
+    localStorage.setItem(`despejo_rows_${companyId}`, JSON.stringify(rows));
+  }, [empresaData.despejo, empresa?.id]);
 
   useEffect(() => {
     calcDuration();

@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { db, isCustomFirebaseConnected } from '../firebase';
-import { collection, addDoc, onSnapshot, query, where, deleteDoc, doc } from 'firebase/firestore';
+import { collection, addDoc, deleteDoc, doc } from 'firebase/firestore';
 import { Usuario, Empresa, ArmazemRow } from '../types';
+import { useEmpresaData } from '../context/EmpresaDataContext';
 import { TrendingUp, CheckCircle, Clock, Award, BarChart2 } from 'lucide-react';
 import SugerirMelhoriaCard from './SugerirMelhoriaCard';
 
 interface ArmazemPanelProps {
   user: Usuario;
   empresa: Empresa | null;
+  theme?: 'light' | 'dark';
 }
 
 const PLACAS = [
@@ -153,21 +155,13 @@ export default function ArmazemPanel({ user, empresa }: ArmazemPanelProps) {
     return [n.getHours(), n.getMinutes()].map(pad2).join(':');
   };
 
-  useEffect(() => {
-    if (!db || !empresaId) return;
-    const unsub = fbListenArmazem();
-    return () => { if (unsub) unsub(); };
-  }, [empresaId]);
+  const empresaData = useEmpresaData();
 
-  // Sync with Firestore (scoped to company)
-  const fbListenArmazem = () => {
-    const q = query(collection(db, 'armazem'), where('empresaId', '==', empresaId));
-    return onSnapshot(q, (snap) => {
-      const rows = snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as ArmazemRow));
+  useEffect(() => {
+    if (db) {
+      const rows = empresaData.armazem;
       setArmazemRows(rows);
       localStorage.setItem(`armazem_rows_${empresaId}`, JSON.stringify(rows));
-      
-      // Auto expand the most recent date
       if (rows.length > 0) {
         const dates = [...new Set(rows.map(r => r.dataISO))].sort().reverse();
         if (dates.length > 0) {
@@ -175,8 +169,8 @@ export default function ArmazemPanel({ user, empresa }: ArmazemPanelProps) {
           setExpandedDates(prev => ({ [firstDate]: true, ...prev }));
         }
       }
-    });
-  };
+    }
+  }, [empresaData.armazem, empresaId]);
 
   useEffect(() => {
     // Local fallback if no live database is active
@@ -194,7 +188,7 @@ export default function ArmazemPanel({ user, empresa }: ArmazemPanelProps) {
         }
       }
     }
-  }, []);
+  }, [empresaId]);
 
   const timeToMinutes = (t: string) => {
     if (!t) return 0;

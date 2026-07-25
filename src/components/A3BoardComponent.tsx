@@ -2,15 +2,13 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../firebase';
 import { 
   collection, 
-  query, 
-  onSnapshot, 
   addDoc, 
   deleteDoc, 
   doc,
-  updateDoc,
-  where
+  updateDoc
 } from 'firebase/firestore';
 import { Usuario, Empresa, RepackA3Board } from '../types';
+import { useEmpresaData } from '../context/EmpresaDataContext';
 import { 
   Search, 
   Plus, 
@@ -329,23 +327,14 @@ export default function A3BoardComponent({ user, empresa, dashboard }: A3BoardCo
     dataRevisao: ''
   });
 
+  const empresaData = useEmpresaData();
+
   // Sync A3 Boards from firestore
   useEffect(() => {
-    const companyId = empresa?.id || 'demo';
-    const q = query(collection(db, 'repack_a3_boards'), where('empresaId', '==', companyId));
-    const unsub = onSnapshot(q, (snap) => {
-      const list = snap.docs.map(docSnap => ({
-        _docId: docSnap.id,
-        ...docSnap.data()
-      } as RepackA3Board));
-      
-      const filtered = list.filter(b => b.dashboard === dashboard || (!b.dashboard && dashboard === 'repack'));
-      setBoards(filtered);
-    }, (err) => {
-      console.error(`Error loading A3 boards for dashboard ${dashboard}:`, err);
-    });
-    return () => unsub();
-  }, [empresa?.id, dashboard]);
+    const list = [...empresaData.repackA3Boards];
+    const filtered = list.filter(b => b.dashboard === dashboard || (!b.dashboard && dashboard === 'repack'));
+    setBoards(filtered);
+  }, [empresaData.repackA3Boards, dashboard]);
 
   // Handle active A3 board selection
   useEffect(() => {

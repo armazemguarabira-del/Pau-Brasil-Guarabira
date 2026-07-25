@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Usuario, Empresa } from '../types';
 import { db } from '../firebase';
-import { collection, addDoc, query, where, onSnapshot, orderBy } from 'firebase/firestore';
+import { collection, addDoc } from 'firebase/firestore';
+import { useEmpresaData } from '../context/EmpresaDataContext';
 import { motion, AnimatePresence } from 'motion/react';
 import { Lightbulb, Send, CheckCircle2, MessageSquare, Shield } from 'lucide-react';
 
@@ -23,64 +24,29 @@ export default function SugerirMelhoriaCard({ user, empresa, setor }: SugerirMel
   const [selectedGestorId, setSelectedGestorId] = useState('');
 
   const empresaId = user.empresaId || 'demo';
+  const empresaData = useEmpresaData();
 
   // Load supervisors and administrators of the company
   useEffect(() => {
     if (!db || !empresaId) return;
-    const q = query(
-      collection(db, 'usuarios'),
-      where('empresaId', '==', empresaId)
-    );
-
-    const unsub = onSnapshot(q, (snapshot) => {
-      const list = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      } as any)).filter((u: any) => u.papel === 'admin' || u.papel === 'controle' || u.isControle === true);
-      
-      setGestores(list);
-      
-      // Auto-select first gestor if available and none selected yet
-      if (list.length > 0 && !selectedGestorId) {
-        setSelectedGestorId((list[0] as any).id || (list[0] as any).uid || '');
-      }
-    }, (err) => {
-      console.error("Erro ao carregar gestores", err);
-    });
-
-    return () => unsub();
-  }, [empresaId]);
+    const list = empresaData.usuarios.filter((u: any) => u.papel === 'admin' || u.papel === 'controle' || u.isControle === true);
+    setGestores(list);
+    if (list.length > 0 && !selectedGestorId) {
+      setSelectedGestorId((list[0] as any).id || (list[0] as any).uid || '');
+    }
+  }, [empresaData.usuarios, empresaId]);
 
   // Load proposed improvements for this sector and company
   useEffect(() => {
     if (!db) return;
-    const q = query(
-      collection(db, 'acoes'),
-      where('empresaId', '==', empresaId),
-      where('setor', '==', setor),
-      where('tipo', '==', 'supervisor')
-    );
-
-    const unsub = onSnapshot(q, (snapshot) => {
-      const docs = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      } as any));
-
-      // Sort client-side by criadoEm desc
-      docs.sort((a, b) => {
-        const dateA = a.criadoEm ? new Date(a.criadoEm).getTime() : 0;
-        const dateB = b.criadoEm ? new Date(b.criadoEm).getTime() : 0;
-        return dateB - dateA;
-      });
-
-      setRecentMelhorias(docs);
-    }, (err) => {
-      console.error("Erro ao carregar melhorias", err);
+    const docs = empresaData.acoes.filter((a: any) => a.setor === setor && a.tipo === 'supervisor');
+    docs.sort((a, b) => {
+      const dateA = a.criadoEm ? new Date(a.criadoEm).getTime() : 0;
+      const dateB = b.criadoEm ? new Date(b.criadoEm).getTime() : 0;
+      return dateB - dateA;
     });
-
-    return () => unsub();
-  }, [empresaId, setor]);
+    setRecentMelhorias(docs);
+  }, [empresaData.acoes, setor]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

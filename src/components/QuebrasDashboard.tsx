@@ -34,11 +34,13 @@ import {
   ShieldAlert,
   Archive,
   Truck,
-  Package
+  Package,
+  Sun,
+  Moon
 } from 'lucide-react';
 import { Usuario, Empresa, QuebraRow } from '../types';
 import { db, isCustomFirebaseConnected } from '../firebase';
-import { collection, onSnapshot, query, addDoc, deleteDoc, doc, where } from 'firebase/firestore';
+import { useEmpresaData } from '../context/EmpresaDataContext';
 import { generateMockQuebras } from '../mockDataGenerator';
 import A3BoardComponent from './A3BoardComponent';
 import CalendarFilter from './CalendarFilter';
@@ -48,6 +50,7 @@ interface QuebrasDashboardProps {
   user: Usuario;
   empresa: Empresa | null;
   onBack?: () => void;
+  theme?: 'light' | 'dark';
 }
 
 interface ActionPlan5W2H {
@@ -128,6 +131,15 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
   const [filterEmbalagem, setFilterEmbalagem] = useState<string>('TODAS');
   const [activeSubTab, setActiveSubTab] = useState<'indicadores' | 'wqi' | 'boarda3'>('indicadores');
   const [viewUnit, setViewUnit] = useState<'cx' | 'he'>('cx');
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    return (localStorage.getItem('dashboard_theme') as 'light' | 'dark') || 'light';
+  });
+
+  const toggleTheme = () => {
+    const nextTheme = theme === 'light' ? 'dark' : 'light';
+    setTheme(nextTheme);
+    localStorage.setItem('dashboard_theme', nextTheme);
+  };
 
   const quebras = useMemo(() => {
     const companyId = empresa?.id || 'demo';
@@ -168,6 +180,8 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
     codeDPO: '539'
   });
 
+  const empresaData = useEmpresaData();
+
   // Sync Quebras
   useEffect(() => {
     if (!db || !empresa?.id) {
@@ -176,16 +190,10 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
       return;
     }
 
-    const companyId = empresa?.id || 'demo';
-    const q = query(collection(db, 'quebras'), where('empresaId', '==', companyId));
-    const unsub = onSnapshot(q, (snap) => {
-      const rows = snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as QuebraRow));
-      rows.sort((a, b) => (b.dataISO || '').localeCompare(a.dataISO || ''));
-      setActualQuebras(rows);
-    });
-
-    return () => unsub();
-  }, [empresa?.id]);
+    const rows = [...empresaData.quebras];
+    rows.sort((a, b) => (b.dataISO || '').localeCompare(a.dataISO || ''));
+    setActualQuebras(rows);
+  }, [empresaData.quebras, empresa?.id]);
 
   // Sync Action Plans 5W2H
   useEffect(() => {
@@ -406,52 +414,99 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
   };
 
   return (
-    <div id="quebras-dashboard-wrapper" className="flex flex-col gap-3 bg-[#f8fafc] text-[#0f172a] p-4 rounded-xl shadow-sm border border-gray-200/80">
+    <div id="quebras-dashboard-wrapper" className={`flex flex-col gap-4 p-4 lg:p-6 rounded-2xl shadow-sm border transition-colors duration-300 ${
+      theme === 'dark' ? 'bg-[#0b1329] text-slate-100 border-slate-800' : 'bg-[#f8fafc] text-[#0f172a] border-gray-200/80'
+    }`}>
       
       {/* HEADER BLOCK */}
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 border-b border-gray-200 pb-5">
+      <div className={`flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 border-b pb-5 transition-colors ${
+        theme === 'dark' ? 'border-slate-800' : 'border-gray-200'
+      }`}>
         <div className="flex items-center gap-3">
           {onBack && (
             <button 
               onClick={onBack}
-              className="p-1.5 hover:bg-gray-200/80 rounded-lg transition-colors cursor-pointer text-gray-500 border-none"
+              className={`p-1.5 rounded-lg transition-colors cursor-pointer border-none ${
+                theme === 'dark' ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-gray-200/80 text-gray-500'
+              }`}
               title="Voltar"
             >
               <ArrowLeft className="w-5 h-5" />
             </button>
           )}
           <div>
-            <h1 className="font-sans font-black text-2xl tracking-tight text-[#032b5e] uppercase flex items-center gap-2">
+            <h1 className={`font-sans font-black text-2xl tracking-tight uppercase flex items-center gap-2 ${
+              theme === 'dark' ? 'text-blue-300' : 'text-[#032b5e]'
+            }`}>
               <AlertTriangle className="w-6 h-6 text-[#ef4444]" /> GESTÃO E RECOLHA DE QUEBRAS
             </h1>
-            <p className="text-[10px] text-gray-500 tracking-wider font-bold uppercase mt-0.5">
+            <p className={`text-[10px] tracking-wider font-bold uppercase mt-0.5 ${
+              theme === 'dark' ? 'text-slate-400' : 'text-gray-500'
+            }`}>
               Painel Corporativo de Desempenho, Análise Pareto e Planos de Ação 5W2H
             </p>
           </div>
         </div>
 
-        {/* Subtab Selector */}
-        <div className="flex flex-wrap items-center gap-4">
-          <div className="flex items-center bg-gray-100 p-1 rounded-xl border border-gray-200/60">
+        {/* Subtab Selector & Theme Toggle */}
+        <div className="flex flex-wrap items-center gap-3">
+          <div className={`flex items-center p-1 rounded-xl border transition-colors ${
+            theme === 'dark' ? 'bg-[#131d38] border-slate-700/80' : 'bg-gray-100 border-gray-200/60'
+          }`}>
             <button 
               onClick={() => setActiveSubTab('indicadores')}
-              className={`px-4 py-1.5 rounded-lg font-sans font-bold text-[10px] uppercase tracking-wider transition-all border-none cursor-pointer ${activeSubTab === 'indicadores' ? 'bg-[#032b5e] text-white shadow-sm' : 'text-gray-500 hover:text-[#032b5e] bg-transparent'}`}
+              className={`px-4 py-1.5 rounded-lg font-sans font-bold text-[10px] uppercase tracking-wider transition-all border-none cursor-pointer ${
+                activeSubTab === 'indicadores' 
+                  ? (theme === 'dark' ? 'bg-blue-600 text-white shadow-sm' : 'bg-[#032b5e] text-white shadow-sm') 
+                  : (theme === 'dark' ? 'text-slate-400 hover:text-white bg-transparent' : 'text-gray-500 hover:text-[#032b5e] bg-transparent')
+              }`}
             >
               Quebras & BI
             </button>
             <button 
               onClick={() => setActiveSubTab('wqi')}
-              className={`px-4 py-1.5 rounded-lg font-sans font-bold text-[10px] uppercase tracking-wider transition-all border-none cursor-pointer ${activeSubTab === 'wqi' ? 'bg-[#032b5e] text-white shadow-sm' : 'text-gray-500 hover:text-[#032b5e] bg-transparent'}`}
+              className={`px-4 py-1.5 rounded-lg font-sans font-bold text-[10px] uppercase tracking-wider transition-all border-none cursor-pointer ${
+                activeSubTab === 'wqi' 
+                  ? (theme === 'dark' ? 'bg-blue-600 text-white shadow-sm' : 'bg-[#032b5e] text-white shadow-sm') 
+                  : (theme === 'dark' ? 'text-slate-400 hover:text-white bg-transparent' : 'text-gray-500 hover:text-[#032b5e] bg-transparent')
+              }`}
             >
               WQI
             </button>
             <button 
               onClick={() => setActiveSubTab('boarda3')}
-              className={`px-4 py-1.5 rounded-lg font-sans font-bold text-[10px] uppercase tracking-wider transition-all border-none cursor-pointer ${activeSubTab === 'boarda3' ? 'bg-[#032b5e] text-white shadow-sm' : 'text-gray-500 hover:text-[#032b5e] bg-transparent'}`}
+              className={`px-4 py-1.5 rounded-lg font-sans font-bold text-[10px] uppercase tracking-wider transition-all border-none cursor-pointer ${
+                activeSubTab === 'boarda3' 
+                  ? (theme === 'dark' ? 'bg-blue-600 text-white shadow-sm' : 'bg-[#032b5e] text-white shadow-sm') 
+                  : (theme === 'dark' ? 'text-slate-400 hover:text-white bg-transparent' : 'text-gray-500 hover:text-[#032b5e] bg-transparent')
+              }`}
             >
               Quadro de Ações
             </button>
           </div>
+
+          {/* Theme Toggle Button */}
+          <button
+            onClick={toggleTheme}
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl border transition-all duration-300 cursor-pointer shadow-sm ${
+              theme === 'dark' 
+                ? 'bg-[#131d38] text-amber-300 border-slate-700/80 hover:bg-slate-800/80' 
+                : 'bg-white text-slate-700 border-gray-200 hover:bg-slate-50'
+            }`}
+            title={theme === 'dark' ? 'Mudar para Tema Claro' : 'Mudar para Tema Escuro'}
+          >
+            {theme === 'dark' ? (
+              <>
+                <Moon className="w-4 h-4 text-amber-400 fill-amber-400/20" />
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-200">Tema Escuro</span>
+              </>
+            ) : (
+              <>
+                <Sun className="w-4 h-4 text-amber-500 fill-amber-500/20" />
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-700">Tema Claro</span>
+              </>
+            )}
+          </button>
         </div>
 
       </div>
@@ -459,11 +514,13 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
       {activeSubTab === 'indicadores' && (
         <>
           {/* FILTERS BAR */}
-          <div className="flex flex-wrap items-center justify-between gap-4 bg-white p-3.5 rounded-xl border border-gray-200 shadow-sm">
+          <div className={`flex flex-wrap items-center justify-between gap-4 p-3.5 rounded-xl border shadow-sm transition-colors ${
+            theme === 'dark' ? 'bg-[#131d38] border-slate-700/80 text-slate-100' : 'bg-white border-gray-200'
+          }`}>
             <div className="flex flex-wrap items-center gap-4 w-full md:w-auto">
               {/* Period selector */}
               <div className="flex flex-col gap-1 min-w-[260px]">
-                <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Período</span>
+                <span className={`text-[9px] font-black uppercase tracking-widest ${theme === 'dark' ? 'text-slate-400' : 'text-gray-400'}`}>Período</span>
                 <CalendarFilter
                   startDate={startDate}
                   endDate={endDate}
@@ -476,11 +533,15 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
 
               {/* Area filter */}
               <div className="flex flex-col gap-1 w-[160px]">
-                <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Área</span>
+                <span className={`text-[9px] font-black uppercase tracking-widest ${theme === 'dark' ? 'text-slate-400' : 'text-gray-400'}`}>Área</span>
                 <select 
                   value={filterArea} 
                   onChange={e => setFilterArea(e.target.value)} 
-                  className="w-full bg-white border border-gray-200 text-[#032b5e] font-sans font-bold rounded-lg outline-none px-2.5 py-1 text-[10px] h-[28px] cursor-pointer transition-all hover:border-blue-400 focus:border-[#032b5e]"
+                  className={`w-full font-sans font-bold rounded-lg outline-none px-2.5 py-1 text-[10px] h-[28px] cursor-pointer transition-all ${
+                    theme === 'dark' 
+                      ? 'bg-[#1e2942] border border-slate-600 text-slate-100 hover:border-blue-400' 
+                      : 'bg-white border border-gray-200 text-[#032b5e] hover:border-blue-400 focus:border-[#032b5e]'
+                  }`}
                 >
                   <option value="TODAS">Todas as Áreas</option>
                   <option value="ARMAZEM">Armazém / Depósito</option>
@@ -492,11 +553,15 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
 
               {/* Turno filter */}
               <div className="flex flex-col gap-1 w-[130px]">
-                <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Turno</span>
+                <span className={`text-[9px] font-black uppercase tracking-widest ${theme === 'dark' ? 'text-slate-400' : 'text-gray-400'}`}>Turno</span>
                 <select 
                   value={filterTurno} 
                   onChange={e => setFilterTurno(e.target.value)} 
-                  className="w-full bg-white border border-gray-200 text-[#032b5e] font-sans font-bold rounded-lg outline-none px-2.5 py-1 text-[10px] h-[28px] cursor-pointer transition-all hover:border-blue-400 focus:border-[#032b5e]"
+                  className={`w-full font-sans font-bold rounded-lg outline-none px-2.5 py-1 text-[10px] h-[28px] cursor-pointer transition-all ${
+                    theme === 'dark' 
+                      ? 'bg-[#1e2942] border border-slate-600 text-slate-100 hover:border-blue-400' 
+                      : 'bg-white border border-gray-200 text-[#032b5e] hover:border-blue-400 focus:border-[#032b5e]'
+                  }`}
                 >
                   <option value="TODOS">Todos os Turnos</option>
                   <option value="MANHÃ">Manhã</option>
@@ -506,11 +571,15 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
 
               {/* Embalagem filter */}
               <div className="flex flex-col gap-1 w-[150px]">
-                <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Embalagem</span>
+                <span className={`text-[9px] font-black uppercase tracking-widest ${theme === 'dark' ? 'text-slate-400' : 'text-gray-400'}`}>Embalagem</span>
                 <select 
                   value={filterEmbalagem} 
                   onChange={e => setFilterEmbalagem(e.target.value)} 
-                  className="w-full bg-white border border-gray-200 text-[#032b5e] font-sans font-bold rounded-lg outline-none px-2.5 py-1 text-[10px] h-[28px] cursor-pointer transition-all hover:border-blue-400 focus:border-[#032b5e]"
+                  className={`w-full font-sans font-bold rounded-lg outline-none px-2.5 py-1 text-[10px] h-[28px] cursor-pointer transition-all ${
+                    theme === 'dark' 
+                      ? 'bg-[#1e2942] border border-slate-600 text-slate-100 hover:border-blue-400' 
+                      : 'bg-white border border-gray-200 text-[#032b5e] hover:border-blue-400 focus:border-[#032b5e]'
+                  }`}
                 >
                   <option value="TODAS">Todas Embalagens</option>
                   <option value="Garrafa 600ml">Garrafa 600ml</option>
@@ -526,19 +595,29 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
 
               {/* Visualização Unit Toggle */}
               <div className="flex flex-col gap-1">
-                <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Visualização</span>
-                <div className="flex items-center bg-gray-100 p-0.5 rounded-lg border border-gray-200/60 h-[28px] min-w-[90px]">
+                <span className={`text-[9px] font-black uppercase tracking-widest ${theme === 'dark' ? 'text-slate-400' : 'text-gray-400'}`}>Visualização</span>
+                <div className={`flex items-center p-0.5 rounded-lg border h-[28px] min-w-[90px] ${
+                  theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-gray-100 border-gray-200/60'
+                }`}>
                   <button
                     type="button"
                     onClick={() => setViewUnit('cx')}
-                    className={`flex-1 rounded-md font-sans font-black text-[10px] transition-all border-none cursor-pointer h-full flex items-center justify-center ${viewUnit === 'cx' ? 'bg-[#032b5e] text-white shadow-sm' : 'text-slate-400 hover:text-[#032b5e] bg-transparent'}`}
+                    className={`flex-1 rounded-md font-sans font-black text-[10px] transition-all border-none cursor-pointer h-full flex items-center justify-center ${
+                      viewUnit === 'cx' 
+                        ? (theme === 'dark' ? 'bg-blue-600 text-white shadow-sm' : 'bg-[#032b5e] text-white shadow-sm') 
+                        : 'text-slate-400 hover:text-white bg-transparent'
+                    }`}
                   >
                     CX
                   </button>
                   <button
                     type="button"
                     onClick={() => setViewUnit('he')}
-                    className={`flex-1 rounded-md font-sans font-black text-[10px] transition-all border-none cursor-pointer h-full flex items-center justify-center ${viewUnit === 'he' ? 'bg-[#032b5e] text-white shadow-sm' : 'text-slate-400 hover:text-[#032b5e] bg-transparent'}`}
+                    className={`flex-1 rounded-md font-sans font-black text-[10px] transition-all border-none cursor-pointer h-full flex items-center justify-center ${
+                      viewUnit === 'he' 
+                        ? (theme === 'dark' ? 'bg-blue-600 text-white shadow-sm' : 'bg-[#032b5e] text-white shadow-sm') 
+                        : 'text-slate-400 hover:text-white bg-transparent'
+                    }`}
                   >
                     HE
                   </button>
@@ -571,56 +650,66 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
         </div>
 
         {/* KPI 2: Finance Impact */}
-        <div className="bg-white p-4.5 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between min-h-[125px]">
+        <div className={`p-4.5 rounded-xl border shadow-sm flex flex-col justify-between min-h-[125px] transition-colors ${
+          theme === 'dark' ? 'bg-[#131d38] border-slate-700/80 text-slate-100' : 'bg-white border-gray-200'
+        }`}>
           <div>
-            <span className="text-[9px] uppercase font-black tracking-widest text-gray-400 block">
+            <span className={`text-[9px] uppercase font-black tracking-widest block ${theme === 'dark' ? 'text-slate-400' : 'text-gray-400'}`}>
               IMPACTO FINANCEIRO ESTIMADO
             </span>
-            <span className="text-3xl font-extrabold text-[#032b5e] mt-2 block">
+            <span className={`text-3xl font-extrabold mt-2 block ${theme === 'dark' ? 'text-blue-300' : 'text-[#032b5e]'}`}>
               {estimatedCost.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
             </span>
           </div>
-          <div className="mt-2 border-t border-gray-100 pt-2">
-            <span className="text-[10px] text-gray-500 font-bold block uppercase">
+          <div className={`mt-2 border-t pt-2 ${theme === 'dark' ? 'border-slate-800' : 'border-gray-100'}`}>
+            <span className="text-[10px] text-gray-400 font-bold block uppercase">
               Custo médio ponderado por SKU
             </span>
           </div>
         </div>
 
         {/* KPI 3: Principal SKU Ofensor */}
-        <div className="bg-white p-4.5 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between min-h-[125px]">
+        <div className={`p-4.5 rounded-xl border shadow-sm flex flex-col justify-between min-h-[125px] transition-colors ${
+          theme === 'dark' ? 'bg-[#131d38] border-slate-700/80 text-slate-100' : 'bg-white border-gray-200'
+        }`}>
           <div>
-            <span className="text-[9px] uppercase font-black tracking-widest text-gray-400 block">
+            <span className={`text-[9px] uppercase font-black tracking-widest block ${theme === 'dark' ? 'text-slate-400' : 'text-gray-400'}`}>
               OFENSOR PRINCIPAL (80/20)
             </span>
             <span className="text-lg font-black text-[#f5a623] mt-2 block truncate uppercase" title={topSku.desc}>
               {topSku.desc}
             </span>
-            <span className="text-[10px] font-semibold text-gray-500 mt-1 block">
-              Código: <strong className="text-gray-700">{topSku.cod}</strong>
+            <span className={`text-[10px] font-semibold mt-1 block ${theme === 'dark' ? 'text-slate-400' : 'text-gray-500'}`}>
+              Código: <strong className={theme === 'dark' ? 'text-slate-200' : 'text-gray-700'}>{topSku.cod}</strong>
             </span>
           </div>
-          <div className="mt-2 border-t border-gray-100 pt-2 flex justify-between items-center text-[10px] text-gray-500 font-bold uppercase">
+          <div className={`mt-2 border-t pt-2 flex justify-between items-center text-[10px] font-bold uppercase ${
+            theme === 'dark' ? 'border-slate-800 text-slate-400' : 'border-gray-100 text-gray-500'
+          }`}>
             <span>Volumetria SKU</span>
             <span className="text-[#ef4444]">{topSku.quant} {viewUnit === 'cx' ? 'un' : 'HE'} ({topSkuPct}%)</span>
           </div>
         </div>
 
         {/* KPI 4: Área Mais Crítica */}
-        <div className="bg-white p-4.5 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between min-h-[125px]">
+        <div className={`p-4.5 rounded-xl border shadow-sm flex flex-col justify-between min-h-[125px] transition-colors ${
+          theme === 'dark' ? 'bg-[#131d38] border-slate-700/80 text-slate-100' : 'bg-white border-gray-200'
+        }`}>
           <div>
-            <span className="text-[9px] uppercase font-black tracking-widest text-gray-400 block">
+            <span className={`text-[9px] uppercase font-black tracking-widest block ${theme === 'dark' ? 'text-slate-400' : 'text-gray-400'}`}>
               ÁREA OPERACIONAL CRÍTICA
             </span>
-            <span className="text-xl font-extrabold text-slate-800 mt-2 block uppercase flex items-center gap-1">
+            <span className={`text-xl font-extrabold mt-2 block uppercase flex items-center gap-1 ${theme === 'dark' ? 'text-slate-100' : 'text-slate-800'}`}>
               {criticalAreaKey === 'ARMAZEM' && <Archive className="w-5 h-5 text-amber-500" />}
               {criticalAreaKey === 'ENTREGA' && <Truck className="w-5 h-5 text-sky-500" />}
               {criticalAreaName}
             </span>
           </div>
-          <div className="mt-2 border-t border-gray-100 pt-2 flex justify-between items-center text-[10px] text-gray-500 font-bold uppercase">
+          <div className={`mt-2 border-t pt-2 flex justify-between items-center text-[10px] font-bold uppercase ${
+            theme === 'dark' ? 'border-slate-800 text-slate-400' : 'border-gray-100 text-gray-500'
+          }`}>
             <span>Concentração</span>
-            <span className="text-slate-800">
+            <span className={theme === 'dark' ? 'text-slate-200' : 'text-slate-800'}>
               {totalQuant > 0 ? ((areaVolumeMap[criticalAreaKey] / totalQuant) * 100).toFixed(0) : 0}% de quebras
             </span>
           </div>
@@ -632,9 +721,13 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
         
         {/* CHART 1: Pareto por Código DPO / Motivo */}
-        <div className="bg-white p-4.5 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between gap-3 min-h-[340px]">
+        <div className={`p-4.5 rounded-xl border shadow-sm flex flex-col justify-between gap-3 min-h-[340px] transition-colors ${
+          theme === 'dark' ? 'bg-[#131d38] border-slate-700/80 text-slate-100' : 'bg-white border-gray-200'
+        }`}>
           <div>
-            <h3 className="font-sans font-black text-[11px] uppercase text-[#032b5e] tracking-wider flex items-center gap-1.5">
+            <h3 className={`font-sans font-black text-[11px] uppercase tracking-wider flex items-center gap-1.5 ${
+              theme === 'dark' ? 'text-blue-300' : 'text-[#032b5e]'
+            }`}>
               <TrendingUp className="w-3.5 h-3.5 text-[#ef4444]" /> PERDAS POR MOTIVO
             </h3>
             <span className="text-[9px] text-gray-400 font-bold mt-0.5 block">
@@ -650,12 +743,12 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={motivosChartData} layout="vertical" margin={{ top: 5, right: 10, left: 15, bottom: 5 }}>
-                  <CartesianGrid stroke="#f1f5f9" horizontal={false} />
-                  <XAxis type="number" stroke="#94a3b8" fontSize={8} tickLine={false} axisLine={false} />
+                  <CartesianGrid stroke={theme === 'dark' ? '#1e293b' : '#f1f5f9'} horizontal={false} />
+                  <XAxis type="number" stroke={theme === 'dark' ? '#64748b' : '#94a3b8'} fontSize={8} tickLine={false} axisLine={false} />
                   <YAxis 
                     type="category" 
                     dataKey="name" 
-                    stroke="#475569" 
+                    stroke={theme === 'dark' ? '#94a3b8' : '#475569'} 
                     fontSize={8} 
                     tickLine={false} 
                     axisLine={false} 
@@ -663,8 +756,14 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
                     tickFormatter={(val) => val.split(' — ')[0] || val} // Just show code
                   />
                   <Tooltip 
-                    contentStyle={{ backgroundColor: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: 9 }}
-                    labelStyle={{ color: '#032b5e', fontWeight: 'bold' }}
+                    contentStyle={{ 
+                      backgroundColor: theme === 'dark' ? '#0f172a' : '#fff', 
+                      border: theme === 'dark' ? '1px solid #334155' : '1px solid #e2e8f0', 
+                      borderRadius: '8px', 
+                      fontSize: 9,
+                      color: theme === 'dark' ? '#f8fafc' : '#0f172a'
+                    }}
+                    labelStyle={{ color: theme === 'dark' ? '#93c5fd' : '#032b5e', fontWeight: 'bold' }}
                     itemStyle={{ color: '#ef4444' }}
                   />
                   <Bar dataKey="value" fill="#ef4444" radius={[0, 4, 4, 0]} barSize={12}>
@@ -676,23 +775,31 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
               </ResponsiveContainer>
             )}
           </div>
-          <div className="text-[9px] text-gray-400 font-semibold border-t border-gray-100 pt-1 text-center">
+          <div className={`text-[9px] font-semibold border-t pt-1 text-center ${
+            theme === 'dark' ? 'border-slate-800 text-slate-400' : 'border-gray-100 text-gray-400'
+          }`}>
             Códigos conforme manual operacional
           </div>
         </div>
 
         {/* CHART 2: Perdas por Embalagem */}
-        <div className="bg-white p-4.5 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between gap-3 min-h-[340px]">
+        <div className={`p-4.5 rounded-xl border shadow-sm flex flex-col justify-between gap-3 min-h-[340px] transition-colors ${
+          theme === 'dark' ? 'bg-[#131d38] border-slate-700/80 text-slate-100' : 'bg-white border-gray-200'
+        }`}>
           <div className="flex items-start justify-between">
             <div>
-              <h3 className="font-sans font-black text-[11px] uppercase text-[#032b5e] tracking-wider flex items-center gap-1.5">
+              <h3 className={`font-sans font-black text-[11px] uppercase tracking-wider flex items-center gap-1.5 ${
+                theme === 'dark' ? 'text-blue-300' : 'text-[#032b5e]'
+              }`}>
                 <Package className="w-3.5 h-3.5 text-[#3b82f6]" /> PERDAS POR EMBALAGEM
               </h3>
               <span className="text-[9px] text-gray-400 font-bold mt-0.5 block">
                 Volume por tipo de vasilhame/lata
               </span>
             </div>
-            <span className="text-[10px] font-mono font-black text-[#032b5e] bg-slate-100 border border-slate-200/80 px-2 py-0.5 rounded-md">
+            <span className={`text-[10px] font-mono font-black border px-2 py-0.5 rounded-md ${
+              theme === 'dark' ? 'text-blue-300 bg-slate-800 border-slate-700' : 'text-[#032b5e] bg-slate-100 border-slate-200/80'
+            }`}>
               {totalEmbalagemVolume.toLocaleString('pt-BR')} {viewUnit === 'cx' ? 'CX' : 'HL'}
             </span>
           </div>
@@ -1216,6 +1323,7 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
             setEndDate(end);
           }}
           viewUnit={viewUnit}
+          theme={theme}
         />
       )}
 

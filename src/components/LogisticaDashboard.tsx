@@ -45,7 +45,7 @@ import {
 } from 'lucide-react';
 import { Usuario, Empresa, ArmazemRow } from '../types';
 import { db, isCustomFirebaseConnected } from '../firebase';
-import { collection, query, onSnapshot, where } from 'firebase/firestore';
+import { useEmpresaData } from '../context/EmpresaDataContext';
 import { generateMockArmazemRows } from '../mockDataGenerator';
 import A3BoardComponent from './A3BoardComponent';
 import LogisticaDrilldown from './LogisticaDrilldown';
@@ -134,6 +134,7 @@ interface LogisticaDashboardProps {
   user: Usuario;
   empresa: Empresa | null;
   onBack?: () => void;
+  theme?: 'light' | 'dark';
 }
 
 export default function LogisticaDashboard({ user, empresa, onBack }: LogisticaDashboardProps) {
@@ -161,6 +162,8 @@ export default function LogisticaDashboard({ user, empresa, onBack }: LogisticaD
     }
   };
 
+  const empresaData = useEmpresaData();
+
   useEffect(() => {
     const companyId = empresa?.id || 'demo';
     if (!db) {
@@ -169,14 +172,8 @@ export default function LogisticaDashboard({ user, empresa, onBack }: LogisticaD
       return;
     }
 
-    const q = query(collection(db, 'armazem'), where('empresaId', '==', companyId));
-    const unsub = onSnapshot(q, (snap) => {
-      const rows = snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as ArmazemRow));
-      setActualArmazemRows(rows);
-    });
-
-    return () => unsub();
-  }, [empresa?.id]);
+    setActualArmazemRows(empresaData.armazem);
+  }, [empresaData.armazem, empresa?.id]);
   // Helper for parsing date fields
   const parseRowDate = (r: ArmazemRow) => {
     if (r.data) {

@@ -23,12 +23,38 @@ import FefoDashboard from './components/FefoDashboard';
 import PickingDashboard from './components/PickingDashboard';
 import RegistrosPanel from './components/RegistrosPanel';
 import AcessosPanel from './components/AcessosPanel';
+import { EmpresaDataProvider } from './context/EmpresaDataContext';
 
 import { auth, db, isCustomFirebaseConnected } from './firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { doc, getDoc, collection, query, where, onSnapshot } from 'firebase/firestore';
 import { Usuario, Empresa } from './types';
 import { motion, AnimatePresence } from 'motion/react';
+import { Sun, Moon } from 'lucide-react';
+
+function HeaderClock({ theme }: { theme: 'light' | 'dark' }) {
+  const [timeStr, setTimeStr] = useState('');
+  useEffect(() => {
+    const tick = () => {
+      const now = new Date();
+      setTimeStr(now.toLocaleDateString('pt-BR') + ' ' + now.toLocaleTimeString('pt-BR', { hour12: false }));
+    };
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  if (!timeStr) return null;
+
+  return (
+    <>
+      <div className={`w-[1px] h-3.5 hidden md:block ${theme === 'dark' ? 'bg-[#1c2530]' : 'bg-slate-200'}`} />
+      <div className="text-[9px] text-slate-400 font-mono font-bold uppercase tracking-wider hidden md:block">
+        {timeStr}
+      </div>
+    </>
+  );
+}
 
 export default function App() {
   const [user, setUser] = useState<Usuario | null>(() => {
@@ -65,8 +91,15 @@ export default function App() {
 
   const [showAuthGate, setShowAuthGate] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [theme, setTheme] = useState<'dark' | 'light'>('light');
-  const [currentTime, setCurrentTime] = useState('');
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+    try {
+      const saved = localStorage.getItem('af_app_theme') || localStorage.getItem('dashboard_theme') || localStorage.getItem('af-theme');
+      if (saved === 'dark' || saved === 'light') return saved;
+    } catch (e) {
+      // ignore
+    }
+    return 'light';
+  });
   const [activeActions, setActiveActions] = useState<any[]>([]);
 
   // Sync user, empresa, and activePanel to localStorage for session persistence
@@ -147,16 +180,6 @@ export default function App() {
       return Date.now() > limitTime;
     });
   };
-
-  useEffect(() => {
-    const tick = () => {
-      const now = new Date();
-      setCurrentTime(now.toLocaleDateString('pt-BR') + ' ' + now.toLocaleTimeString('pt-BR', { hour12: false }));
-    };
-    tick();
-    const interval = setInterval(tick, 1000);
-    return () => clearInterval(interval);
-  }, []);
 
   // Session Access Tracking for Security
   useEffect(() => {
@@ -276,13 +299,23 @@ export default function App() {
 
   // Sync theme to body element and localStorage
   useEffect(() => {
-    document.body.classList.add('light-theme');
+    if (theme === 'dark') {
+      document.body.classList.remove('light-theme');
+      document.body.classList.add('dark');
+      document.documentElement.classList.add('dark');
+    } else {
+      document.body.classList.remove('dark');
+      document.documentElement.classList.remove('dark');
+      document.body.classList.add('light-theme');
+    }
     try {
-      localStorage.setItem('af-theme', 'light');
+      localStorage.setItem('af_app_theme', theme);
+      localStorage.setItem('dashboard_theme', theme);
+      localStorage.setItem('af-theme', theme);
     } catch (e) {
       // ignore
     }
-  }, []);
+  }, [theme]);
 
   // Sync auth state
   useEffect(() => {
@@ -546,6 +579,7 @@ export default function App() {
             user={user} 
             empresa={empresa} 
             onNavigate={setActivePanel} 
+            theme={theme}
             kpiStats={{
               usuarios: 3,
               modulos: empresa?.modulos ? empresa.modulos.length : 6,
@@ -555,51 +589,52 @@ export default function App() {
           />
         );
       case 'repack':
-        return <RepackPanel user={user} empresa={empresa} />;
+        return <RepackPanel user={user} empresa={empresa} theme={theme} />;
       case 'repack-dashboard':
-        return <RepackDashboard user={user} empresa={empresa} onBack={() => setActivePanel('visao-geral')} />;
+        return <RepackDashboard user={user} empresa={empresa} theme={theme} onBack={() => setActivePanel('visao-geral')} />;
       case 'despejo-dashboard':
-        return <DespejoDashboard user={user} empresa={empresa} onBack={() => setActivePanel('visao-geral')} />;
+        return <DespejoDashboard user={user} empresa={empresa} theme={theme} onBack={() => setActivePanel('visao-geral')} />;
       case 'logistica-dashboard':
-        return <LogisticaDashboard user={user} empresa={empresa} onBack={() => setActivePanel('visao-geral')} />;
+        return <LogisticaDashboard user={user} empresa={empresa} theme={theme} onBack={() => setActivePanel('visao-geral')} />;
       case 'quebras-dashboard':
-        return <QuebrasDashboard user={user} empresa={empresa} onBack={() => setActivePanel('visao-geral')} />;
+        return <QuebrasDashboard user={user} empresa={empresa} theme={theme} onBack={() => setActivePanel('visao-geral')} />;
       case 'fefo-dashboard':
-        return <FefoDashboard user={user} empresa={empresa} onBack={() => setActivePanel('visao-geral')} />;
+        return <FefoDashboard user={user} empresa={empresa} theme={theme} onBack={() => setActivePanel('visao-geral')} />;
       case 'picking-dashboard':
-        return <PickingDashboard user={user} empresa={empresa} onBack={() => setActivePanel('visao-geral')} />;
+        return <PickingDashboard user={user} empresa={empresa} theme={theme} onBack={() => setActivePanel('visao-geral')} />;
       case 'despejo':
-        return <DespejoPanel user={user} empresa={empresa} />;
+        return <DespejoPanel user={user} empresa={empresa} theme={theme} />;
       case 'armazem':
-        return <ArmazemPanel user={user} empresa={empresa} />;
+        return <ArmazemPanel user={user} empresa={empresa} theme={theme} />;
       case 'quebras':
-        return <QuebrasPanel user={user} empresa={empresa} />;
+        return <QuebrasPanel user={user} empresa={empresa} theme={theme} />;
       case 'validades':
-        return <ValidadesPanel user={user} empresa={empresa} />;
+        return <ValidadesPanel user={user} empresa={empresa} theme={theme} />;
       case 'refugo':
-        return <RefugoPanel user={user} empresa={empresa} />;
+        return <RefugoPanel user={user} empresa={empresa} theme={theme} />;
       case 'empilhador':
-        return <EmpilhadorPanel user={user} empresa={empresa} />;
+        return <EmpilhadorPanel user={user} empresa={empresa} theme={theme} />;
       case 'conferente':
-        return <ConferentePanel user={user} empresa={empresa} />;
+        return <ConferentePanel user={user} empresa={empresa} theme={theme} />;
       case 'registros':
-        return <RegistrosPanel user={user} empresa={empresa} onNavigate={setActivePanel} />;
+        return <RegistrosPanel user={user} empresa={empresa} theme={theme} onNavigate={setActivePanel} />;
       case 'acessos':
-        return <AcessosPanel user={user} empresa={empresa} />;
+        return <AcessosPanel user={user} empresa={empresa} theme={theme} />;
       case 'controle':
-        return <ControlePanel user={user} empresa={empresa} />;
+        return <ControlePanel user={user} empresa={empresa} theme={theme} />;
       case 'acoes':
-        return <ControlePanel user={user} empresa={empresa} initialSection="acoes" />;
+        return <ControlePanel user={user} empresa={empresa} theme={theme} initialSection="acoes" />;
       case 'firebase':
-        return <FirebasePanel />;
+        return <FirebasePanel theme={theme} />;
       case 'exportar':
-        return <ExportarPanel user={user} empresa={empresa} />;
+        return <ExportarPanel user={user} empresa={empresa} theme={theme} />;
       default:
         return (
           <DashboardOverview 
             user={user} 
             empresa={empresa} 
             onNavigate={setActivePanel} 
+            theme={theme}
             kpiStats={{
               usuarios: 3,
               modulos: empresa?.modulos ? empresa.modulos.length : 6,
@@ -838,116 +873,128 @@ export default function App() {
   const headerInfo = getHeaderInfo(activePanel);
 
   return (
-    <div className={`min-h-screen flex flex-col md:flex-row font-sans overflow-x-hidden ${
-      theme === 'dark' ? 'bg-[#07090d] text-[#e8eef5]' : 'bg-white text-slate-800'
-    }`}>
-      
-      {/* Sidebar navigation */}
-      <Sidebar 
-        user={user} 
-        empresa={empresa} 
-        activeTab={activePanel} 
-        onSelectTab={setActivePanel} 
-        onLogout={handleLogout}
-        isFbOnline={isCustomFirebaseConnected()}
-        theme={theme}
-        onToggleTheme={() => setTheme(prev => prev === 'dark' ? 'light' : 'dark')}
-      />
-
-      {/* Main workspace arena with smooth tab switching */}
-      <div className={`flex-1 flex flex-col min-h-screen max-h-screen overflow-y-auto overflow-x-hidden w-full max-w-full ${
-        theme === 'dark' ? 'bg-[#07090d]' : 'bg-white'
+    <EmpresaDataProvider empresaId={empresa?.id || user?.empresaId || null}>
+      <div className={`min-h-screen flex flex-col md:flex-row font-sans overflow-x-hidden ${
+        theme === 'dark' ? 'bg-[#07090d] text-[#e8eef5]' : 'bg-white text-slate-800'
       }`}>
         
-        {/* Workspace Top Header (Glassmorphic & Premium) */}
-        <header className={`sticky top-0 z-30 backdrop-blur-md pl-14 pr-4 md:px-5 py-1 h-11 md:h-12 flex items-center justify-between gap-4 border-b ${
-          theme === 'dark' 
-            ? 'bg-[#07090d]/85 border-[#1c2530]' 
-            : 'bg-white/95 border-slate-200 shadow-sm'
+        {/* Sidebar navigation */}
+        <Sidebar 
+          user={user} 
+          empresa={empresa} 
+          activeTab={activePanel} 
+          onSelectTab={setActivePanel} 
+          onLogout={handleLogout}
+          isFbOnline={isCustomFirebaseConnected()}
+          theme={theme}
+          onToggleTheme={() => setTheme(prev => prev === 'dark' ? 'light' : 'dark')}
+        />
+
+        {/* Main workspace arena with smooth tab switching */}
+        <div className={`flex-1 flex flex-col min-h-screen max-h-screen overflow-y-auto overflow-x-hidden w-full max-w-full ${
+          theme === 'dark' ? 'bg-[#07090d]' : 'bg-white'
         }`}>
-          <div className="flex items-center gap-3 min-w-0">
-            {/* Brand Logo icon on mobile */}
-            <div className="md:hidden flex items-center flex-shrink-0">
-              <BrandLogo variant="icon-only" size="sm" iconSize="sm" />
-            </div>
-            {/* Page title */}
-            <h1 className={`font-sans font-black text-xs md:text-[13px] tracking-tight uppercase truncate flex-shrink-0 ${
-              theme === 'dark' ? 'text-white' : 'text-slate-800'
-            }`}>
-              {headerInfo.title}
-            </h1>
-            <span className={`hidden xl:inline text-[8px] px-1.5 py-0.5 rounded uppercase font-bold tracking-wider border ${
-              theme === 'dark' 
-                ? 'bg-[#11151c] border-[#1c2530] text-[#6a7d92]' 
-                : 'bg-slate-100 border-slate-200 text-slate-500'
-            }`}>
-              {activePanel}
-            </span>
-            <div className={`hidden sm:block w-[1px] h-3 ${theme === 'dark' ? 'bg-[#1c2530]' : 'bg-slate-200'}`} />
-            {/* Breadcrumbs */}
-            <div className="hidden sm:flex items-center gap-1.5 text-[8.5px] uppercase font-black tracking-widest text-[#6a7d92] truncate">
-              <span>{headerInfo.breadcrumbs[0]}</span>
-              {headerInfo.breadcrumbs[1] && (
-                <>
-                  <span className={`font-bold ${theme === 'dark' ? 'text-[#1c2530]' : 'text-slate-300'}`}>/</span>
-                  <span className="text-[#1e56f0]">{headerInfo.breadcrumbs[1]}</span>
-                </>
-              )}
-            </div>
-          </div>
-
-          {/* Quick Stats / System Health widget aligned horizontally */}
-          <div className="flex items-center gap-3 flex-shrink-0">
-            <div className={`text-[9px] md:text-[10px] font-bold uppercase tracking-wider hidden md:block ${
-              theme === 'dark' ? 'text-white' : 'text-slate-700'
-            }`}>
-              Operador: <span className="text-[#1e56f0]">{user.nome?.split(' ')[0]}</span>
-            </div>
-            {currentTime && (
-              <>
-                <div className={`w-[1px] h-3.5 hidden md:block ${theme === 'dark' ? 'bg-[#1c2530]' : 'bg-slate-200'}`} />
-                <div className="text-[9px] text-slate-400 font-mono font-bold uppercase tracking-wider hidden md:block">
-                  {currentTime}
-                </div>
-              </>
-            )}
-            <div className={`w-[1px] h-3.5 hidden sm:block ${theme === 'dark' ? 'bg-[#1c2530]' : 'bg-slate-200'}`} />
-            {/* Live Indicator Widget */}
-            <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[8.5px] font-sans font-black tracking-widest border ${
-              theme === 'dark' 
-                ? 'bg-[#11151c] border-[#1c2530] text-[#6a7d92]' 
-                : 'bg-slate-100 border-slate-200 text-slate-600'
-            }`}>
-              <span className="w-1.5 h-1.5 rounded-full bg-[#1e56f0] animate-pulse" />
-              <span className={`uppercase ${theme === 'dark' ? 'text-gray-300' : 'text-slate-700'}`}>SISTEMA ATIVO</span>
-            </div>
-          </div>
-        </header>
-
-        {/* Inner Content Body */}
-        <main className="flex-1 p-2 md:p-3 lg:p-4.5 relative">
           
-          {/* Subtle decorative glow */}
-          <div className={`absolute top-0 left-0 w-96 h-96 bg-gradient-to-br ${headerInfo.color} rounded-full blur-3xl pointer-events-none opacity-40 z-0`} />
+          {/* Workspace Top Header (Glassmorphic & Premium) */}
+          <header className={`sticky top-0 z-30 backdrop-blur-md pl-14 pr-4 md:px-5 py-1 h-11 md:h-12 flex items-center justify-between gap-4 border-b ${
+            theme === 'dark' 
+              ? 'bg-[#07090d]/85 border-[#1c2530]' 
+              : 'bg-white/95 border-slate-200 shadow-sm'
+          }`}>
+            <div className="flex items-center gap-3 min-w-0">
+              {/* Brand Logo icon on mobile */}
+              <div className="md:hidden flex items-center flex-shrink-0">
+                <BrandLogo variant="icon-only" size="sm" iconSize="sm" />
+              </div>
+              {/* Page title */}
+              <h1 className={`font-sans font-black text-xs md:text-[13px] tracking-tight uppercase truncate flex-shrink-0 ${
+                theme === 'dark' ? 'text-white' : 'text-slate-800'
+              }`}>
+                {headerInfo.title}
+              </h1>
+              <span className={`hidden xl:inline text-[8px] px-1.5 py-0.5 rounded uppercase font-bold tracking-wider border ${
+                theme === 'dark' 
+                  ? 'bg-[#11151c] border-[#1c2530] text-[#6a7d92]' 
+                  : 'bg-slate-100 border-slate-200 text-slate-500'
+              }`}>
+                {activePanel}
+              </span>
+              <div className={`hidden sm:block w-[1px] h-3 ${theme === 'dark' ? 'bg-[#1c2530]' : 'bg-slate-200'}`} />
+              {/* Breadcrumbs */}
+              <div className="hidden sm:flex items-center gap-1.5 text-[8.5px] uppercase font-black tracking-widest text-[#6a7d92] truncate">
+                <span>{headerInfo.breadcrumbs[0]}</span>
+                {headerInfo.breadcrumbs[1] && (
+                  <>
+                    <span className={`font-bold ${theme === 'dark' ? 'text-[#1c2530]' : 'text-slate-300'}`}>/</span>
+                    <span className="text-[#1e56f0]">{headerInfo.breadcrumbs[1]}</span>
+                  </>
+                )}
+              </div>
+            </div>
 
-          <div className={`relative z-10 ${activePanel.endsWith('-dashboard') ? 'max-w-full px-1' : 'max-w-[1300px]'} mx-auto w-full transition-all duration-300`}>
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={activePanel}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={{ duration: 0.25, ease: 'easeOut' }}
+            {/* Quick Stats / System Health widget aligned horizontally */}
+            <div className="flex items-center gap-2.5 sm:gap-3 flex-shrink-0">
+              {/* Theme Toggle Button */}
+              <button
+                type="button"
+                onClick={() => setTheme(prev => prev === 'dark' ? 'light' : 'dark')}
+                className={`px-2 py-1 rounded-lg border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                  theme === 'dark'
+                    ? 'bg-[#151b23] border-[#222d3a] text-amber-400 hover:text-amber-300 hover:border-amber-400/40 shadow-xs'
+                    : 'bg-slate-100 border-slate-200 text-slate-700 hover:text-[#1e56f0] hover:bg-slate-200/80 shadow-xs'
+                }`}
+                title={theme === 'dark' ? 'Mudar para Tema Claro' : 'Mudar para Tema Escuro'}
               >
-                {renderActivePanel()}
-              </motion.div>
-            </AnimatePresence>
-          </div>
-        </main>
-      </div>
+                {theme === 'dark' ? <Sun className="w-3.5 h-3.5 text-amber-400" /> : <Moon className="w-3.5 h-3.5 text-slate-700" />}
+                <span className="text-[9px] font-extrabold uppercase tracking-wider hidden sm:inline">
+                  {theme === 'dark' ? 'Claro' : 'Escuro'}
+                </span>
+              </button>
 
-      {/* Floating dynamic status toaster */}
-      <div id="toast" className="toast">Notificação de Pátio</div>
-    </div>
+              <div className={`text-[9px] md:text-[10px] font-bold uppercase tracking-wider hidden md:block ${
+                theme === 'dark' ? 'text-white' : 'text-slate-700'
+              }`}>
+                Operador: <span className="text-[#1e56f0]">{user.nome?.split(' ')[0]}</span>
+              </div>
+              <HeaderClock theme={theme} />
+              <div className={`w-[1px] h-3.5 hidden sm:block ${theme === 'dark' ? 'bg-[#1c2530]' : 'bg-slate-200'}`} />
+              {/* Live Indicator Widget */}
+              <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[8.5px] font-sans font-black tracking-widest border ${
+                theme === 'dark' 
+                  ? 'bg-[#11151c] border-[#1c2530] text-[#6a7d92]' 
+                  : 'bg-slate-100 border-slate-200 text-slate-600'
+              }`}>
+                <span className="w-1.5 h-1.5 rounded-full bg-[#1e56f0]" />
+                <span className={`uppercase ${theme === 'dark' ? 'text-gray-300' : 'text-slate-700'}`}>SISTEMA ATIVO</span>
+              </div>
+            </div>
+          </header>
+
+          {/* Inner Content Body */}
+          <main className="flex-1 p-2 md:p-3 lg:p-4.5 relative">
+            
+            {/* Subtle decorative glow */}
+            <div className={`absolute top-0 left-0 w-96 h-96 bg-gradient-to-br ${headerInfo.color} rounded-full blur-3xl pointer-events-none opacity-40 z-0`} />
+
+            <div className={`relative z-10 ${activePanel.endsWith('-dashboard') ? 'max-w-full px-1' : 'max-w-[1300px]'} mx-auto w-full transition-all duration-300`}>
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={activePanel}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.25, ease: 'easeOut' }}
+                >
+                  {renderActivePanel()}
+                </motion.div>
+              </AnimatePresence>
+            </div>
+          </main>
+        </div>
+
+        {/* Floating dynamic status toaster */}
+        <div id="toast" className="toast">Notificação de Pátio</div>
+      </div>
+    </EmpresaDataProvider>
   );
 }

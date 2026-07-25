@@ -17,6 +17,7 @@ interface RegistrosPanelProps {
   user: Usuario;
   empresa: Empresa | null;
   onNavigate: (panelId: string) => void;
+  theme?: 'light' | 'dark';
 }
 
 // Highly polished, theme-adaptive color configuration for each sector

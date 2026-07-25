@@ -2,15 +2,13 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { db, isCustomFirebaseConnected } from '../firebase';
 import { 
   collection, 
-  query, 
-  onSnapshot, 
   addDoc, 
   deleteDoc, 
   doc,
-  updateDoc,
-  where
+  updateDoc
 } from 'firebase/firestore';
 import { RepackRow, Usuario, Empresa, RepackActionPlan, RepackA3Board } from '../types';
+import { useEmpresaData } from '../context/EmpresaDataContext';
 import { generateMockRepackRows } from '../mockDataGenerator';
 import A3BoardComponent from './A3BoardComponent';
 import CalendarFilter from './CalendarFilter';
@@ -64,6 +62,27 @@ interface RepackDashboardProps {
   user: Usuario;
   empresa: Empresa | null;
   onBack?: () => void;
+  theme?: 'light' | 'dark';
+}
+
+function RepackHeaderClock() {
+  const [currentTime, setCurrentTime] = useState('');
+  useEffect(() => {
+    const tick = () => {
+      const now = new Date();
+      setCurrentTime(now.toLocaleTimeString('pt-BR') + ' - ' + now.toLocaleDateString('pt-BR'));
+    };
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <div className="flex items-center gap-1.5 text-[10px] text-gray-500 bg-white px-2.5 py-1 rounded-lg border border-gray-200 shadow-xs font-semibold">
+      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+      <span className="text-[9px] font-mono">{currentTime || 'Sincronizando...'}</span>
+    </div>
+  );
 }
 
 const EMBALAGENS_CONFIG: Record<string, { metaSec: number; label: string }> = {
@@ -257,7 +276,19 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
   const [filterStartDate, setFilterStartDate] = useState('');
   const [filterEndDate, setFilterEndDate] = useState('');
   const [filterMeta, setFilterMeta] = useState<'todos' | 'dentro' | 'fora'>('todos');
-  const [viewUnit, setViewUnit] = useState<'cx' | 'he'>('cx');
+  const [viewUnit, setViewUnit] = useState<'cx' | 'he'>(() => {
+    const saved = localStorage.getItem('repack_view_unit');
+    return (saved === 'he' || saved === 'cx') ? saved : 'cx';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('repack_view_unit', viewUnit);
+  }, [viewUnit]);
+
+  const handleSetViewUnit = (unit: 'cx' | 'he') => {
+    setViewUnit(unit);
+    setSimUnidade(unit === 'he' ? 'HE' : 'SKUs');
+  };
 
   // Active filters (applied automatically on change)
   const [activeColaborador, setActiveColaborador] = useState('todos');
@@ -307,17 +338,6 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
   const [simMediaCustom, setSimMediaCustom] = useState<number | null>(null);
   const [simVolumeCustom, setSimVolumeCustom] = useState<number | null>(null);
 
-  // Clock state
-  const [currentTime, setCurrentTime] = useState('');
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const now = new Date();
-      setCurrentTime(now.toLocaleTimeString('pt-BR') + ' - ' + now.toLocaleDateString('pt-BR'));
-    }, 1000);
-    return () => clearInterval(interval);
-  }, []);
-
   // Timer loop
   useEffect(() => {
     let interval: any = null;
@@ -363,39 +383,22 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
     return d.toISOString().split('T')[0];
   };
 
+  const empresaData = useEmpresaData();
+
   // Fetch Firestore entries
   useEffect(() => {
-    const companyId = empresa?.id || 'demo';
-    const q = query(collection(db, 'repack'), where('empresaId', '==', companyId));
-    const unsub = onSnapshot(q, (snap) => {
-      const rows = snap.docs.map(docSnap => ({
-        _docId: docSnap.id,
-        ...docSnap.data()
-      } as RepackRow));
-      rows.sort((a, b) => (b.dataISO || '').localeCompare(a.dataISO || '') || (b.inicio || '').localeCompare(a.inicio || ''));
-      setActualRepackRows(rows);
-      setLoading(false);
-    }, (err) => {
-      console.error(err);
-      setLoading(false);
-    });
-    return () => unsub();
-  }, [empresa?.id]);
+    const rows = [...empresaData.repack];
+    rows.sort((a, b) => (b.dataISO || '').localeCompare(a.dataISO || '') || (b.inicio || '').localeCompare(a.inicio || ''));
+    setActualRepackRows(rows);
+    setLoading(false);
+  }, [empresaData.repack]);
 
   // Fetch Action Plans
   useEffect(() => {
-    const companyId = empresa?.id || 'demo';
-    const q = query(collection(db, 'repack_action_plans'), where('empresaId', '==', companyId));
-    const unsub = onSnapshot(q, (snap) => {
-      const plans = snap.docs.map(docSnap => ({
-        _docId: docSnap.id,
-        ...docSnap.data()
-      } as RepackActionPlan));
-      plans.sort((a, b) => (b.dataCriacaoISO || '').localeCompare(a.dataCriacaoISO || ''));
-      setActualActionPlans(plans);
-    });
-    return () => unsub();
-  }, [empresa?.id]);
+    const plans = [...empresaData.repackActionPlans];
+    plans.sort((a, b) => (b.dataCriacaoISO || '').localeCompare(a.dataCriacaoISO || ''));
+    setActualActionPlans(plans);
+  }, [empresaData.repackActionPlans]);
 
   // A3 Board helpers and fallback seed
   const fallbackSeedBoard = useMemo<RepackA3Board>(() => {
@@ -466,21 +469,10 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
 
   // Sync A3 Boards from firestore
   useEffect(() => {
-    const companyId = empresa?.id || 'demo';
-    const q = query(collection(db, 'repack_a3_boards'), where('empresaId', '==', companyId));
-    const unsub = onSnapshot(q, (snap) => {
-      const list = snap.docs.map(docSnap => ({
-        _docId: docSnap.id,
-        ...docSnap.data()
-      } as RepackA3Board));
-      
-      const filtered = list.filter(b => !b.dashboard || b.dashboard === 'repack');
-      setBoards(filtered);
-    }, (err) => {
-      console.error('Error loading A3 boards:', err);
-    });
-    return () => unsub();
-  }, [empresa?.id]);
+    const list = [...empresaData.repackA3Boards];
+    const filtered = list.filter(b => !b.dashboard || b.dashboard === 'repack');
+    setBoards(filtered);
+  }, [empresaData.repackA3Boards]);
 
   // Handle active A3 board selection
   useEffect(() => {
@@ -634,6 +626,30 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
     const realProd = totalHE / totalHours;
     return ((realProd / diasTrabalhadosFiltrados) / mesesTrabalhadosFiltrados) * 1.10;
   }, [totalHE, totalTempoGastoSec, diasTrabalhadosFiltrados, mesesTrabalhadosFiltrados]);
+
+  const tempoMedioPorHESec = useMemo(() => {
+    if (totalHE === 0) return 0;
+    return Math.round(totalTempoGastoSec / totalHE);
+  }, [totalTempoGastoSec, totalHE]);
+
+  const tempoMedioPorHEStr = useMemo(() => formatSecToHMS(tempoMedioPorHESec), [tempoMedioPorHESec]);
+
+  const produtividadeMetaCX = useMemo(() => {
+    const totalHours = totalTempoGastoSec / 3600;
+    if (totalHours === 0) return 0;
+    const realProd = totalSkus / totalHours;
+    return ((realProd / diasTrabalhadosFiltrados) / mesesTrabalhadosFiltrados) * 1.10;
+  }, [totalSkus, totalTempoGastoSec, diasTrabalhadosFiltrados, mesesTrabalhadosFiltrados]);
+
+  const getRowHE = (r: RepackRow): number => {
+    const EMBALAGENS_VOLUME_MAP: Record<string, number> = {
+      'LATA 250': 6.0, 'LATA 350': 8.4, 'LATA 473': 11.352,
+      'PET 500ml': 6.0, 'PET 1L': 12.0, 'PET 2L': 12.0,
+      'GARRAFA 600ml': 7.2, 'GARRAFA 1L': 12.0
+    };
+    const factor = EMBALAGENS_VOLUME_MAP[r.embalagem] || 10.0;
+    return Math.round(((factor * (Number(r.quantidade) || 0)) / 100) * 100) / 100;
+  };
 
   // Nível do filtro para fins informativos na UI
   const nivelFiltroProdutividade = useMemo(() => {
@@ -1573,10 +1589,7 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
             </button>
           </div>
 
-          <div className="flex items-center gap-1.5 text-[10px] text-gray-500 bg-white px-2.5 py-1 rounded-lg border border-gray-200 shadow-xs font-semibold">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="text-[9px] font-mono">{currentTime || 'Sincronizando...'}</span>
-          </div>
+          <RepackHeaderClock />
         </div>
       </header>
 
@@ -1649,14 +1662,14 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
                 <div className="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200/60 h-[28px] min-w-[96px]">
                   <button
                     type="button"
-                    onClick={() => setViewUnit('cx')}
+                    onClick={() => handleSetViewUnit('cx')}
                     className={`flex-1 rounded-md font-sans font-black text-[10px] transition-all border-none cursor-pointer h-full flex items-center justify-center px-2.5 ${viewUnit === 'cx' ? 'bg-[#032b5e] text-white shadow-xs' : 'text-slate-400 hover:text-[#032b5e] bg-transparent'}`}
                   >
                     CX
                   </button>
                   <button
                     type="button"
-                    onClick={() => setViewUnit('he')}
+                    onClick={() => handleSetViewUnit('he')}
                     className={`flex-1 rounded-md font-sans font-black text-[10px] transition-all border-none cursor-pointer h-full flex items-center justify-center px-2.5 ${viewUnit === 'he' ? 'bg-[#032b5e] text-white shadow-xs' : 'text-slate-400 hover:text-[#032b5e] bg-transparent'}`}
                   >
                     HE
@@ -1668,178 +1681,118 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
 
           {/* ── COCKPIT INDICADORES GERAL ── */}
           <div className="space-y-3">
-              {/* LINE 1: KPIs (Columns containing stacked Cards) */}
-              <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                {/* Column 1: SKUs & HE */}
-                <div className="flex flex-col gap-3">
-                  {/* KPI 1: SKUs */}
-                  <div className="bg-white rounded-xl border border-gray-200 flex flex-col justify-between shadow-xs hover:border-[#1e56f0]/50 transition-all duration-300 p-2.5 h-[115px] overflow-hidden">
-                    <div className="flex justify-between items-start">
-                      <div className="flex flex-col min-w-0">
-                        <span className="text-[10px] font-black uppercase text-gray-400 tracking-wider">📦 SKUs</span>
-                        <span className="font-extrabold text-[#032b5e] mt-0.5 text-2xl leading-none">{totalSkus}</span>
-                        <span className="text-[9px] text-gray-400 font-bold uppercase mt-1">Total no período</span>
-                      </div>
-                      <div className="rounded-lg bg-[#1e56f0]/10 flex items-center justify-center text-[#1e56f0] w-7 h-7 flex-shrink-0">
-                        <Box className="w-4 h-4" />
-                      </div>
+              {/* LINE 1: KPIs (Side-by-side grid with centered content, without sparklines) */}
+              <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
+                {/* KPI 1: Caixas ou HE Volume */}
+                <div className="bg-white rounded-xl border border-gray-200 flex flex-col justify-center items-center text-center shadow-xs hover:border-[#1e56f0]/50 transition-all duration-300 p-3 h-[95px] overflow-hidden">
+                  <div className="flex items-center justify-center gap-1.5 w-full mb-1">
+                    <div className="rounded-md bg-[#1e56f0]/10 flex items-center justify-center text-[#1e56f0] w-5 h-5 flex-shrink-0">
+                      {viewUnit === 'cx' ? <Box className="w-3.5 h-3.5" /> : <Droplet className="w-3.5 h-3.5" fill="currentColor" />}
                     </div>
-                    <div className="w-full h-[32px] mt-1">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={chartProdutividadeDia} margin={{ top: 0, bottom: 0, left: 0, right: 0 }}>
-                          <Area type="monotone" dataKey="SKUs" stroke="#1e56f0" fill="rgba(30,86,240,0.06)" strokeWidth={1} dot={false} />
-                        </AreaChart>
-                      </ResponsiveContainer>
-                    </div>
+                    <span className="text-[10px] font-black uppercase text-gray-400 tracking-wider truncate">
+                      {viewUnit === 'cx' ? 'VOLUME (CX)' : 'VOLUME (HE)'}
+                    </span>
                   </div>
-
-                  {/* KPI 1B: HE = Hectolitro */}
-                  <div className="bg-white rounded-xl border border-gray-200 flex flex-col justify-between shadow-xs hover:border-sky-500/50 transition-all duration-300 p-2.5 h-[115px] overflow-hidden">
-                    <div className="flex justify-between items-start">
-                      <div className="flex flex-col min-w-0">
-                        <span className="text-[10px] font-black uppercase text-gray-400 tracking-wider">🧪 HE = Hectolitro</span>
-                        <span className="font-extrabold text-[#032b5e] mt-0.5 text-2xl leading-none font-mono">
-                          {totalHE.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 2 })} HL
-                        </span>
-                        <span className="text-[9px] text-gray-400 font-bold uppercase mt-1">Volume de Reembalagem</span>
-                      </div>
-                      <div className="rounded-lg bg-sky-500/10 flex items-center justify-center text-sky-500 w-7 h-7 flex-shrink-0">
-                        <Droplet className="w-4 h-4" fill="currentColor" />
-                      </div>
-                    </div>
-                    <div className="w-full h-[32px] mt-1">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={chartProdutividadeDia} margin={{ top: 0, bottom: 0, left: 0, right: 0 }}>
-                          <Area type="monotone" dataKey="SKUs" stroke="#0ea5e9" fill="rgba(14,165,233,0.06)" strokeWidth={1} dot={false} />
-                        </AreaChart>
-                      </ResponsiveContainer>
-                    </div>
+                  <div className="flex flex-col items-center justify-center w-full">
+                    <span className="font-extrabold text-[#032b5e] text-xl leading-none font-mono whitespace-nowrap">
+                      {viewUnit === 'cx'
+                        ? totalSkus.toLocaleString('pt-BR')
+                        : `${totalHE.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 2 })} HL`}
+                    </span>
+                    <span className="text-[9px] text-gray-400 font-bold uppercase mt-1 truncate w-full">
+                      {viewUnit === 'cx' ? 'Total de Caixas' : 'Volume Reembalagem'}
+                    </span>
                   </div>
                 </div>
 
-                {/* Column 2: Tempo Médio & Tempo Total */}
-                <div className="flex flex-col gap-3">
-                  {/* KPI 2: Tempo Médio */}
-                  <div className="bg-white rounded-xl border border-gray-200 flex flex-col justify-between shadow-xs hover:border-emerald-500/50 transition-all duration-300 p-2.5 h-[115px] overflow-hidden">
-                    <div className="flex justify-between items-start">
-                      <div className="flex flex-col min-w-0">
-                        <span className="text-[10px] font-black uppercase text-gray-400 tracking-wider">⏱ Tempo Médio</span>
-                        <span className="font-extrabold text-[#032b5e] mt-0.5 text-2xl leading-none font-mono">{tempoMedioPorSkuStr}</span>
-                        <span className="text-[9px] text-gray-400 font-bold uppercase mt-1">Por SKU</span>
-                      </div>
-                      <div className="rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-500 w-7 h-7 flex-shrink-0">
-                        <Clock className="w-4 h-4" />
-                      </div>
+                {/* KPI 2: Tempo Médio */}
+                <div className="bg-white rounded-xl border border-gray-200 flex flex-col justify-center items-center text-center shadow-xs hover:border-emerald-500/50 transition-all duration-300 p-3 h-[95px] overflow-hidden">
+                  <div className="flex items-center justify-center gap-1.5 w-full mb-1">
+                    <div className="rounded-md bg-emerald-500/10 flex items-center justify-center text-emerald-500 w-5 h-5 flex-shrink-0">
+                      <Clock className="w-3.5 h-3.5" />
                     </div>
-                    <div className="w-full h-[32px] mt-1">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={chartTempoMedioDia} margin={{ top: 0, bottom: 0, left: 0, right: 0 }}>
-                          <Area type="monotone" dataKey="Minutos" stroke="#22c55e" fill="rgba(34,197,94,0.06)" strokeWidth={1} dot={false} />
-                        </AreaChart>
-                      </ResponsiveContainer>
-                    </div>
+                    <span className="text-[10px] font-black uppercase text-gray-400 tracking-wider truncate">TEMPO MÉDIO</span>
                   </div>
-
-                  {/* KPI 2B: Tempo Total Trabalhado */}
-                  <div className="bg-white rounded-xl border border-gray-200 flex flex-col justify-between shadow-xs hover:border-emerald-500/50 transition-all duration-300 p-2.5 h-[115px] overflow-hidden">
-                    <div className="flex justify-between items-start">
-                      <div className="flex flex-col min-w-0">
-                        <span className="text-[10px] font-black uppercase text-gray-400 tracking-wider">⏱ Tempo Total Trabalhado</span>
-                        <span className="font-extrabold text-[#032b5e] mt-0.5 text-2xl leading-none font-mono">{totalTempoTrabalhadoStr}</span>
-                        <span className="text-[9px] text-gray-400 font-bold uppercase mt-1">Horas Trabalhadas</span>
-                      </div>
-                      <div className="rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-500 w-7 h-7 flex-shrink-0">
-                        <Clock className="w-4 h-4" />
-                      </div>
-                    </div>
-                    <div className="w-full h-[32px] mt-1">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={chartTempoMedioDia} margin={{ top: 0, bottom: 0, left: 0, right: 0 }}>
-                          <Area type="monotone" dataKey="Minutos" stroke="#10b981" fill="rgba(16,185,129,0.06)" strokeWidth={1} dot={false} />
-                        </AreaChart>
-                      </ResponsiveContainer>
-                    </div>
+                  <div className="flex flex-col items-center justify-center w-full">
+                    <span className="font-extrabold text-[#032b5e] text-xl leading-none font-mono whitespace-nowrap">
+                      {viewUnit === 'cx' ? tempoMedioPorSkuStr : tempoMedioPorHEStr}
+                    </span>
+                    <span className="text-[9px] text-gray-400 font-bold uppercase mt-1 truncate w-full">
+                      Por {viewUnit === 'cx' ? 'Caixa (CX)' : 'Hectolitro (HE)'}
+                    </span>
                   </div>
                 </div>
 
-                {/* Column 3: Produtividade */}
-                <div className="flex flex-col gap-3">
-                  {/* KPI 3: Produtividade */}
-                  <div className="bg-white rounded-xl border border-gray-200 flex flex-col justify-between shadow-xs hover:border-[#1e56f0]/50 transition-all duration-300 p-2.5 h-[115px] overflow-hidden">
-                    <div className="flex justify-between items-start">
-                      <div className="flex flex-col min-w-0">
-                        <span className="text-[10px] font-black uppercase text-gray-400 tracking-wider">⚡ Produtividade ({nivelFiltroProdutividade})</span>
-                        <span className="font-extrabold text-[#1e56f0] mt-0.5 text-2xl leading-none font-mono">
-                          {produtividadeRealHE.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-xs font-semibold text-gray-500">HE/h</span>
-                        </span>
-                        <span className="text-[9px] text-gray-400 font-bold uppercase mt-1">
-                          Meta: {produtividadeMetaHE.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 4 })} HE/h
-                        </span>
-                      </div>
-                      <div className="rounded-lg bg-[#1e56f0]/10 flex items-center justify-center text-[#1e56f0] w-7 h-7 flex-shrink-0">
-                        <Zap className="w-4 h-4" />
-                      </div>
+                {/* KPI 3: Tempo Total Trabalhado */}
+                <div className="bg-white rounded-xl border border-gray-200 flex flex-col justify-center items-center text-center shadow-xs hover:border-emerald-500/50 transition-all duration-300 p-3 h-[95px] overflow-hidden">
+                  <div className="flex items-center justify-center gap-1.5 w-full mb-1">
+                    <div className="rounded-md bg-emerald-500/10 flex items-center justify-center text-emerald-500 w-5 h-5 flex-shrink-0">
+                      <Clock className="w-3.5 h-3.5" />
                     </div>
-                    <div className="w-full h-[32px] mt-1">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={chartProdutividadeDia} margin={{ top: 0, bottom: 0, left: 0, right: 0 }}>
-                          <Area type="monotone" dataKey="SKUs" stroke="#1e56f0" fill="rgba(30,86,240,0.06)" strokeWidth={1} dot={false} />
-                        </AreaChart>
-                      </ResponsiveContainer>
-                    </div>
+                    <span className="text-[10px] font-black uppercase text-gray-400 tracking-wider truncate">TEMPO TOTAL</span>
                   </div>
-                  {/* Spacer under Column 3 as requested: Produtividade não precisa ter nada */}
-                  <div className="h-[115px] hidden lg:block" />
+                  <div className="flex flex-col items-center justify-center w-full">
+                    <span className="font-extrabold text-[#032b5e] text-xl leading-none font-mono whitespace-nowrap">{totalTempoTrabalhadoStr}</span>
+                    <span className="text-[9px] text-gray-400 font-bold uppercase mt-1 truncate w-full">Horas Trabalhadas</span>
+                  </div>
                 </div>
 
-                {/* Column 4: Eficiência & Tendência */}
-                <div className="flex flex-col gap-3">
-                  {/* KPI 4: Eficiência */}
-                  <div className="bg-white rounded-xl border border-gray-200 flex flex-col justify-between shadow-xs hover:border-purple-500/50 transition-all duration-300 p-2.5 h-[115px] overflow-hidden">
-                    <div className="flex justify-between items-start">
-                      <div className="flex flex-col min-w-0">
-                        <span className="text-[10px] font-black uppercase text-gray-400 tracking-wider">🎯 Eficiência</span>
-                        <span className="font-extrabold text-[#032b5e] mt-0.5 text-2xl leading-none">{eficienciaMedia}%</span>
-                        <span className={`text-[9px] font-bold uppercase mt-1 ${eficienciaMedia >= 100 ? 'text-emerald-500' : 'text-rose-500'}`}>
-                          {eficienciaMedia >= 100 ? 'Meta OK' : 'Abaixo da meta'}
-                        </span>
-                      </div>
-                      <div className="rounded-lg bg-purple-500/10 flex items-center justify-center text-purple-500 w-7 h-7 flex-shrink-0">
-                        <Target className="w-4 h-4" />
-                      </div>
+                {/* KPI 4: Produtividade */}
+                <div className="bg-white rounded-xl border border-gray-200 flex flex-col justify-center items-center text-center shadow-xs hover:border-[#1e56f0]/50 transition-all duration-300 p-3 h-[95px] overflow-hidden">
+                  <div className="flex items-center justify-center gap-1.5 w-full mb-1">
+                    <div className="rounded-md bg-[#1e56f0]/10 flex items-center justify-center text-[#1e56f0] w-5 h-5 flex-shrink-0">
+                      <Zap className="w-3.5 h-3.5" />
                     </div>
-                    <div className="w-full h-[32px] mt-1">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={chartEvolucaoSemanal} margin={{ top: 0, bottom: 0, left: 0, right: 0 }}>
-                          <Area type="monotone" dataKey="Eficiencia" stroke="#8b5cf6" fill="rgba(139,92,246,0.06)" strokeWidth={1} dot={false} />
-                        </AreaChart>
-                      </ResponsiveContainer>
-                    </div>
+                    <span className="text-[10px] font-black uppercase text-gray-400 tracking-wider truncate">PRODUTIVIDADE</span>
                   </div>
+                  <div className="flex flex-col items-center justify-center w-full">
+                    <span className="font-extrabold text-[#1e56f0] text-xl leading-none font-mono whitespace-nowrap">
+                      {viewUnit === 'cx'
+                        ? `${produtividadeSkuHora.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} `
+                        : `${produtividadeRealHE.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} `
+                      }
+                      <span className="text-xs font-semibold text-gray-500">{viewUnit === 'cx' ? 'CX/h' : 'HE/h'}</span>
+                    </span>
+                    <span className="text-[9px] text-gray-400 font-bold uppercase mt-1 truncate w-full">
+                      Meta: {viewUnit === 'cx'
+                        ? `${produtividadeMetaCX.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 2 })} CX/h`
+                        : `${produtividadeMetaHE.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 4 })} HE/h`
+                      }
+                    </span>
+                  </div>
+                </div>
 
-                  {/* KPI 4B: Tendência do Mês */}
-                  <div className="bg-white rounded-xl border border-gray-200 flex flex-col justify-between shadow-xs hover:border-purple-500/50 transition-all duration-300 p-2.5 h-[115px] overflow-hidden">
-                    <div className="flex justify-between items-start">
-                      <div className="flex flex-col min-w-0">
-                        <span className="text-[10px] font-black uppercase text-gray-400 tracking-wider">📈 Tendência do Mês</span>
-                        <span className={`font-black mt-0.5 text-[14px] leading-tight ${tendenciaMensal.colorClass}`}>
-                          {tendenciaMensal.status}
-                        </span>
-                        <span className="text-[9px] text-gray-400 font-bold uppercase mt-1">
-                          {tendenciaMensal.label} ({tendenciaMensal.percent}%)
-                        </span>
-                      </div>
-                      <div className={`rounded-lg flex items-center justify-center w-7 h-7 flex-shrink-0 ${tendenciaMensal.percent >= 100 ? 'bg-emerald-500/10 text-emerald-500' : 'bg-rose-500/10 text-rose-500'}`}>
-                        <TrendingUp className="w-4 h-4" />
-                      </div>
+                {/* KPI 5: Eficiência */}
+                <div className="bg-white rounded-xl border border-gray-200 flex flex-col justify-center items-center text-center shadow-xs hover:border-purple-500/50 transition-all duration-300 p-3 h-[95px] overflow-hidden">
+                  <div className="flex items-center justify-center gap-1.5 w-full mb-1">
+                    <div className="rounded-md bg-purple-500/10 flex items-center justify-center text-purple-500 w-5 h-5 flex-shrink-0">
+                      <Target className="w-3.5 h-3.5" />
                     </div>
-                    <div className="w-full h-[32px] mt-1">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={chartEvolucaoSemanal} margin={{ top: 0, bottom: 0, left: 0, right: 0 }}>
-                          <Area type="monotone" dataKey="Eficiencia" stroke={tendenciaMensal.percent >= 100 ? '#10b981' : '#f43f5e'} fill={tendenciaMensal.percent >= 100 ? 'rgba(16,185,129,0.06)' : 'rgba(244,63,94,0.06)'} strokeWidth={1} dot={false} />
-                        </AreaChart>
-                      </ResponsiveContainer>
+                    <span className="text-[10px] font-black uppercase text-gray-400 tracking-wider truncate">EFICIÊNCIA</span>
+                  </div>
+                  <div className="flex flex-col items-center justify-center w-full">
+                    <span className="font-extrabold text-[#032b5e] text-xl leading-none font-mono whitespace-nowrap">{eficienciaMedia}%</span>
+                    <span className={`text-[9px] font-bold uppercase mt-1 truncate w-full ${eficienciaMedia >= 100 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                      {eficienciaMedia >= 100 ? 'Meta OK' : 'Abaixo da meta'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* KPI 6: Tendência do Mês */}
+                <div className="bg-white rounded-xl border border-gray-200 flex flex-col justify-center items-center text-center shadow-xs hover:border-purple-500/50 transition-all duration-300 p-3 h-[95px] overflow-hidden">
+                  <div className="flex items-center justify-center gap-1.5 w-full mb-1">
+                    <div className={`rounded-md flex items-center justify-center w-5 h-5 flex-shrink-0 ${tendenciaMensal.percent >= 100 ? 'bg-emerald-500/10 text-emerald-500' : 'bg-rose-500/10 text-rose-500'}`}>
+                      <TrendingUp className="w-3.5 h-3.5" />
                     </div>
+                    <span className="text-[10px] font-black uppercase text-gray-400 tracking-wider truncate">TENDÊNCIA MÊS</span>
+                  </div>
+                  <div className="flex flex-col items-center justify-center w-full">
+                    <span className={`font-black text-sm leading-tight truncate w-full ${tendenciaMensal.colorClass}`}>
+                      {tendenciaMensal.status}
+                    </span>
+                    <span className="text-[9px] text-gray-400 font-bold uppercase mt-1 truncate w-full">
+                      {tendenciaMensal.label} ({tendenciaMensal.percent}%)
+                    </span>
                   </div>
                 </div>
               </section>
@@ -1855,30 +1808,6 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
                     <p className="text-[10px] text-gray-400 font-semibold mt-0.5 uppercase tracking-wide">
                       Projeção automatizada baseada inteiramente em dados reais de produção e calendário útil
                     </p>
-                  </div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <button
-                      onClick={() => {
-                        setSimUnidade('HE');
-                        setSimMetaCustom(null);
-                        setSimMediaCustom(null);
-                        setSimVolumeCustom(null);
-                      }}
-                      className={`px-3 py-1 text-[10px] font-black uppercase rounded-lg border transition-all duration-300 cursor-pointer ${simUnidade === 'HE' ? 'bg-[#032b5e] text-white border-[#032b5e]' : 'bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100'}`}
-                    >
-                      Volume em HE
-                    </button>
-                    <button
-                      onClick={() => {
-                        setSimUnidade('SKUs');
-                        setSimMetaCustom(null);
-                        setSimMediaCustom(null);
-                        setSimVolumeCustom(null);
-                      }}
-                      className={`px-3 py-1 text-[10px] font-black uppercase rounded-lg border transition-all duration-300 cursor-pointer ${simUnidade === 'SKUs' ? 'bg-[#032b5e] text-white border-[#032b5e]' : 'bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100'}`}
-                    >
-                      Volume em SKUs
-                    </button>
                   </div>
                 </div>
 
@@ -2112,7 +2041,9 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
               {/* LINE 2: Produtividade por Dia & Tempo Médio */}
               <section className="grid grid-cols-1 lg:grid-cols-12 gap-3">
                 <div className="bg-white border border-gray-200 rounded-xl lg:col-span-6 p-2.5 h-[175px] flex flex-col justify-between shadow-3xs">
-                  <h3 className="font-sans font-black text-[10px] uppercase text-[#032b5e] tracking-wider mb-1">Produtividade por Dia</h3>
+                  <h3 className="font-sans font-black text-[10px] uppercase text-[#032b5e] tracking-wider mb-1">
+                    Produtividade por Dia ({viewUnit === 'cx' ? 'CX' : 'HE'})
+                  </h3>
                   <div className="w-full h-[135px]">
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={chartProdutividadeDia} margin={{ top: 10, bottom: 0, left: -25, right: 0 }}>
@@ -2120,7 +2051,7 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
                         <XAxis dataKey="name" stroke="#94a3b8" tickLine={false} axisLine={false} fontSize={8} />
                         <YAxis stroke="#94a3b8" tickLine={false} axisLine={false} fontSize={8} />
                         <Tooltip contentStyle={{ backgroundColor: '#ffffff', borderColor: '#e2e8f0', borderRadius: '6px', fontSize: '10px' }} />
-                        <Bar dataKey="SKUs" fill="#1e56f0" radius={0} barSize={24} />
+                        <Bar dataKey={viewUnit === 'cx' ? 'SKUs' : 'HE'} fill="#1e56f0" radius={0} barSize={24} />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
@@ -2183,14 +2114,19 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
 
                 {/* Ranking Embalagens */}
                 <div className="bg-white border border-gray-200 rounded-xl lg:col-span-4 p-2.5 h-[185px] flex flex-col justify-between">
-                  <h3 className="font-sans font-black text-[10px] uppercase text-[#032b5e] tracking-wider mb-1">Ranking Embalagens</h3>
+                  <h3 className="font-sans font-black text-[10px] uppercase text-[#032b5e] tracking-wider mb-1">
+                    Ranking Embalagens ({viewUnit === 'cx' ? 'CX' : 'HL'})
+                  </h3>
                   <div className="w-full h-[140px]">
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart layout="vertical" data={chartRankingEmbalagens} margin={{ left: -30, right: 5, top: 0, bottom: 0 }}>
                         <CartesianGrid strokeDasharray="2 2" stroke="#f1f5f9" horizontal={false} />
                         <XAxis type="number" stroke="#94a3b8" tickLine={false} fontSize={8} />
                         <YAxis dataKey="name" type="category" stroke="#94a3b8" tickLine={false} width={80} fontSize={8} />
-                        <Tooltip contentStyle={{ backgroundColor: '#ffffff', borderColor: '#e2e8f0', borderRadius: '6px', fontSize: '9px' }} />
+                        <Tooltip 
+                          contentStyle={{ backgroundColor: '#ffffff', borderColor: '#e2e8f0', borderRadius: '6px', fontSize: '9px' }}
+                          formatter={(val: any) => [`${val.toLocaleString('pt-BR')} ${viewUnit === 'cx' ? 'CX' : 'HL'}`, 'Volume']}
+                        />
                         <Bar dataKey="value" fill="#1e56f0" radius={[0, 2, 2, 0]} barSize={8} />
                       </BarChart>
                     </ResponsiveContainer>
@@ -2241,7 +2177,9 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
               {/* LINE 1: Heatmap & Evolução */}
               <section className="grid grid-cols-1 lg:grid-cols-12 gap-3">
                 <div className="bg-white border border-gray-200 rounded-xl lg:col-span-6 p-3 h-[245px] flex flex-col justify-between shadow-3xs">
-                  <h3 className="font-sans font-black text-[10px] uppercase text-[#032b5e] tracking-wider mb-1">Heatmap de Produtividade <span className="text-[9px] text-gray-400 font-normal normal-case">(SKUs por hora)</span></h3>
+                  <h3 className="font-sans font-black text-[10px] uppercase text-[#032b5e] tracking-wider mb-1">
+                    Heatmap de Produtividade <span className="text-[9px] text-gray-400 font-normal normal-case">({viewUnit === 'cx' ? 'CX por hora' : 'HE por hora'})</span>
+                  </h3>
                   <div className="grid grid-cols-6 gap-y-2 gap-x-1 text-center py-2 flex-1 my-auto">
                     <div />
                     {['SEG', 'TER', 'QUA', 'QUI', 'SEX'].map(d => (
@@ -2340,7 +2278,9 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
               <section className="grid grid-cols-1 lg:grid-cols-12 gap-3">
                 {/* Comparativo Meta x Real */}
                 <div className="bg-white border border-gray-200 rounded-xl lg:col-span-4 p-2.5 h-[180px] flex flex-col justify-between">
-                  <h3 className="font-sans font-black text-[10px] uppercase text-[#032b5e] tracking-wider mb-1">Meta x Real <span className="text-[9px] text-gray-400 font-normal normal-case">(SKUs)</span></h3>
+                  <h3 className="font-sans font-black text-[10px] uppercase text-[#032b5e] tracking-wider mb-1">
+                    Meta x Real <span className="text-[9px] text-gray-400 font-normal normal-case">({viewUnit === 'cx' ? 'CX' : 'HL'})</span>
+                  </h3>
                   <div className="w-full h-[135px]">
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={chartComparativoMetaReal} margin={{ top: 5, bottom: 0, left: -25, right: 0 }}>
@@ -2456,7 +2396,7 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
                       <th className={isCompact ? 'p-1.5' : 'p-2.5'}>Data</th>
                       <th className={isCompact ? 'p-1.5' : 'p-2.5'}>Colaborador</th>
                       <th className={isCompact ? 'p-1.5' : 'p-2.5'}>Embalagem</th>
-                      <th className={isCompact ? 'p-1.5' : 'p-2.5'}>Quantidade</th>
+                      <th className={isCompact ? 'p-1.5' : 'p-2.5'}>Quantidade ({viewUnit === 'cx' ? 'CX' : 'HL'})</th>
                       <th className={isCompact ? 'p-1.5' : 'p-2.5'}>Intervalo</th>
                       <th className={isCompact ? 'p-1.5' : 'p-2.5'}>Tempo</th>
                       <th className={isCompact ? 'p-1.5' : 'p-2.5'}>Eficiência</th>
@@ -2479,7 +2419,12 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
                           <td className={`${isCompact ? 'p-1.5' : 'p-2.5'} font-semibold text-gray-400`}>{row.data}</td>
                           <td className={`${isCompact ? 'p-1.5' : 'p-2.5'} font-bold text-slate-800`}>{row.operador || '—'}</td>
                           <td className={`${isCompact ? 'p-1.5' : 'p-2.5'} font-semibold text-gray-500`}>{row.embalagem}</td>
-                          <td className={`${isCompact ? 'p-1.5' : 'p-2.5'} font-bold text-[#1e56f0]`}>{row.quantidade} SKU</td>
+                          <td className={`${isCompact ? 'p-1.5' : 'p-2.5'} font-bold text-[#1e56f0]`}>
+                            {viewUnit === 'cx'
+                              ? `${row.quantidade} CX`
+                              : `${getRowHE(row).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} HE`
+                            }
+                          </td>
                           <td className={`${isCompact ? 'p-1.5' : 'p-2.5'} text-gray-400`}>{row.inicio} - {row.fim}</td>
                           <td className={`${isCompact ? 'p-1.5' : 'p-2.5'} font-mono text-slate-700 font-semibold`}>{row.duracao}</td>
                           <td className={isCompact ? 'p-1.5' : 'p-2.5'}>
@@ -2563,8 +2508,13 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
                       <span className={`font-bold ${selectedRowDetails.efficiency >= 100 ? 'text-emerald-500' : 'text-rose-500'}`}>{selectedRowDetails.efficiency}%</span>
                     </div>
                     <div className="flex justify-between text-xs py-1 border-b border-gray-100">
-                      <span className="text-gray-400 font-bold uppercase text-[10px]">SKUs por Hora</span>
-                      <span className="font-bold text-[#1e56f0]">{selectedRowDetails.caixasHora} SKU/h</span>
+                      <span className="text-gray-400 font-bold uppercase text-[10px]">{viewUnit === 'cx' ? 'CX por Hora' : 'HE por Hora'}</span>
+                      <span className="font-bold text-[#1e56f0]">
+                        {viewUnit === 'cx' 
+                          ? `${selectedRowDetails.caixasHora} CX/h`
+                          : `${(getRowHE(selectedRowDetails.row) / (timeToSec(selectedRowDetails.row.duracao) / 3600 || 1)).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} HE/h`
+                        }
+                      </span>
                     </div>
                     <div className="flex justify-between text-xs py-1 border-b border-gray-100">
                       <span className="text-gray-400 font-bold uppercase text-[10px]">Tempo Médio Real</span>
