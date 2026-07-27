@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import * as XLSX from 'xlsx';
 import { 
   BarChart, 
   Bar, 
@@ -620,6 +621,55 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
   const totalDesviosFEFO = effectivePickingComp.filter(p => p.status === 'Desvio Crítico').length;
   const totalConformeFEFO = effectivePickingComp.filter(p => p.status === 'Conforme').length;
   const aderenciaFEFO = effectivePickingComp.length > 0 ? Math.round((totalConformeFEFO / effectivePickingComp.length) * 100) : 92;
+
+  // 10 Primeiros Produtos a Vencer (ordenados do menor para o maior número de dias restantes)
+  const top10Expiring = useMemo(() => {
+    return [...compiledValidades]
+      .sort((a, b) => a.days - b.days)
+      .slice(0, 10);
+  }, [compiledValidades]);
+
+  const handleExportTop10Excel = () => {
+    if (top10Expiring.length === 0) return;
+
+    const dataToExport = top10Expiring.map((item, idx) => {
+      let formattedVal = item.validade;
+      try {
+        if (item.validade && item.validade.includes('-')) {
+          const [y, m, d] = item.validade.split('-');
+          formattedVal = `${d}/${m}/${y}`;
+        }
+      } catch (e) {}
+
+      let statusStr = `${item.days} dias restantes`;
+      if (item.days < 0) statusStr = `${Math.abs(item.days)} dias atrasado`;
+      else if (item.days === 0) statusStr = 'Vence Hoje';
+
+      const localizacaoStr = item.localizacao === 'central' ? 'Estoque Central' : item.localizacao === 'picking' ? 'Picking' : 'Marketplace';
+      const localizacaoCompleta = item.bloco ? `${localizacaoStr} - Bloco ${item.bloco}` : localizacaoStr;
+
+      return {
+        'Posição (#)': idx + 1,
+        'Código SKU': item.codigo,
+        'Descrição do Produto': item.descricao,
+        'Localização': localizacaoCompleta,
+        'Data de Vencimento': formattedVal,
+        'Dias Restantes': item.days,
+        'Status FEFO': statusStr,
+        'Paletes (PL)': item.palhete || 0,
+        'Caixas (CX)': item.caixa || 0,
+        'Quantidade Total (UN)': item.totalUnitiesRaw
+      };
+    });
+
+    const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Top 10 Vencimentos');
+
+    const companyName = empresa?.razaoSocial ? empresa.razaoSocial.replace(/[^a-zA-Z0-9]/g, '_') : 'Empresa';
+    const todayStr = new Date().toISOString().substring(0, 10);
+    XLSX.writeFile(workbook, `10_Produtos_Primeiros_A_Vencer_FEFO_${companyName}_${todayStr}.xlsx`);
+  };
 
   // Actions completion rate
   const completedActions = actionPoints.filter(a => a.status === 'Concluído').length;
@@ -1338,6 +1388,121 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
                 </ResponsiveContainer>
               </div>
             </div>
+          </div>
+
+          {/* Top 10 Produtos com Vencimento Mais Próximo */}
+          <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex flex-col gap-4">
+            <div className="flex items-center justify-between flex-wrap gap-2 border-b border-gray-100 pb-3">
+              <div>
+                <h3 className="font-sans font-black text-xs uppercase text-[#032b5e] tracking-wider flex items-center gap-2">
+                  <span>🚨 10 Primeiros Produtos a Vencer</span>
+                  <span className="bg-red-100 text-red-700 text-[10px] font-bold px-2 py-0.5 rounded-full border border-red-200">
+                    Prioridade FEFO
+                  </span>
+                </h3>
+                <p className="text-[10px] text-gray-400 font-bold mt-0.5">
+                  Lista dos 10 itens no estoque com a data de vencimento mais próxima (ordenados do menor para o maior prazo restante)
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-mono font-bold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200">
+                  {top10Expiring.length} de {compiledValidades.length} lotes
+                </span>
+                <button
+                  onClick={handleExportTop10Excel}
+                  disabled={top10Expiring.length === 0}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs rounded-lg shadow-sm transition-all cursor-pointer hover:shadow"
+                  title="Exportar os 10 primeiros produtos a vencer em planilha Excel"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Exportar Excel</span>
+                </button>
+              </div>
+            </div>
+
+            {top10Expiring.length === 0 ? (
+              <div className="p-8 text-center text-xs text-gray-400 font-semibold bg-slate-50 rounded-lg">
+                Nenhum produto cadastrado no estoque de validades.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-gray-200 bg-slate-50/70 text-[10px] uppercase font-black text-gray-500 tracking-wider">
+                      <th className="py-2.5 px-3 text-center w-12">#</th>
+                      <th className="py-2.5 px-3">Código</th>
+                      <th className="py-2.5 px-3">Descrição do Produto</th>
+                      <th className="py-2.5 px-3">Localização</th>
+                      <th className="py-2.5 px-3 text-center">Data Vencimento</th>
+                      <th className="py-2.5 px-3 text-center">Dias Restantes</th>
+                      <th className="py-2.5 px-3 text-center">Quantidade</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 text-xs">
+                    {top10Expiring.map((item, idx) => {
+                      let formattedValDate = item.validade;
+                      try {
+                        if (item.validade && item.validade.includes('-')) {
+                          const [y, m, d] = item.validade.split('-');
+                          formattedValDate = `${d}/${m}/${y}`;
+                        }
+                      } catch (e) {}
+
+                      let badgeBg = 'bg-red-50 text-red-700 border-red-200 font-bold';
+                      let badgeText = `${item.days} dias`;
+                      if (item.days < 0) {
+                        badgeBg = 'bg-red-600 text-white border-red-700 font-black animate-pulse';
+                        badgeText = `${Math.abs(item.days)}d vencido`;
+                      } else if (item.days === 0) {
+                        badgeBg = 'bg-red-600 text-white border-red-700 font-black';
+                        badgeText = 'Vence Hoje';
+                      } else if (item.days <= 30) {
+                        badgeBg = 'bg-red-100 text-red-800 border-red-300 font-bold';
+                      } else if (item.days <= 60) {
+                        badgeBg = 'bg-amber-100 text-amber-800 border-amber-300 font-bold';
+                      } else if (item.days <= 90) {
+                        badgeBg = 'bg-yellow-100 text-yellow-800 border-yellow-300 font-bold';
+                      } else {
+                        badgeBg = 'bg-emerald-100 text-emerald-800 border-emerald-300 font-bold';
+                      }
+
+                      return (
+                        <tr key={item.id || item._docId || idx} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="py-2.5 px-3 text-center font-mono font-black text-slate-400">
+                            {idx + 1}
+                          </td>
+                          <td className="py-2.5 px-3 font-mono font-black text-[#f5a623]">
+                            {item.codigo}
+                          </td>
+                          <td className="py-2.5 px-3 font-bold text-slate-800">
+                            {item.descricao}
+                          </td>
+                          <td className="py-2.5 px-3 text-[11px]">
+                            <span className="inline-flex items-center gap-1 bg-slate-100 text-slate-700 border border-slate-200 px-2 py-0.5 rounded font-semibold uppercase text-[9px]">
+                              {item.localizacao === 'central' ? 'Estoque Central' : item.localizacao === 'picking' ? 'Picking' : 'Marketplace'}
+                              {item.bloco ? ` — Bloco ${item.bloco}` : ''}
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-3 text-center font-mono font-bold text-slate-800">
+                            📅 {formattedValDate}
+                          </td>
+                          <td className="py-2.5 px-3 text-center">
+                            <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] border ${badgeBg}`}>
+                              ⏳ {badgeText}
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-3 text-center font-mono text-[11px] text-slate-700">
+                            {item.palhete > 0 && <span className="font-bold text-purple-700 mr-1.5">🪵 {item.palhete} pl</span>}
+                            {item.caixa > 0 && <span className="font-bold text-slate-700">📦 {item.caixa} cx</span>}
+                            {item.palhete === 0 && item.caixa === 0 && <span className="font-bold">{item.totalUnitiesRaw} un</span>}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
       )}

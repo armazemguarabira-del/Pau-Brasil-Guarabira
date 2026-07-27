@@ -40,6 +40,7 @@ export default function ExportarPanel({ user, empresa }: ExportarPanelProps) {
   const [despejo, setDespejo] = useState<DespejoRow[]>([]);
   const [quebras, setQuebras] = useState<QuebraRow[]>([]);
   const [validades, setValidades] = useState<ValidadeRow[]>([]);
+  const [repackValidades, setRepackValidades] = useState<RepackValidadeRow[]>([]);
   const [armazem, setArmazem] = useState<ArmazemRow[]>([]);
   const [blitz, setBlitz] = useState<BlitzRefugoRow[]>([]);
   const [tasks, setTasks] = useState<Tarefa[]>([]);
@@ -80,6 +81,7 @@ export default function ExportarPanel({ user, empresa }: ExportarPanelProps) {
   useEffect(() => { if (db) setDespejo(empresaData.despejo); }, [empresaData.despejo]);
   useEffect(() => { if (db) setQuebras(empresaData.quebras); }, [empresaData.quebras]);
   useEffect(() => { if (db) setValidades(empresaData.validades); }, [empresaData.validades]);
+  useEffect(() => { if (db) setRepackValidades(empresaData.repackValidades || []); }, [empresaData.repackValidades]);
   useEffect(() => { if (db) setArmazem(empresaData.armazem); }, [empresaData.armazem]);
   useEffect(() => { if (db) setBlitz(empresaData.blitz); }, [empresaData.blitz]);
   useEffect(() => { if (db) setTasks(empresaData.tarefas); }, [empresaData.tarefas]);
@@ -91,6 +93,7 @@ export default function ExportarPanel({ user, empresa }: ExportarPanelProps) {
       setDespejo(JSON.parse(localStorage.getItem(`despejo_${empresaId}`) || '[]'));
       setQuebras(JSON.parse(localStorage.getItem(`quebras_${empresaId}`) || '[]'));
       setValidades(JSON.parse(localStorage.getItem(`validades_${empresaId}`) || '[]'));
+      setRepackValidades(JSON.parse(localStorage.getItem(`repack_validades_${empresaId}`) || '[]'));
       setArmazem(JSON.parse(localStorage.getItem(`armazem_rows_${empresaId}`) || '[]'));
       setBlitz(JSON.parse(localStorage.getItem(`blitz_${empresaId}`) || '[]'));
       setTasks(JSON.parse(localStorage.getItem(`tasks_${empresaId}`) || '[]'));
@@ -372,6 +375,122 @@ export default function ExportarPanel({ user, empresa }: ExportarPanelProps) {
       toast('Relatório Retorno de Rota baixado com sucesso!');
     } catch (err) {
       alert('Erro ao exportar Retorno de Rota: ' + err);
+    }
+  };
+
+  const exportValidadesExcel = () => {
+    try {
+      let filteredV = validades.filter(v => isWithinInterval(v.cadastradoEm || v._criadoEm || v.validade, startDate, endDate));
+      if (filteredV.length === 0 && validades.length > 0) {
+        filteredV = validades;
+      }
+
+      let filteredRV = repackValidades.filter(rv => isWithinInterval(rv.cadastradoEm || rv.validade, startDate, endDate));
+      if (filteredRV.length === 0 && repackValidades.length > 0) {
+        filteredRV = repackValidades;
+      }
+
+      if (filteredV.length === 0 && filteredRV.length === 0) {
+        toast('Nenhum registro de validade encontrado.');
+        return;
+      }
+
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const mappedValidades = filteredV.map((v) => {
+        let formattedVal = v.validade;
+        if (v.validade && v.validade.includes('-')) {
+          const [y, m, d] = v.validade.split('-');
+          formattedVal = `${d}/${m}/${y}`;
+        }
+
+        let days = 0;
+        if (v.validade) {
+          const expDate = new Date(v.validade);
+          const diffTime = expDate.getTime() - today.getTime();
+          days = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        }
+
+        const p = Number(v.palhete) || 0;
+        const l = Number(v.lastro) || 0;
+        const c = Number(v.caixa) || 0;
+        let totalCaixas = 1;
+        if (p > 0 && l > 0 && c > 0) totalCaixas = p * l * c;
+        else if (p > 0 && l > 0) totalCaixas = p * l;
+        else if (p > 0 && c > 0) totalCaixas = p * c;
+        else if (p > 0) totalCaixas = p;
+        else if (c > 0) totalCaixas = c;
+
+        const localizacaoStr = v.localizacao === 'central' ? 'Estoque Central' : v.localizacao === 'picking' ? 'Picking' : 'Marketplace';
+        const localizacaoCompleta = v.bloco ? `${localizacaoStr} - Bloco ${v.bloco}` : localizacaoStr;
+
+        return {
+          'Origem / Módulo': 'Estoque (FEFO)',
+          'Código SKU': v.codigo,
+          'Descrição do Produto': v.descricao,
+          'Paletes (PL)': v.palhete || 0,
+          'Lastro': v.lastro || 0,
+          'Caixas por Lastro': v.caixa || 0,
+          'Total Caixas/Volume': totalCaixas,
+          'Data de Vencimento': formattedVal,
+          'Dias Restantes': days,
+          'Localização': localizacaoCompleta,
+          'Bloco / Endereço': v.bloco || '—',
+          'Operador / Resp.': '—',
+          'Data do Cadastro': v.cadastradoEm || v._criadoEm || '—'
+        };
+      });
+
+      const mappedRepack = filteredRV.map((rv) => {
+        let formattedVal = rv.validade;
+        if (rv.validade && rv.validade.includes('-')) {
+          const [y, m, d] = rv.validade.split('-');
+          formattedVal = `${d}/${m}/${y}`;
+        }
+
+        let days = 0;
+        if (rv.validade) {
+          const expDate = new Date(rv.validade);
+          const diffTime = expDate.getTime() - today.getTime();
+          days = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        }
+
+        return {
+          'Origem / Módulo': 'Operador de Repack',
+          'Código SKU': rv.codigo,
+          'Descrição do Produto': rv.descricao,
+          'Paletes (PL)': 0,
+          'Lastro': 0,
+          'Caixas por Lastro': 0,
+          'Total Caixas/Volume': rv.quantidade || 0,
+          'Data de Vencimento': formattedVal,
+          'Dias Restantes': days,
+          'Localização': 'Setor Repack',
+          'Bloco / Endereço': rv.nomeManual || 'Repack',
+          'Operador / Resp.': rv.operador || '—',
+          'Data do Cadastro': rv.cadastradoEm || '—'
+        };
+      });
+
+      const allRows = [...mappedValidades, ...mappedRepack].map((item, idx) => ({
+        'Item (#)': idx + 1,
+        ...item
+      }));
+
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.json_to_sheet(allRows);
+      XLSX.utils.book_append_sheet(wb, ws, 'Validades Coletadas');
+
+      if (mappedRepack.length > 0) {
+        const wsRepack = XLSX.utils.json_to_sheet(mappedRepack.map((item, idx) => ({ 'Item (#)': idx + 1, ...item })));
+        XLSX.utils.book_append_sheet(wb, wsRepack, 'Validades Repack');
+      }
+
+      XLSX.writeFile(wb, `Relatorio_Validades_Coletadas_${startDate}_ate_${endDate}.xlsx`);
+      toast('Relatório Unificado de Validades Coletadas baixado com sucesso!');
+    } catch (err) {
+      alert('Erro ao exportar Validades: ' + err);
     }
   };
 
@@ -1084,6 +1203,25 @@ export default function ExportarPanel({ user, empresa }: ExportarPanelProps) {
             className="w-full sm:w-auto px-5 py-2.5 bg-[#ffdd59] hover:bg-[#ffd32a] text-slate-900 font-sans font-black text-[11px] uppercase tracking-wider rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
           >
             ⬇️ BAIXAR RELATÓRIO REFUGO (.XLSX)
+          </button>
+        </div>
+      </div>
+
+      {/* CARD 8: VALIDADES COLETADAS (FEFO) – EXPORTAR EXCEL */}
+      <div className="g-card p-6 md:p-8 flex flex-col gap-3 border border-[#10b981]/30 bg-emerald-500/[0.02] rounded-2xl shadow-sm hover:shadow-md hover:border-[#10b981]/50 transition-all">
+        <h3 className="font-sans font-black text-sm tracking-wider uppercase text-emerald-800 flex items-center gap-2">
+          📆 VALIDADES COLETADAS (FEFO) – EXPORTAR EXCEL
+        </h3>
+        <p className="text-xs text-[#6b7280] leading-relaxed">
+          Exporta todos os lotes e validades coletadas no estoque com localização (Picking / Estoque Central), bloco e dias restantes para vencimento.
+        </p>
+        <div className="mt-1">
+          <button 
+            type="button"
+            onClick={exportValidadesExcel}
+            className="w-full sm:w-auto px-5 py-2.5 bg-[#10b981] hover:bg-[#059669] text-white font-sans font-black text-[11px] uppercase tracking-wider rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
+          >
+            ⬇️ BAIXAR RELATÓRIO VALIDADES COLETADAS (.XLSX)
           </button>
         </div>
       </div>
