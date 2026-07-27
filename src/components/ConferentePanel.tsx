@@ -5,6 +5,7 @@ import { Usuario, Empresa, Tarefa } from '../types';
 import { useEmpresaData } from '../context/EmpresaDataContext';
 import { PRODUCTS } from '../planosData';
 import SugerirMelhoriaCard from './SugerirMelhoriaCard';
+import { filterHistoryForUser, HistoryRestrictionNotice } from '../utils/historyFilter';
 
 interface ConferentePanelProps {
   user: Usuario;
@@ -254,7 +255,7 @@ export default function ConferentePanel({ user, empresa }: ConferentePanelProps)
 
   // Sync data lists
   const openTasksList = tasks.filter(t => t.status !== 'done');
-  const doneTasksList = tasks.filter(t => t.status === 'done').slice(0, 20);
+  const doneTasksList = filterHistoryForUser(tasks.filter(t => t.status === 'done'), user, (item) => item.finalizadoEm ? item.finalizadoEm.split('T')[0] : (item.criadoEm ? item.criadoEm.split('T')[0] : ''));
 
   return (
     <div className="flex flex-col gap-6">
@@ -469,6 +470,7 @@ export default function ConferentePanel({ user, empresa }: ConferentePanelProps)
           </div>
         ) : (
           <div className="flex flex-col gap-3 max-h-96 overflow-y-auto pr-1">
+            <HistoryRestrictionNotice user={user} />
             {doneTasksList.length === 0 ? (
               <p className="text-xs text-[#6a7d92] text-center p-6">Nenhuma tarefa foi concluída de forma oficial hoje.</p>
             ) : (

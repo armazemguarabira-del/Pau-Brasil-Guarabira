@@ -466,6 +466,40 @@ body.light-theme aside button span.bg-\[\#f5a623\] {
 }
 
 /* ──────────────────────────────────────────────────
+   REMOVE RECHARTS FOCUS OUTLINE / BLACK SELECTION BOX
+   ────────────────────────────────────────────────── */
+.recharts-wrapper,
+.recharts-wrapper *,
+.recharts-surface,
+.recharts-surface *,
+.recharts-layer,
+.recharts-layer *,
+.recharts-rectangle,
+.recharts-bar-rectangle,
+.recharts-sector,
+.recharts-pie-sector,
+svg,
+svg *,
+svg:focus,
+svg:focus-visible,
+*:focus,
+*:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+  -webkit-tap-highlight-color: transparent !important;
+}
+
+.recharts-wrapper:focus,
+.recharts-wrapper *:focus,
+.recharts-wrapper *:focus-visible,
+.recharts-surface:focus,
+.recharts-surface *:focus {
+  outline: 0 !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+/* ──────────────────────────────────────────────────
    RECHARTS SVG GRAPHICS REBRANDING OVERRIDES
    ────────────────────────────────────────────────── */
 

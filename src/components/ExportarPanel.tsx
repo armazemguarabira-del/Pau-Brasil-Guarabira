@@ -771,17 +771,75 @@ export default function ExportarPanel({ user, empresa }: ExportarPanelProps) {
               operador: String(cleanRow.operador || user.nome)
             };
           } else if (importTarget === 'quebras') {
+            const rawDate = String(cleanRow.data || cleanRow['data lancamento'] || cleanRow.date || todayStr).trim();
+            let dataISO = todayISO;
+            let dataStr = rawDate || todayStr;
+
+            if (rawDate.includes('/')) {
+              const parts = rawDate.split('/');
+              if (parts.length === 3) {
+                const day = parts[0].padStart(2, '0');
+                const month = parts[1].padStart(2, '0');
+                const year = parts[2].length === 2 ? `20${parts[2]}` : parts[2];
+                dataISO = `${year}-${month}-${day}`;
+                dataStr = `${day}/${month}/${year}`;
+              }
+            } else if (rawDate.includes('-')) {
+              const parts = rawDate.split('-');
+              if (parts.length === 3) {
+                if (parts[0].length === 4) {
+                  dataISO = rawDate;
+                  dataStr = `${parts[2]}/${parts[1]}/${parts[0]}`;
+                } else {
+                  dataISO = `${parts[2]}-${parts[1]}-${parts[0]}`;
+                  dataStr = `${parts[0]}/${parts[1]}/${parts[2]}`;
+                }
+              }
+            }
+
+            const codProduto = String(cleanRow.produto || cleanRow.codproduto || cleanRow['cod produto'] || cleanRow.codigo || cleanRow.sku || cleanRow.cod || '000').trim();
+            const descricao = String(cleanRow.descricao || cleanRow.descricaoproduto || cleanRow['descricao produto'] || cleanRow.produto || cleanRow.item || 'SKU Importado').trim();
+            const quantidade = Math.max(1, Number(cleanRow['quant und.'] || cleanRow['quant und'] || cleanRow.quantidade || cleanRow.qtd || cleanRow.unidades || 1));
+            const area = String(cleanRow.area || cleanRow.origem || cleanRow.setor || 'ARMAZEM').trim().toUpperCase();
+            const turno = String(cleanRow.turno || 'MANHÃ').trim();
+            const codQuebra = String(cleanRow.cod || cleanRow.codquebra || cleanRow['cod quebra'] || cleanRow.codigoquebra || '525').trim();
+            const motivo = String(cleanRow.motivo || cleanRow.causa || 'QUEBRADA').trim();
+            const colaboradorQuebrou = String(cleanRow.responsavel || cleanRow.colaboradorquebrou || cleanRow['colaborador quebrou'] || cleanRow.colaborador || cleanRow.operador || '').trim();
+            const responsavel = String(cleanRow.responsavel || '').trim();
+            const funcao = String(cleanRow.funcao || '').trim();
+            const fiscal = String(cleanRow.fiscal || cleanRow['fiscal lancador'] || user.nome || 'Fiscal').trim();
+            const valorUnitario = Number(cleanRow['valor por unid'] || cleanRow.valorunitario || 0);
+            const valorTotal = Number(cleanRow['valor tt'] || cleanRow.valortotal || cleanRow['valor total'] || cleanRow.valor || (valorUnitario * quantidade));
+            const mes = String(cleanRow.mes || '').trim();
+            const fatorHl = Number(cleanRow['fator hl'] || cleanRow.fatorhl || 0);
+            const hlPerdido = Number(cleanRow['hl perdido'] || cleanRow.hlperdido || 0);
+            const tipoMarca = String(cleanRow['tipo marca'] || cleanRow.tipomarca || '').trim();
+            const embalagem = String(cleanRow.embalagem || '').trim();
+            const wqi = String(cleanRow.wqi || '').trim();
+
             docData = {
               ...docData,
-              data: String(cleanRow.data || todayStr),
-              codProduto: String(cleanRow.codproduto || cleanRow.codigo || cleanRow.sku || '000'),
-              descricao: String(cleanRow.descricao || cleanRow.produto || 'SKU Importado'),
-              quantidade: Number(cleanRow.quantidade || cleanRow.qtd || 1),
-              area: String(cleanRow.area || cleanRow.origem || 'Picking'),
-              turno: String(cleanRow.turno || '1º Turno'),
-              codQuebra: String(cleanRow.codquebra || cleanRow['cod quebra'] || 'Q01'),
-              motivo: String(cleanRow.motivo || 'Avaria Movimentação'),
-              colaboradorQuebrou: String(cleanRow.colaboradorquebrou || cleanRow['colaborador quebrou'] || cleanRow.colaborador || '')
+              data: dataStr,
+              dataISO: dataISO,
+              codProduto,
+              descricao,
+              quantidade,
+              area,
+              turno,
+              codQuebra,
+              motivo,
+              fiscal,
+              ...(colaboradorQuebrou ? { colaboradorQuebrou } : {}),
+              ...(responsavel ? { responsavel } : {}),
+              ...(funcao ? { funcao } : {}),
+              ...(valorUnitario > 0 ? { valorUnitario } : {}),
+              ...(valorTotal > 0 ? { valorTotal } : {}),
+              ...(mes ? { mes } : {}),
+              ...(fatorHl > 0 ? { fatorHl } : {}),
+              ...(hlPerdido > 0 ? { hlPerdido } : {}),
+              ...(tipoMarca ? { tipoMarca } : {}),
+              ...(embalagem ? { embalagem } : {}),
+              ...(wqi ? { wqi } : {})
             };
           } else if (importTarget === 'validades') {
             docData = {

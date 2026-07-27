@@ -5,6 +5,7 @@ import { Usuario, Empresa, ValidadeRow } from '../types';
 import { useEmpresaData } from '../context/EmpresaDataContext';
 import { PRODUCTS } from '../planosData';
 import SugerirMelhoriaCard from './SugerirMelhoriaCard';
+import { filterHistoryForUser, HistoryRestrictionNotice } from '../utils/historyFilter';
 
 interface ValidadesPanelProps {
   user: Usuario;
@@ -408,7 +409,7 @@ export default function ValidadesPanel({ user, empresa }: ValidadesPanelProps) {
 
   // Expiration entries mapping list
   const getFilteredEntries = () => {
-    let rows = [...validadesList];
+    let rows = filterHistoryForUser(validadesList, user, item => item.cadastradoEm ? item.cadastradoEm.split('T')[0] : item.validade);
     if (filterLoc !== 'todos') {
       rows = rows.filter(r => r.localizacao === filterLoc);
     }
@@ -486,7 +487,7 @@ export default function ValidadesPanel({ user, empresa }: ValidadesPanelProps) {
           onClick={() => setActiveTab('lista')}
           className={`ptab py-2 px-6 font-sans font-bold text-xs uppercase cursor-pointer relative ${activeTab === 'lista' ? 'text-[#8b5cf6] border-b-2 border-b-[#8b5cf6]' : 'text-[#6a7d92] hover:text-[#e8eef5]'}`}
         >
-          📋 Lista do Estoque <span className="ml-1.5 px-2 py-0.5 rounded-full bg-[#151b23] border border-[#222d3a] text-[10px] text-snow">{validadesList.length}</span>
+          📋 Lista do Estoque <span className="ml-1.5 px-2 py-0.5 rounded-full bg-[#151b23] border border-[#222d3a] text-[10px] text-snow">{filterHistoryForUser(validadesList, user, item => item.cadastradoEm ? item.cadastradoEm.split('T')[0] : item.validade).length}</span>
         </button>
       </div>
 
@@ -672,6 +673,7 @@ export default function ValidadesPanel({ user, empresa }: ValidadesPanelProps) {
         </div>
       ) : (
         <div className="flex flex-col gap-4">
+          <HistoryRestrictionNotice user={user} />
           
           {/* List Search and Filters bar */}
           <div className="g-card p-4 flex flex-col sm:flex-row gap-4 items-center justify-between">

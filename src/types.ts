@@ -105,20 +105,25 @@ export interface QuebraRow {
   empresaId?: string;
   data: string;
   dataISO: string;
+  mes?: string;
   codProduto: string;
   descricao: string;
   quantidade: number;
+  fatorHl?: number;
+  hlPerdido?: number;
+  tipoMarca?: string;
+  embalagem?: string;
   area: string;
   turno: string;
   codQuebra: string;
   motivo: string;
-  fiscal?: string;
+  valorUnitario?: number;
+  valorTotal?: number;
   colaboradorQuebrou?: string;
   responsavel?: string;
   funcao?: string;
-  embalagem?: string;
-  tipoMarca?: string;
-  valorTotal?: number;
+  fiscal?: string;
+  wqi?: string;
   _criadoEm?: string;
 }
 

@@ -5,6 +5,7 @@ import { Usuario, Empresa, BlitzRefugoRow } from '../types';
 import { useEmpresaData } from '../context/EmpresaDataContext';
 import { TrendingUp, CheckCircle, Clock, Award, BarChart2 } from 'lucide-react';
 import SugerirMelhoriaCard from './SugerirMelhoriaCard';
+import { filterHistoryForUser, HistoryRestrictionNotice } from '../utils/historyFilter';
 
 interface RefugoPanelProps {
   user: Usuario;
@@ -301,7 +302,7 @@ export default function RefugoPanel({ user, empresa }: RefugoPanelProps) {
     }
   };
 
-  const filteredHistory = blitzRows.filter(r => {
+  const filteredHistory = filterHistoryForUser(blitzRows, user).filter(r => {
     const q = searchQuery.toLowerCase();
     const str = `${r.placa} ${r.ajudante} ${r.mapa || ''} ${r.rota || ''} ${r.data}`.toLowerCase();
     return !q || str.includes(q);
@@ -332,7 +333,7 @@ export default function RefugoPanel({ user, empresa }: RefugoPanelProps) {
           onClick={() => setActiveTab('hist')}
           className={`ptab py-2 px-6 font-sans font-bold text-xs uppercase cursor-pointer relative ${activeTab === 'hist' ? 'text-[#eab308] border-b-2 border-b-[#eab308]' : 'text-[#6a7d92] hover:text-[#e8eef5]'}`}
         >
-          📋 Histórico de Aferições <span className="ml-1.5 px-2 py-0.5 rounded-full bg-[#151b23] border border-[#222d3a] text-[10px] text-snow">{blitzRows.length}</span>
+          📋 Histórico de Aferições <span className="ml-1.5 px-2 py-0.5 rounded-full bg-[#151b23] border border-[#222d3a] text-[10px] text-snow">{filterHistoryForUser(blitzRows, user).length}</span>
         </button>
       </div>
 
@@ -664,6 +665,7 @@ export default function RefugoPanel({ user, empresa }: RefugoPanelProps) {
         </div>
       ) : (
         <div className="flex flex-col gap-4">
+          <HistoryRestrictionNotice user={user} />
           <div className="g-card p-4">
             <input 
               type="text"

@@ -4,9 +4,10 @@ import { collection, addDoc, deleteDoc, doc } from 'firebase/firestore';
 import { Usuario, Empresa, QuebraRow } from '../types';
 import { useEmpresaData } from '../context/EmpresaDataContext';
 import { PRODUCTS } from '../planosData';
-import { TrendingUp, CheckCircle, Clock, Award, BarChart2, AlertTriangle } from 'lucide-react';
+import { TrendingUp, CheckCircle, Clock, Award, BarChart2, AlertTriangle, FileSpreadsheet, Upload, Download, FileText, Database, Check, RefreshCw } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import SugerirMelhoriaCard from './SugerirMelhoriaCard';
-import { getBaseQuebrasRows } from '../data/baseQuebras';
+import { filterHistoryForUser, HistoryRestrictionNotice } from '../utils/historyFilter';
 
 interface QuebrasPanelProps {
   user: Usuario;
@@ -150,10 +151,270 @@ export default function QuebrasPanel({ user, empresa }: QuebrasPanelProps) {
     }
   }, [colaboradorQuebrou]);
   
-  const [activeTab, setActiveTab] = useState<'form' | 'stats' | 'hist'>('form');
+  const [activeTab, setActiveTab] = useState<'form' | 'import' | 'stats' | 'hist'>('form');
   const [quebras, setQuebras] = useState<QuebraRow[]>([]);
   const [registering, setRegistering] = useState(false);
   const [expandedDates, setExpandedDates] = useState<Record<string, boolean>>({});
+
+  // Database Import State
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [importPreview, setImportPreview] = useState<any[]>([]);
+  const [importHeaders, setImportHeaders] = useState<string[]>([]);
+  const [pasteMode, setPasteMode] = useState<'file' | 'paste'>('file');
+  const [pastedText, setPastedText] = useState('');
+  const [importStatusMsg, setImportStatusMsg] = useState<string | null>(null);
+
+  // Helper to parse individual raw row into QuebraRow format
+  const parseQuebraRow = (raw: any): Omit<QuebraRow, '_docId'> & { empresaId: string } => {
+    const cleanRow: Record<string, any> = {};
+    Object.entries(raw || {}).forEach(([k, v]) => {
+      cleanRow[k.toLowerCase().trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "")] = v;
+    });
+
+    const today = new Date();
+    const todayStr = today.toLocaleDateString('pt-BR');
+    const todayISO = today.toISOString().split('T')[0];
+
+    const rawDate = String(cleanRow.data || cleanRow['data lancamento'] || cleanRow.date || cleanRow.dt || todayStr).trim();
+    let dataISO = todayISO;
+    let dataStr = rawDate || todayStr;
+
+    if (rawDate.includes('/')) {
+      const parts = rawDate.split('/');
+      if (parts.length === 3) {
+        const day = parts[0].padStart(2, '0');
+        const month = parts[1].padStart(2, '0');
+        const year = parts[2].length === 2 ? `20${parts[2]}` : parts[2];
+        dataISO = `${year}-${month}-${day}`;
+        dataStr = `${day}/${month}/${year}`;
+      }
+    } else if (rawDate.includes('-')) {
+      const parts = rawDate.split('-');
+      if (parts.length === 3) {
+        if (parts[0].length === 4) { // YYYY-MM-DD
+          dataISO = rawDate;
+          dataStr = `${parts[2]}/${parts[1]}/${parts[0]}`;
+        } else { // DD-MM-YYYY
+          dataISO = `${parts[2]}-${parts[1]}-${parts[0]}`;
+          dataStr = `${parts[0]}/${parts[1]}/${parts[2]}`;
+        }
+      }
+    }
+
+    const codProduto = String(cleanRow.produto || cleanRow.codproduto || cleanRow['cod produto'] || cleanRow.codigo || cleanRow.sku || cleanRow.cod || '000').trim();
+    const descricao = String(cleanRow.descricao || cleanRow.descricaoproduto || cleanRow['descricao produto'] || cleanRow.produto || cleanRow.item || 'PRODUTO IMPORTADO').trim();
+    const quantidade = Math.max(1, Number(cleanRow['quant und.'] || cleanRow['quant und'] || cleanRow.quantidade || cleanRow.qtd || cleanRow.unidades || 1));
+    const area = String(cleanRow.area || cleanRow.origem || cleanRow.setor || 'ARMAZEM').trim().toUpperCase();
+    const turno = String(cleanRow.turno || 'MANHÃ').trim();
+    const codQuebra = String(cleanRow.cod || cleanRow.codquebra || cleanRow['cod quebra'] || cleanRow.codigoquebra || cleanRow.codigodaquebra || '525').trim();
+    const motivo = String(cleanRow.motivo || cleanRow.causa || cleanRow['motivo quebra'] || 'QUEBRADA').trim();
+    const colaboradorQuebrou = String(cleanRow.responsavel || cleanRow.colaboradorquebrou || cleanRow['colaborador quebrou'] || cleanRow.colaborador || cleanRow.operador || '').trim();
+    const responsavel = String(cleanRow.responsavel || '').trim();
+    const funcao = String(cleanRow.funcao || cleanRow['funcao'] || '').trim();
+    const fiscal = String(cleanRow.fiscal || cleanRow['fiscal lancador'] || user.nome || 'Fiscal').trim();
+    const valorUnitario = Number(cleanRow['valor por unid'] || cleanRow.valorunitario || 0);
+    const valorTotal = Number(cleanRow['valor tt'] || cleanRow.valortotal || cleanRow['valor total'] || cleanRow.valor || (valorUnitario * quantidade));
+    const mes = String(cleanRow.mes || '').trim();
+    const fatorHl = Number(cleanRow['fator hl'] || cleanRow.fatorhl || 0);
+    const hlPerdido = Number(cleanRow['hl perdido'] || cleanRow.hlperdido || 0);
+    const tipoMarca = String(cleanRow['tipo marca'] || cleanRow.tipomarca || '').trim();
+    const embalagem = String(cleanRow.embalagem || '').trim();
+    const wqi = String(cleanRow.wqi || '').trim();
+
+    return {
+      empresaId: empresa?.id || 'demo',
+      data: dataStr,
+      dataISO,
+      codProduto,
+      descricao,
+      quantidade,
+      area,
+      turno,
+      codQuebra,
+      motivo,
+      ...(colaboradorQuebrou ? { colaboradorQuebrou } : {}),
+      ...(responsavel ? { responsavel } : {}),
+      ...(funcao ? { funcao } : {}),
+      fiscal,
+      ...(valorUnitario > 0 ? { valorUnitario } : {}),
+      ...(valorTotal > 0 ? { valorTotal } : {}),
+      ...(mes ? { mes } : {}),
+      ...(fatorHl > 0 ? { fatorHl } : {}),
+      ...(hlPerdido > 0 ? { hlPerdido } : {}),
+      ...(tipoMarca ? { tipoMarca } : {}),
+      ...(embalagem ? { embalagem } : {}),
+      ...(wqi ? { wqi } : {}),
+      _criadoEm: new Date().toISOString()
+    };
+  };
+
+  // Download Sample Excel Template
+  const handleDownloadTemplate = () => {
+    const sampleData = [
+      {
+        "DATA": "2026-01-01",
+        "MÊS": "JANEIRO",
+        "PRODUTO": 21020,
+        "DESCRIÇÃO": "BUDWEISER 350ML",
+        "QUANT UND.": 1.0,
+        "FATOR HL": 0.0035,
+        "HL PERDIDO": 0.0035,
+        "TIPO MARCA": "001 - CERVEJA",
+        "EMBALAGEM": "187 - LATA SLEEK 350ML",
+        "TURNO": "Noite",
+        "CÓD": 524,
+        "AREA": "ARMAZEM",
+        "MOTIVO": "FALTA NO PALETE",
+        "VALOR POR UNID": 2.64,
+        "VALOR TT": 2.64,
+        "RESPONSÁVEL": "RONILDO",
+        "FUNÇÃO": "EMPILHADOR",
+        "WQI": "NÃO"
+      },
+      {
+        "DATA": "2026-01-02",
+        "MÊS": "JANEIRO",
+        "PRODUTO": 101,
+        "DESCRIÇÃO": "SKOL 350ML CX24",
+        "QUANT UND.": 12.0,
+        "FATOR HL": 0.042,
+        "HL PERDIDO": 0.042,
+        "TIPO MARCA": "001 - CERVEJA",
+        "EMBALAGEM": "LATA 350ML",
+        "TURNO": "Manhã",
+        "CÓD": 525,
+        "AREA": "ARMAZEM",
+        "MOTIVO": "QUEBRADA",
+        "VALOR POR UNID": 3.80,
+        "VALOR TT": 45.60,
+        "RESPONSÁVEL": "PAULO PEREIRA DA SILVA",
+        "FUNÇÃO": "CONFERENTE",
+        "WQI": "NÃO"
+      }
+    ];
+
+    const ws = XLSX.utils.json_to_sheet(sampleData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Modelo_Quebras");
+    XLSX.writeFile(wb, "modelo_importacao_registro_quebras.xlsx");
+  };
+
+  // Handle spreadsheet file change & preview
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportFile(file);
+    setImportStatusMsg(null);
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const data = evt.target?.result;
+        const workbook = XLSX.read(data, { type: 'binary' });
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
+        const jsonHeader = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+        
+        if (jsonHeader.length > 0) {
+          const headers = (jsonHeader[0] as any[]).map(String);
+          setImportHeaders(headers);
+          
+          const rows = XLSX.utils.sheet_to_json(worksheet);
+          setImportPreview(rows.slice(0, 10));
+        }
+      } catch (err) {
+        alert('Erro ao carregar o arquivo Excel/CSV: ' + err);
+      }
+    };
+    reader.readAsBinaryString(file);
+  };
+
+  // Process and save import data
+  const processAndImportRows = async (rows: any[]) => {
+    if (!rows || rows.length === 0) {
+      alert('Nenhum registro encontrado para importação.');
+      return;
+    }
+
+    setImporting(true);
+    setImportStatusMsg(`Importando ${rows.length} registros para o banco de dados...`);
+
+    let importedCount = 0;
+    const newItems: QuebraRow[] = [];
+
+    try {
+      for (const raw of rows) {
+        const rowData = parseQuebraRow(raw);
+
+        if (db) {
+          await addDoc(collection(db, 'quebras'), rowData);
+        } else {
+          newItems.push({ _docId: String(Date.now() + Math.random()), ...rowData });
+        }
+        importedCount++;
+      }
+
+      if (!db) {
+        const updated = [...quebras, ...newItems];
+        setQuebras(updated);
+        localStorage.setItem(`quebras_${empresa?.id || 'demo'}`, JSON.stringify(updated));
+      }
+
+      setImportStatusMsg(`✅ Sucesso! ${importedCount} registros de quebras foram importados com êxito!`);
+      alert(`🎉 Importação Concluída!\nForam cadastrados ${importedCount} registros de quebras no banco de dados.`);
+      setImportFile(null);
+      setImportPreview([]);
+      setPastedText('');
+      setActiveTab('hist');
+    } catch (err: any) {
+      alert('Erro ao importar registros: ' + (err?.message || err));
+      setImportStatusMsg(`❌ Erro durante a importação: ${err?.message || err}`);
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  // Submit file upload
+  const handleImportFileSubmit = () => {
+    if (!importFile) return;
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      try {
+        const data = evt.target?.result;
+        const workbook = XLSX.read(data, { type: 'binary' });
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
+        const rows = XLSX.utils.sheet_to_json(worksheet) as any[];
+        await processAndImportRows(rows);
+      } catch (err: any) {
+        alert('Erro ao ler planilha: ' + err);
+      }
+    };
+    reader.readAsBinaryString(importFile);
+  };
+
+  // Submit pasted JSON or CSV text
+  const handlePasteSubmit = async () => {
+    if (!pastedText.trim()) return;
+    try {
+      let parsedRows: any[] = [];
+      const text = pastedText.trim();
+      if (text.startsWith('[') || text.startsWith('{')) {
+        const json = JSON.parse(text);
+        parsedRows = Array.isArray(json) ? json : [json];
+      } else {
+        // Assume CSV
+        const workbook = XLSX.read(text, { type: 'string' });
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
+        parsedRows = XLSX.utils.sheet_to_json(worksheet) as any[];
+      }
+      await processAndImportRows(parsedRows);
+    } catch (err: any) {
+      alert('Erro ao processar texto fornecido. Certifique-se de que é um formato válido (JSON ou CSV/Valores separados por vírgula ou tabulação): ' + err);
+    }
+  };
   const [draftRestored, setDraftRestored] = useState<boolean>(() => {
     try {
       const saved = localStorage.getItem(draftKey);
@@ -234,51 +495,19 @@ export default function QuebrasPanel({ user, empresa }: QuebrasPanelProps) {
 
   const empresaData = useEmpresaData();
 
-  // Sync with Firestore (scoped to company) and merge with base dataset
+  // Sync with Firestore (scoped to company)
   useEffect(() => {
-    const companyId = empresa?.id || 'demo';
-    const baseRows = getBaseQuebrasRows(companyId);
-
-    // Get rows from Firestore if connected
-    const firestoreRows = (db && empresa?.id) ? (empresaData.quebras || []) : [];
-
-    // Get rows from LocalStorage
-    let localRows: QuebraRow[] = [];
-    const saved = localStorage.getItem(`quebras_${companyId}`) || localStorage.getItem(`quebras_rows_${companyId}`);
-    if (saved) {
-      try {
-        localRows = JSON.parse(saved);
-      } catch (e) {
-        console.error(e);
-      }
+    if (!db || !empresa?.id) {
+      const saved = localStorage.getItem(`quebras_${empresa?.id || 'demo'}`);
+      if (saved) setQuebras(JSON.parse(saved));
+      return;
     }
 
-    const isCustomRow = (r: QuebraRow) => {
-      const id = String(r._docId || (r as any).id || '');
-      if (!id) return false;
-      if (id.startsWith('base-quebra-') || id.startsWith('base-') || id.startsWith('base_')) return false;
-      if (r.fiscal === 'SISTEMA') return false;
-      return true;
-    };
-
-    const userCustomRows: QuebraRow[] = [];
-    const customIds = new Set<string>();
-
-    [...firestoreRows, ...localRows].forEach(r => {
-      if (isCustomRow(r)) {
-        const id = String(r._docId || (r as any).id);
-        if (!customIds.has(id)) {
-          customIds.add(id);
-          userCustomRows.push(r);
-        }
-      }
-    });
-
-    const merged = [...userCustomRows, ...baseRows];
-    merged.sort((a, b) => (b.dataISO || '').localeCompare(a.dataISO || ''));
-    setQuebras(merged);
-    localStorage.setItem(`quebras_${companyId}`, JSON.stringify(merged));
-    localStorage.setItem(`quebras_rows_${companyId}`, JSON.stringify(merged));
+    const companyId = empresa?.id || 'demo';
+    const rows = [...empresaData.quebras];
+    rows.sort((a, b) => (b.dataISO || '').localeCompare(a.dataISO || ''));
+    setQuebras(rows);
+    localStorage.setItem(`quebras_${companyId}`, JSON.stringify(rows));
   }, [empresaData.quebras, empresa?.id]);
 
   const handleSelectProd = (p: { codigo: number, descricao: string }) => {
@@ -323,19 +552,13 @@ export default function QuebrasPanel({ user, empresa }: QuebrasPanelProps) {
     };
 
     try {
-      let insertedDocId = String(Date.now());
       if (db) {
-        const docRef = await addDoc(collection(db, 'quebras'), newRow);
-        if (docRef?.id) insertedDocId = docRef.id;
+        await addDoc(collection(db, 'quebras'), newRow);
+      } else {
+        const current = [...quebras, { _docId: String(Date.now()), ...newRow }];
+        setQuebras(current);
+        localStorage.setItem(`quebras_${empresa?.id || 'demo'}`, JSON.stringify(current));
       }
-      const createdRow: QuebraRow = { _docId: insertedDocId, ...newRow };
-      const companyId = empresa?.id || 'demo';
-      const current = [createdRow, ...quebras.filter(r => r._docId !== insertedDocId)];
-      setQuebras(current);
-      localStorage.setItem(`quebras_${companyId}`, JSON.stringify(current));
-      localStorage.setItem(`quebras_rows_${companyId}`, JSON.stringify(current));
-      window.dispatchEvent(new Event('app_data_updated'));
-      window.dispatchEvent(new Event('local_data_changed'));
 
       setProdutoBusca('');
       setSelectedProd(null);
@@ -380,12 +603,18 @@ export default function QuebrasPanel({ user, empresa }: QuebrasPanelProps) {
         <span className="font-sans font-black text-sm tracking-widest text-[#ef4444] uppercase">💥 CONTROLE DE QUEBRAS E AVARIAS</span>
       </div>
 
-      <div className="ptabs border-b border-[#222d3a] flex gap-2">
+      <div className="ptabs border-b border-[#222d3a] flex gap-2 flex-wrap">
         <button 
           onClick={() => setActiveTab('form')}
           className={`ptab py-2 px-6 font-sans font-bold text-xs uppercase cursor-pointer relative ${activeTab === 'form' ? 'text-[#ef4444] border-b-2 border-b-[#ef4444]' : 'text-[#6a7d92] hover:text-[#e8eef5]'}`}
         >
           📝 Cadastrar Quebra
+        </button>
+        <button 
+          onClick={() => setActiveTab('import')}
+          className={`ptab py-2 px-6 font-sans font-bold text-xs uppercase cursor-pointer relative ${activeTab === 'import' ? 'text-[#ef4444] border-b-2 border-b-[#ef4444]' : 'text-[#6a7d92] hover:text-[#e8eef5]'}`}
+        >
+          📥 Importar Banco / Planilha
         </button>
         <button 
           onClick={() => setActiveTab('stats')}
@@ -397,9 +626,151 @@ export default function QuebrasPanel({ user, empresa }: QuebrasPanelProps) {
           onClick={() => setActiveTab('hist')}
           className={`ptab py-2 px-6 font-sans font-bold text-xs uppercase cursor-pointer relative ${activeTab === 'hist' ? 'text-[#ef4444] border-b-2 border-b-[#ef4444]' : 'text-[#6a7d92] hover:text-[#e8eef5]'}`}
         >
-          📋 Histórico <span className="ml-1.5 px-2 py-0.5 rounded-full bg-[#151b23] border border-[#222d3a] text-[10px] text-snow">{quebras.length}</span>
+          📋 Histórico <span className="ml-1.5 px-2 py-0.5 rounded-full bg-[#151b23] border border-[#222d3a] text-[10px] text-snow">{filterHistoryForUser(quebras, user).length}</span>
         </button>
       </div>
+
+      {activeTab === 'import' && (
+        <div className="g-card p-6 flex flex-col gap-6 bg-[#11151c] border border-[#222d3a] rounded-xl">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-[#222d3a] pb-4">
+            <div>
+              <h3 className="font-sans font-black text-lg text-snow uppercase tracking-wide flex items-center gap-2">
+                <Database className="w-5 h-5 text-[#ef4444]" /> Importação em Lote — Registro de Quebras
+              </h3>
+              <p className="text-xs text-[#6a7d92] mt-1">
+                Carregue uma planilha Excel (.xlsx / .xls), CSV ou colar lote JSON/CSV para importar registros diretamente no banco de dados da empresa ({empresa?.razaoSocial || 'Sua Empresa'}).
+              </p>
+            </div>
+            
+            <button
+              onClick={handleDownloadTemplate}
+              className="px-4 py-2 bg-[#151b23] hover:bg-[#1a222c] border border-[#ef4444]/40 hover:border-[#ef4444] text-[#ef4444] rounded-lg text-xs font-bold flex items-center gap-2 cursor-pointer transition-colors"
+            >
+              <Download className="w-4 h-4" /> Baixar Modelo Excel
+            </button>
+          </div>
+
+          {importStatusMsg && (
+            <div className={`p-4 rounded-lg border text-xs font-bold ${importStatusMsg.includes('❌') ? 'bg-red-500/10 border-red-500/30 text-red-400' : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'}`}>
+              {importStatusMsg}
+            </div>
+          )}
+
+          {/* Mode Selector */}
+          <div className="flex gap-3 border-b border-[#222d3a] pb-3">
+            <button
+              onClick={() => setPasteMode('file')}
+              className={`px-4 py-2 text-xs font-bold rounded-lg flex items-center gap-2 cursor-pointer ${pasteMode === 'file' ? 'bg-[#ef4444] text-white' : 'bg-[#151b23] text-[#6a7d92] hover:text-snow border border-[#222d3a]'}`}
+            >
+              <FileSpreadsheet className="w-4 h-4" /> Upload de Arquivo (Excel / CSV)
+            </button>
+            <button
+              onClick={() => setPasteMode('paste')}
+              className={`px-4 py-2 text-xs font-bold rounded-lg flex items-center gap-2 cursor-pointer ${pasteMode === 'paste' ? 'bg-[#ef4444] text-white' : 'bg-[#151b23] text-[#6a7d92] hover:text-snow border border-[#222d3a]'}`}
+            >
+              <FileText className="w-4 h-4" /> Colar Texto (JSON / CSV)
+            </button>
+          </div>
+
+          {pasteMode === 'file' ? (
+            <div className="flex flex-col gap-6">
+              <div className="border-2 border-dashed border-[#222d3a] hover:border-[#ef4444]/50 bg-[#151b23]/50 rounded-xl p-8 text-center flex flex-col items-center justify-center gap-3 transition-colors">
+                <Upload className="w-10 h-10 text-[#ef4444] opacity-80" />
+                <div>
+                  <label htmlFor="quebras-file-upload" className="font-bold text-snow text-sm cursor-pointer hover:underline text-[#ef4444]">
+                    Clique para selecionar um arquivo
+                  </label>
+                  <span className="text-xs text-[#6a7d92] block mt-1">Suporta arquivos .xlsx, .xls ou .csv</span>
+                </div>
+                <input
+                  id="quebras-file-upload"
+                  type="file"
+                  accept=".xlsx, .xls, .csv"
+                  onChange={handleFileChange}
+                  className="hidden"
+                />
+                {importFile && (
+                  <div className="mt-2 text-xs font-mono font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-3 py-1.5 rounded-lg flex items-center gap-2">
+                    <Check className="w-4 h-4" /> {importFile.name} ({(importFile.size / 1024).toFixed(1)} KB)
+                  </div>
+                )}
+              </div>
+
+              {/* Preview Table */}
+              {importPreview.length > 0 && (
+                <div className="flex flex-col gap-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs font-bold uppercase tracking-wider text-[#6a7d92]">
+                      Pré-visualização das Primeiras {importPreview.length} Linhas
+                    </span>
+                    <span className="text-[10px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded font-mono">
+                      {importHeaders.length} colunas identificadas
+                    </span>
+                  </div>
+
+                  <div className="overflow-x-auto border border-[#222d3a] rounded-lg">
+                    <table className="w-full text-left font-sans text-xs">
+                      <thead>
+                        <tr className="bg-[#151b23] border-b border-[#222d3a] text-[#6a7d92] uppercase">
+                          {importHeaders.map((h, i) => (
+                            <th key={i} className="p-2.5 font-bold">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[#222d3a] text-snow font-mono">
+                        {importPreview.map((row, i) => (
+                          <tr key={i} className="hover:bg-[#151b23]/30">
+                            {importHeaders.map((h, j) => (
+                              <td key={j} className="p-2.5 whitespace-nowrap">{String(row[h] || '—')}</td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="flex justify-end mt-2">
+                    <button
+                      onClick={handleImportFileSubmit}
+                      disabled={importing}
+                      className="px-6 py-3 bg-[#ef4444] hover:bg-[#dc2626] disabled:opacity-50 text-white font-bold rounded-lg text-xs uppercase tracking-wider flex items-center gap-2 cursor-pointer shadow-lg transition-all"
+                    >
+                      {importing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                      Confirmar e Importar Registros
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="flex flex-col gap-4">
+              <div>
+                <label className="text-xs font-bold uppercase text-[#6a7d92] mb-1 block">
+                  Cole os dados em formato JSON ou CSV (com cabeçalho na 1ª linha)
+                </label>
+                <textarea
+                  rows={8}
+                  value={pastedText}
+                  onChange={(e) => setPastedText(e.target.value)}
+                  placeholder={`Data,Cód Produto,Descrição Produto,Quantidade,Área,Turno,Cód Quebra,Motivo,Colaborador Quebrou\n26/07/2026,101,SKOL 350ML,10,ARMAZEM,MANHÃ,525,QUEBRADA,PAULO SILVA`}
+                  className="w-full bg-[#151b23] border border-[#222d3a] focus:border-[#ef4444] rounded-lg p-3 font-mono text-xs text-snow focus:outline-none"
+                />
+              </div>
+
+              <div className="flex justify-end">
+                <button
+                  onClick={handlePasteSubmit}
+                  disabled={importing || !pastedText.trim()}
+                  className="px-6 py-3 bg-[#ef4444] hover:bg-[#dc2626] disabled:opacity-50 text-white font-bold rounded-lg text-xs uppercase tracking-wider flex items-center gap-2 cursor-pointer shadow-lg transition-all"
+                >
+                  {importing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                  Importar Registros do Texto
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {activeTab === 'stats' && (
         <div className="g-card p-6 flex flex-col gap-6 bg-gradient-to-br from-[#11151c] to-[#151b23] border border-[#222d3a]">
@@ -678,8 +1049,10 @@ export default function QuebrasPanel({ user, empresa }: QuebrasPanelProps) {
         </div>
       ) : (
         <div className="flex flex-col gap-3">
+          <HistoryRestrictionNotice user={user} />
           {(() => {
-            const grouped = quebras.reduce((acc, q) => {
+            const filteredQuebras = filterHistoryForUser(quebras, user);
+            const grouped = filteredQuebras.reduce((acc, q) => {
               const key = q.dataISO || (q.data ? q.data.split('/').reverse().join('-') : 'sem-data');
               if (!acc[key]) acc[key] = [];
               acc[key].push(q);

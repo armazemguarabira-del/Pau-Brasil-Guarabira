@@ -6,6 +6,7 @@ import { useEmpresaData } from '../context/EmpresaDataContext';
 import DespejoDashboard from './DespejoDashboard';
 import { TrendingUp, CheckCircle, Clock, Award, BarChart2 } from 'lucide-react';
 import SugerirMelhoriaCard from './SugerirMelhoriaCard';
+import { filterHistoryForUser, HistoryRestrictionNotice } from '../utils/historyFilter';
 
 interface DespejoPanelProps {
   user: Usuario;
@@ -253,7 +254,7 @@ export default function DespejoPanel({ user, empresa }: DespejoPanelProps) {
           onClick={() => setActiveTab('hist')}
           className={`ptab py-2 px-6 font-sans font-bold text-xs uppercase cursor-pointer relative ${activeTab === 'hist' ? 'text-[#ef4444] border-b-2 border-b-[#ef4444]' : 'text-[#6a7d92] hover:text-[#e8eef5]'}`}
         >
-          📋 Histórico <span className="ml-1.5 px-2 py-0.5 rounded-full bg-[#151b23] border border-[#222d3a] text-[10px] text-snow">{despejoRows.length}</span>
+          📋 Histórico <span className="ml-1.5 px-2 py-0.5 rounded-full bg-[#151b23] border border-[#222d3a] text-[10px] text-snow">{filterHistoryForUser(despejoRows, user).length}</span>
         </button>
       </div>
 
@@ -487,8 +488,10 @@ export default function DespejoPanel({ user, empresa }: DespejoPanelProps) {
 
       {activeTab === 'hist' && (
         <div className="flex flex-col gap-3">
+          <HistoryRestrictionNotice user={user} />
           {(() => {
-            const grouped = despejoRows.reduce((acc, r) => {
+            const filteredDespejoRows = filterHistoryForUser(despejoRows, user);
+            const grouped = filteredDespejoRows.reduce((acc, r) => {
               const key = r.dataISO || (r.data ? r.data.split('/').reverse().join('-') : 'sem-data');
               if (!acc[key]) acc[key] = [];
               acc[key].push(r);

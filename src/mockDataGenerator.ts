@@ -1,5 +1,4 @@
 import { ArmazemRow, Tarefa, BlitzRefugoRow, QuebraRow, ValidadeRow, RepackRow, DespejoRow } from './types';
-import { getBaseQuebrasRows } from './data/baseQuebras';
 
 // Helpers to format dates and times
 const pad = (n: number) => n.toString().padStart(2, '0');
@@ -221,9 +220,67 @@ export function generateMockBlitzRows(empresaId: string): BlitzRefugoRow[] {
   return rows;
 }
 
-// 4. QUEBRAS (QuebraRow) - Real Base Database Data
+// 4. QUEBRAS (QuebraRow) - 2 Months of Fictitious Data
 export function generateMockQuebras(empresaId: string): QuebraRow[] {
-  return getBaseQuebrasRows(empresaId);
+  const dates = getPastDates(60);
+  const rows: QuebraRow[] = [];
+  
+  const produtos = [
+    { cod: '1010', desc: 'SKOL 600ML GFA' },
+    { cod: '2020', desc: 'BRAHMA DUPLO MALTE LATA 350ML' },
+    { cod: '3030', desc: 'STELLA ARTOIS LONG NECK 275ML' },
+    { cod: '4040', desc: 'CORONA EXTRA 330ML LN' },
+    { cod: '5050', desc: 'ANTARCTICA PILSEN LATA 473ML' },
+    { cod: '6060', desc: 'SPATEN N 600ML CX C/24' },
+    { cod: '7070', desc: 'SKOL BEATS SENSES LN 269ML' },
+    { cod: '8080', desc: 'PEPSI TWIST PET 2L' }
+  ];
+  const areas = ['ARMAZEM', 'ENTREGA', 'PUXADA'];
+  const turnos = ['Turno A', 'Turno B', 'Turno C'];
+  const codigosQuebra = ['539', '540', '541'];
+  const motivos = ['Avaria Física/Manuseio', 'Quebra em Transporte', 'Choque de Palete', 'Vazamento'];
+  const ajudantes = ['MARIVALDO SILVA', 'PAULO PEREIRA', 'JOÃO ALVES', 'RODRIGO COSTA', 'LUCAS OLIVEIRA'];
+  const empilhadores = ['RONILDO SANTOS', 'CARLOS SILVA', 'ROBERTO LIMA', 'EDSON SOUZA'];
+  
+  dates.forEach((d, dIdx) => {
+    // 1-3 quebras per day
+    const numQ = 1 + (dIdx % 3);
+    for (let i = 0; i < numQ; i++) {
+      const idx = dIdx * 3 + i;
+      const prod = produtos[idx % produtos.length];
+      const area = areas[idx % areas.length];
+      const turno = turnos[idx % turnos.length];
+      const codQuebra = codigosQuebra[idx % codigosQuebra.length];
+      const motivo = motivos[idx % motivos.length];
+      const qty = 2 + (idx % 18);
+      
+      const isAjudante = area === 'ENTREGA' || (idx % 2 === 0);
+      const respName = isAjudante 
+        ? ajudantes[idx % ajudantes.length] 
+        : empilhadores[idx % empilhadores.length];
+      const funcName = isAjudante ? 'AJUDANTE' : 'EMPILHADOR';
+
+      rows.push({
+        _docId: `mock-quebra-${idx}`,
+        empresaId,
+        data: d.data,
+        dataISO: d.dataISO,
+        codProduto: prod.cod,
+        descricao: prod.desc,
+        quantidade: qty,
+        area,
+        turno,
+        codQuebra,
+        motivo,
+        colaboradorQuebrou: respName,
+        responsavel: respName,
+        funcao: funcName,
+        _criadoEm: `${d.dataISO}T11:00:00`
+      });
+    }
+  });
+  
+  return rows;
 }
 
 // 5. FEFO VALIDADE (ValidadeRow) - 2 Months of Fictitious Data

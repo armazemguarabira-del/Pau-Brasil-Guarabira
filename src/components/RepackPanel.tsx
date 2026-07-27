@@ -6,6 +6,7 @@ import { useEmpresaData } from '../context/EmpresaDataContext';
 import { PRODUCTS } from '../planosData';
 import { TrendingUp, CheckCircle, Clock, Award, BarChart2, BookOpen, Users, FileText, ChevronDown, ChevronUp, AlertCircle, ShieldAlert } from 'lucide-react';
 import SugerirMelhoriaCard from './SugerirMelhoriaCard';
+import { filterHistoryForUser, HistoryRestrictionNotice } from '../utils/historyFilter';
 
 interface RepackPanelProps {
   user: Usuario;
@@ -419,7 +420,7 @@ export default function RepackPanel({ user, empresa }: RepackPanelProps) {
           onClick={() => setActiveTab('hist')}
           className={`ptab py-2 px-6 font-sans font-bold text-xs uppercase cursor-pointer relative ${activeTab === 'hist' ? 'text-[#f5a623] border-b-2 border-b-[#f5a623]' : 'text-[#6a7d92] hover:text-[#e8eef5]'}`}
         >
-          📋 Histórico <span className="ml-1.5 px-2 py-0.5 rounded-full bg-[#151b23] border border-[#222d3a] text-[10px] text-snow">{repackRows.length}</span>
+          📋 Histórico <span className="ml-1.5 px-2 py-0.5 rounded-full bg-[#151b23] border border-[#222d3a] text-[10px] text-snow">{filterHistoryForUser(repackRows, user).length}</span>
         </button>
         <button 
           onClick={() => setActiveTab('validade')}
@@ -707,8 +708,10 @@ export default function RepackPanel({ user, empresa }: RepackPanelProps) {
 
       {activeTab === 'hist' && (
         <div className="flex flex-col gap-3">
+          <HistoryRestrictionNotice user={user} />
           {(() => {
-            const grouped = repackRows.reduce((acc, r) => {
+            const filteredRepackRows = filterHistoryForUser(repackRows, user);
+            const grouped = filteredRepackRows.reduce((acc, r) => {
               const key = r.dataISO || (r.data ? r.data.split('/').reverse().join('-') : 'sem-data');
               if (!acc[key]) acc[key] = [];
               acc[key].push(r);

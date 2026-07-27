@@ -4,6 +4,7 @@ import { collection, updateDoc, doc, addDoc } from 'firebase/firestore';
 import { Usuario, Empresa, Tarefa } from '../types';
 import { useEmpresaData } from '../context/EmpresaDataContext';
 import SugerirMelhoriaCard from './SugerirMelhoriaCard';
+import { filterHistoryForUser, HistoryRestrictionNotice } from '../utils/historyFilter';
 
 interface EmpilhadorPanelProps {
   user: Usuario;
@@ -304,7 +305,7 @@ export default function EmpilhadorPanel({ user, empresa }: EmpilhadorPanelProps)
 
   const pendingTasks  = tasks.filter(t => t.status === 'pending' && matchOp(t.operador));
   const progressTasks = tasks.filter(t => t.status === 'in_progress' && matchOp(t.operador));
-  const completedTasks= tasks.filter(t => t.status === 'done' && matchOp(t.operador)).slice(0, 10);
+  const completedTasks= filterHistoryForUser(tasks.filter(t => t.status === 'done' && matchOp(t.operador)), user, item => item.finalizadoEm ? item.finalizadoEm.split('T')[0] : (item.criadoEm ? item.criadoEm.split('T')[0] : ''));
 
   return (
     <div className="flex flex-col gap-6">
@@ -534,6 +535,7 @@ export default function EmpilhadorPanel({ user, empresa }: EmpilhadorPanelProps)
               <span className="text-xs font-black px-2 py-0.5 rounded-full bg-[#151b23] text-[#6a7d92]">{completedTasks.length}</span>
             </div>
             <div className="p-4 bg-[#0f1318] border border-[#222d3a] border-t-none rounded-b-xl flex flex-col gap-3">
+              <HistoryRestrictionNotice user={user} />
               {completedTasks.length === 0 ? (
                 <p className="text-xs text-[#6a7d92] text-center p-4">Nenhuma tarefa encerrada hoje.</p>
               ) : (

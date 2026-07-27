@@ -41,7 +41,6 @@ import {
 import { Usuario, Empresa, QuebraRow } from '../types';
 import { db, isCustomFirebaseConnected } from '../firebase';
 import { useEmpresaData } from '../context/EmpresaDataContext';
-import { getBaseQuebrasRows } from '../data/baseQuebras';
 import { generateMockQuebras } from '../mockDataGenerator';
 import A3BoardComponent from './A3BoardComponent';
 import CalendarFilter from './CalendarFilter';
@@ -121,8 +120,12 @@ const getEmbalagemName = (desc: string): string => {
 
 export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashboardProps) {
   const [actualQuebras, setActualQuebras] = useState<QuebraRow[]>([]);
-  const [startDate, setStartDate] = useState<string>('');
-  const [endDate, setEndDate] = useState<string>('');
+  const [startDate, setStartDate] = useState<string>(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 30);
+    return d.toISOString().split('T')[0];
+  });
+  const [endDate, setEndDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
   const [filterArea, setFilterArea] = useState<string>('TODAS');
   const [filterTurno, setFilterTurno] = useState<string>('TODOS');
   const [filterEmbalagem, setFilterEmbalagem] = useState<string>('TODAS');
@@ -140,18 +143,10 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
 
   const quebras = useMemo(() => {
     const companyId = empresa?.id || 'demo';
-    const baseRows = generateMockQuebras(companyId);
-    if (!actualQuebras || actualQuebras.length === 0) {
-      return baseRows;
+    if (actualQuebras && actualQuebras.length > 0) {
+      return actualQuebras;
     }
-    const existingIds = new Set(actualQuebras.map(r => r._docId || (r as any).id));
-    const merged = [...actualQuebras];
-    baseRows.forEach(baseRow => {
-      if (!existingIds.has(baseRow._docId)) {
-        merged.push(baseRow);
-      }
-    });
-    return merged;
+    return generateMockQuebras(companyId);
   }, [actualQuebras, empresa?.id]);
 
   // Convert physical boxes to HE
@@ -187,63 +182,17 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
 
   const empresaData = useEmpresaData();
 
-  // Sync Quebras from Firestore and LocalStorage
+  // Sync Quebras
   useEffect(() => {
-    const companyId = empresa?.id || 'demo';
-    const syncRecords = () => {
-      const baseRows = getBaseQuebrasRows(companyId);
-      const firestoreRows = (db && empresa?.id) ? (empresaData.quebras || []) : [];
-      let localRows: QuebraRow[] = [];
-      const saved = localStorage.getItem(`quebras_${companyId}`) || localStorage.getItem(`quebras_rows_${companyId}`);
-      if (saved) {
-        try {
-          localRows = JSON.parse(saved);
-        } catch (e) {
-          console.error(e);
-        }
-      }
+    if (!db || !empresa?.id) {
+      const saved = localStorage.getItem(`quebras_${empresa?.id || 'demo'}`);
+      if (saved) setActualQuebras(JSON.parse(saved));
+      return;
+    }
 
-      const isCustomRow = (r: QuebraRow) => {
-        const id = String(r._docId || (r as any).id || '');
-        if (!id) return false;
-        if (id.startsWith('base-quebra-') || id.startsWith('base-') || id.startsWith('base_')) return false;
-        if (r.fiscal === 'SISTEMA') return false;
-        return true;
-      };
-
-      const userCustomRows: QuebraRow[] = [];
-      const customIds = new Set<string>();
-
-      [...firestoreRows, ...localRows].forEach(r => {
-        if (isCustomRow(r)) {
-          const id = String(r._docId || (r as any).id);
-          if (!customIds.has(id)) {
-            customIds.add(id);
-            userCustomRows.push(r);
-          }
-        }
-      });
-
-      const merged = [...userCustomRows, ...baseRows];
-      merged.sort((a, b) => (b.dataISO || '').localeCompare(a.dataISO || ''));
-      setActualQuebras(merged);
-      try {
-        localStorage.setItem(`quebras_${companyId}`, JSON.stringify(merged));
-        localStorage.setItem(`quebras_rows_${companyId}`, JSON.stringify(merged));
-      } catch (e) {}
-    };
-
-    syncRecords();
-
-    window.addEventListener('local_data_changed', syncRecords);
-    window.addEventListener('app_data_updated', syncRecords);
-    window.addEventListener('storage', syncRecords);
-
-    return () => {
-      window.removeEventListener('local_data_changed', syncRecords);
-      window.removeEventListener('app_data_updated', syncRecords);
-      window.removeEventListener('storage', syncRecords);
-    };
+    const rows = [...empresaData.quebras];
+    rows.sort((a, b) => (b.dataISO || '').localeCompare(a.dataISO || ''));
+    setActualQuebras(rows);
   }, [empresaData.quebras, empresa?.id]);
 
   // Sync Action Plans 5W2H
@@ -793,7 +742,7 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
               </div>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={motivosChartData} layout="vertical" margin={{ top: 5, right: 10, left: 15, bottom: 5 }}>
+                <BarChart data={motivosChartData} layout="vertical" margin={{ top: 5, right: 10, left: 15, bottom: 5 }} accessibilityLayer={false}>
                   <CartesianGrid stroke={theme === 'dark' ? '#1e293b' : '#f1f5f9'} horizontal={false} />
                   <XAxis type="number" stroke={theme === 'dark' ? '#64748b' : '#94a3b8'} fontSize={8} tickLine={false} axisLine={false} />
                   <YAxis 
@@ -807,6 +756,7 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
                     tickFormatter={(val) => val.split(' — ')[0] || val} // Just show code
                   />
                   <Tooltip 
+                    cursor={{ fill: 'transparent' }}
                     contentStyle={{ 
                       backgroundColor: theme === 'dark' ? '#0f172a' : '#fff', 
                       border: theme === 'dark' ? '1px solid #334155' : '1px solid #e2e8f0', 
@@ -862,7 +812,7 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
               </div>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={embalagemChartData} layout="vertical" margin={{ top: 5, right: 45, left: -5, bottom: 5 }}>
+                <BarChart data={embalagemChartData} layout="vertical" margin={{ top: 5, right: 45, left: -5, bottom: 5 }} accessibilityLayer={false}>
                   <CartesianGrid stroke="#f1f5f9" horizontal={false} />
                   <XAxis type="number" stroke="#94a3b8" fontSize={8} tickLine={false} axisLine={false} />
                   <YAxis 
@@ -876,6 +826,7 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
                     width={95}
                   />
                   <Tooltip 
+                    cursor={{ fill: 'transparent' }}
                     contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', fontSize: 10, color: '#fff' }}
                     labelStyle={{ color: '#38bdf8', fontWeight: 'bold' }}
                     itemStyle={{ color: '#cbd5e1' }}
@@ -1022,11 +973,11 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
               </div>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={turnoChartData} margin={{ top: 5, right: 5, left: -30, bottom: 5 }}>
+                <BarChart data={turnoChartData} margin={{ top: 5, right: 5, left: -30, bottom: 5 }} accessibilityLayer={false}>
                   <CartesianGrid stroke="#f1f5f9" vertical={false} />
                   <XAxis dataKey="name" stroke="#94a3b8" fontSize={8} tickLine={false} axisLine={false} />
                   <YAxis stroke="#94a3b8" fontSize={8} tickLine={false} axisLine={false} />
-                  <Tooltip contentStyle={{ fontSize: 9 }} />
+                  <Tooltip cursor={{ fill: 'transparent' }} contentStyle={{ fontSize: 9 }} />
                   <Bar dataKey="value" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={25}>
                     <Cell fill="#f5a623" />
                     <Cell fill="#032b5e" />
