@@ -297,9 +297,11 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
   const [pickingComp, setPickingComp] = useState<PickingComparison[]>([]);
 
   const validades = useMemo(() => {
+    if (actualValidades && actualValidades.length > 0) {
+      return actualValidades;
+    }
     const companyId = empresa?.id || 'demo';
-    const mockRows = generateMockValidades(companyId);
-    return [...actualValidades, ...mockRows];
+    return generateMockValidades(companyId);
   }, [actualValidades, empresa?.id]);
 
   // Advanced Filters State
@@ -366,13 +368,23 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
   // 1. Sync & Seed Data
   useEffect(() => {
     // Sync validades (dynamic)
-    if (!db) {
-      const saved = localStorage.getItem(`validades_${companyId}`);
-      if (saved) setActualValidades(JSON.parse(saved));
-      return;
+    const saved = localStorage.getItem(`validades_${companyId}`);
+    let localRows: ValidadeRow[] = [];
+    if (saved) {
+      try {
+        localRows = JSON.parse(saved);
+      } catch (e) {
+        console.error(e);
+      }
     }
 
-    setActualValidades(empresaData.validades);
+    if (empresaData.validades && empresaData.validades.length > 0) {
+      setActualValidades(empresaData.validades);
+    } else if (localRows.length > 0) {
+      setActualValidades(localRows);
+    } else {
+      setActualValidades([]);
+    }
   }, [empresaData.validades, companyId]);
 
   // Sync other sub-tables with localstorage (to keep editing interactive and high fidelity)
@@ -441,6 +453,19 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
     }
   };
 
+  const calculateTotalCaixas = (v: ValidadeRow): number => {
+    const p = Number(v.palhete) || 0;
+    const l = Number(v.lastro) || 0;
+    const c = Number(v.caixa) || 0;
+
+    if (p > 0 && l > 0 && c > 0) return p * l * c;
+    if (p > 0 && l > 0) return p * l;
+    if (p > 0 && c > 0) return p * c;
+    if (p > 0) return p;
+    if (c > 0) return c;
+    return 1;
+  };
+
   // 2. Metrics Compiling
   const compiledValidades = validades.map(v => {
     const days = getDaysRemaining(v.validade);
@@ -449,7 +474,7 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
     else if (days <= 60) bracket = '31-60';
     else if (days <= 90) bracket = '61-90';
 
-    const totalUnitiesRaw = (v.palhete || 0) * (v.lastro || 1) * (v.caixa || 1);
+    const totalUnitiesRaw = calculateTotalCaixas(v);
     const totalUnities = viewUnit === 'u' ? totalUnitiesRaw : Math.round(convertUnitsToHE(totalUnitiesRaw, v.descricao) * 100) / 100;
     const category = v.descricao.toLowerCase().includes('pet') ? 'PET' : 
                      v.descricao.toLowerCase().includes('lata') || v.descricao.toLowerCase().includes('lt') ? 'Lata' : 'Garrafa Retornável';
@@ -466,15 +491,135 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
     };
   });
 
+  // Effective picking comparison derived dynamically from compiledValidades if real data exists
+  const effectivePickingComp = useMemo(() => {
+    if (actualValidades.length === 0) {
+      return pickingComp;
+    }
+
+    const groupedBySku: Record<string, {
+      produto: string;
+      lote: string;
+      validade: string;
+      qtdEstoque: number;
+      qtdPicking: number;
+      minDays: number;
+    }> = {};
+
+    compiledValidades.forEach(v => {
+      const key = v.codigo || v.descricao;
+      const caixas = v.totalUnitiesRaw;
+      
+      if (!groupedBySku[key]) {
+        groupedBySku[key] = {
+          produto: v.descricao,
+          lote: v.codigo ? `SKU-${v.codigo}` : 'LOTE-PADRAO',
+          validade: v.validade,
+          qtdEstoque: 0,
+          qtdPicking: 0,
+          minDays: v.days
+        };
+      }
+
+      groupedBySku[key].qtdEstoque += caixas;
+      if (v.localizacao === 'picking') {
+        groupedBySku[key].qtdPicking += caixas;
+      }
+      if (v.days < groupedBySku[key].minDays) {
+        groupedBySku[key].minDays = v.days;
+        groupedBySku[key].validade = v.validade;
+      }
+    });
+
+    return Object.values(groupedBySku).map(item => {
+      let formattedVal = item.validade;
+      if (item.validade && item.validade.includes('-')) {
+        const [y, m, d] = item.validade.split('-');
+        formattedVal = `${d}/${m}/${y}`;
+      }
+
+      const diferenca = Math.max(0, item.qtdEstoque - item.qtdPicking);
+      let status: 'Conforme' | 'Atenção' | 'Desvio Crítico' = 'Conforme';
+
+      if (item.qtdPicking === 0 && item.qtdEstoque > 50) {
+        status = 'Desvio Crítico';
+      } else if (diferenca > 200 || item.minDays <= 30) {
+        status = 'Atenção';
+      }
+
+      return {
+        produto: item.produto,
+        lote: item.lote,
+        validade: formattedVal,
+        qtdEstoque: item.qtdEstoque,
+        qtdPicking: item.qtdPicking,
+        diferenca,
+        status
+      };
+    });
+  }, [actualValidades, compiledValidades, pickingComp]);
+
+  // Dynamic blocks data derived directly from compiledValidades
+  const dynamicBlocksData = useMemo(() => {
+    const result: Record<string, BlockData> = { ...BLOCKS_DATA };
+
+    if (compiledValidades.length === 0) {
+      return result;
+    }
+
+    const blockGroups: Record<string, typeof compiledValidades> = {};
+    compiledValidades.forEach(v => {
+      const bKey = (v.bloco || 'A1').trim().toUpperCase();
+      if (!blockGroups[bKey]) blockGroups[bKey] = [];
+      blockGroups[bKey].push(v);
+    });
+
+    Object.entries(blockGroups).forEach(([bKey, rows]) => {
+      if (rows.length === 0) return;
+      
+      const skuCount = new Set(rows.map(r => r.codigo)).size;
+      const pallets = rows.reduce((acc, r) => acc + (Number(r.palhete) || 1), 0);
+      const totalDays = rows.reduce((acc, r) => acc + r.days, 0);
+      const avgValidity = Math.round(totalDays / rows.length);
+      const menorValidade = Math.min(...rows.map(r => r.days));
+
+      const criticalRows = rows.filter(r => r.days <= 30);
+      const alertMediumRows = rows.filter(r => r.days > 30 && r.days <= 60);
+      const alertLowRows = rows.filter(r => r.days > 60 && r.days <= 90);
+      const safeRows = rows.filter(r => r.days > 90);
+
+      const criticalPct = Math.round((criticalRows.length / rows.length) * 100);
+      const riskIndex = Math.min(100, Math.max(0, Math.round(100 - avgValidity)));
+
+      result[bKey] = {
+        id: bKey,
+        avgValidity,
+        menorValidade,
+        skuCount,
+        pallets,
+        criticalPct,
+        riskIndex,
+        ranges: {
+          critical: criticalRows.reduce((acc, r) => acc + r.totalUnities, 0),
+          alertMedium: alertMediumRows.reduce((acc, r) => acc + r.totalUnities, 0),
+          alertLow: alertLowRows.reduce((acc, r) => acc + r.totalUnities, 0),
+          safe: safeRows.reduce((acc, r) => acc + r.totalUnities, 0),
+        }
+      };
+    });
+
+    return result;
+  }, [compiledValidades]);
+
   // Calculate high quality KPIs
   const totalRiscoUnities = compiledValidades.reduce((acc, curr) => curr.days <= 90 ? acc + curr.totalUnities : acc, 0);
   const totalValorRisco = compiledValidades.reduce((acc, curr) => curr.days <= 90 ? acc + curr.estimatedCost : acc, 0);
   const totalVencidosUnidades = compiledValidades.reduce((acc, curr) => curr.days < 0 ? acc + curr.totalUnities : acc, 0);
 
-  // Desvios FEFO calculation
-  const totalDesviosFEFO = pickingComp.filter(p => p.status === 'Desvio Crítico').length;
-  const totalConformeFEFO = pickingComp.filter(p => p.status === 'Conforme').length;
-  const aderenciaFEFO = pickingComp.length > 0 ? Math.round((totalConformeFEFO / pickingComp.length) * 100) : 92;
+  // Desvios FEFO calculation using effectivePickingComp
+  const totalDesviosFEFO = effectivePickingComp.filter(p => p.status === 'Desvio Crítico').length;
+  const totalConformeFEFO = effectivePickingComp.filter(p => p.status === 'Conforme').length;
+  const aderenciaFEFO = effectivePickingComp.length > 0 ? Math.round((totalConformeFEFO / effectivePickingComp.length) * 100) : 92;
 
   // Actions completion rate
   const completedActions = actionPoints.filter(a => a.status === 'Concluído').length;
@@ -1581,7 +1726,7 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
           TAB 4: ESTOQUE X ESTOQUE (POR BLOCO)
           ───────────────────────────────────────────────────────────────── */}
       {activeTab === 'estoque-estoque' && (() => {
-        const blocksArray = Object.values(BLOCKS_DATA);
+        const blocksArray = Object.values(dynamicBlocksData);
 
         // 1. Average Validity Data: A1 to C4
         const avgValidityData = blocksArray.map(b => ({
@@ -1823,7 +1968,7 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
 
                       {/* Row A */}
                       {['A1', 'A2', 'A3', 'A4'].map((id) => {
-                        const b = BLOCKS_DATA[id];
+                        const b = dynamicBlocksData[id] || BLOCKS_DATA[id];
                         const isSelected = selectedBlock === id;
                         let colorClass = 'bg-emerald-500 text-white hover:bg-emerald-600';
                         if (b.menorValidade <= 30) colorClass = 'bg-red-500 text-white hover:bg-red-600';
@@ -1846,7 +1991,7 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
 
                       {/* Row B */}
                       {['B1', 'B2', 'B3', 'B4'].map((id) => {
-                        const b = BLOCKS_DATA[id];
+                        const b = dynamicBlocksData[id] || BLOCKS_DATA[id];
                         const isSelected = selectedBlock === id;
                         let colorClass = 'bg-emerald-500 text-white hover:bg-emerald-600';
                         if (b.menorValidade <= 30) colorClass = 'bg-red-500 text-white hover:bg-red-600';
@@ -1869,7 +2014,7 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
 
                       {/* Row C */}
                       {['C1', 'C2', 'C3', 'C4'].map((id) => {
-                        const b = BLOCKS_DATA[id];
+                        const b = dynamicBlocksData[id] || BLOCKS_DATA[id];
                         const isSelected = selectedBlock === id;
                         let colorClass = 'bg-emerald-500 text-white hover:bg-emerald-600';
                         if (b.menorValidade <= 30) colorClass = 'bg-red-500 text-white hover:bg-red-600';
@@ -1909,23 +2054,23 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
                       <div className="space-y-2 text-xs">
                         <div className="flex justify-between items-center py-1">
                           <span className="text-slate-500 font-bold text-[10px] uppercase">SKUs Ativos</span>
-                          <span className="font-mono font-black text-slate-800">{BLOCKS_DATA[selectedBlock].skuCount} SKUs</span>
+                          <span className="font-mono font-black text-slate-800">{(dynamicBlocksData[selectedBlock] || BLOCKS_DATA[selectedBlock] || {}).skuCount || 0} SKUs</span>
                         </div>
                         <div className="flex justify-between items-center py-1">
                           <span className="text-slate-500 font-bold text-[10px] uppercase">Paletes Totais</span>
-                          <span className="font-mono font-black text-slate-800">{BLOCKS_DATA[selectedBlock].pallets} un</span>
+                          <span className="font-mono font-black text-slate-800">{(dynamicBlocksData[selectedBlock] || BLOCKS_DATA[selectedBlock] || {}).pallets || 0} un</span>
                         </div>
                         <div className="flex justify-between items-center py-1">
                           <span className="text-slate-500 font-bold text-[10px] uppercase">Menor Validade</span>
-                          <span className="font-mono font-black text-red-600 bg-red-50 px-1.5 py-0.5 rounded">{BLOCKS_DATA[selectedBlock].menorValidade} dias</span>
+                          <span className="font-mono font-black text-red-600 bg-red-50 px-1.5 py-0.5 rounded">{(dynamicBlocksData[selectedBlock] || BLOCKS_DATA[selectedBlock] || {}).menorValidade || 0} dias</span>
                         </div>
                         <div className="flex justify-between items-center py-1">
                           <span className="text-slate-500 font-bold text-[10px] uppercase">Validade Média</span>
-                          <span className="font-mono font-black text-slate-800">{BLOCKS_DATA[selectedBlock].avgValidity} dias</span>
+                          <span className="font-mono font-black text-slate-800">{(dynamicBlocksData[selectedBlock] || BLOCKS_DATA[selectedBlock] || {}).avgValidity || 0} dias</span>
                         </div>
                         <div className="flex justify-between items-center py-1">
                           <span className="text-slate-500 font-bold text-[10px] uppercase">Lotes Críticos (≤30d)</span>
-                          <span className="font-mono font-black text-red-500 bg-red-50 px-1.5 py-0.5 rounded">{BLOCKS_DATA[selectedBlock].criticalPct}%</span>
+                          <span className="font-mono font-black text-red-500 bg-red-50 px-1.5 py-0.5 rounded">{(dynamicBlocksData[selectedBlock] || BLOCKS_DATA[selectedBlock] || {}).criticalPct || 0}%</span>
                         </div>
                       </div>
                     </div>
@@ -1934,12 +2079,12 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
                     <div className="mt-3 pt-2 border-t border-slate-200">
                       <div className="flex justify-between text-[9px] font-bold text-slate-400 mb-1">
                         <span>PERCENTUAL CRÍTICO (≤30d)</span>
-                        <span className="text-red-500 font-black">{BLOCKS_DATA[selectedBlock].criticalPct}%</span>
+                        <span className="text-red-500 font-black">{(dynamicBlocksData[selectedBlock] || BLOCKS_DATA[selectedBlock] || {}).criticalPct || 0}%</span>
                       </div>
                       <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
                         <div 
-                          className={`h-full ${BLOCKS_DATA[selectedBlock].criticalPct > 50 ? 'bg-red-500' : 'bg-amber-500'} transition-all duration-300`} 
-                          style={{ width: `${BLOCKS_DATA[selectedBlock].criticalPct}%` }} 
+                          className={`h-full ${((dynamicBlocksData[selectedBlock] || BLOCKS_DATA[selectedBlock] || {}).criticalPct || 0) > 50 ? 'bg-red-500' : 'bg-amber-500'} transition-all duration-300`} 
+                          style={{ width: `${(dynamicBlocksData[selectedBlock] || BLOCKS_DATA[selectedBlock] || {}).criticalPct || 0}%` }} 
                         />
                       </div>
                     </div>

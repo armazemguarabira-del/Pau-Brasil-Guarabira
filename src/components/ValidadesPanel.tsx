@@ -407,9 +407,30 @@ export default function ValidadesPanel({ user, empresa }: ValidadesPanelProps) {
     return String(p.codigo).includes(q) || p.descricao.toLowerCase().includes(q);
   }).slice(0, 10);
 
+  // Helper to extract registration date key for history filtering
+  const getRegDateKey = (item: ValidadeRow) => {
+    const raw = item.cadastradoEm || (item as any).dataISO || (item as any).dataRegistro || (item as any).criadoEm || (item as any).createdAt || (item as any).data;
+    if (raw) {
+      const s = String(raw).trim();
+      if (s.includes('T')) return s.split('T')[0];
+      if (s.includes('-') && s.length >= 10) return s.slice(0, 10);
+      if (s.includes('/')) {
+        const parts = s.split('/');
+        if (parts.length === 3) {
+          const d = parts[0].padStart(2, '0');
+          const m = parts[1].padStart(2, '0');
+          const y = parts[2].length === 2 ? `20${parts[2]}` : parts[2];
+          return `${y}-${m}-${d}`;
+        }
+      }
+    }
+    // Fallback: if no registration date is present, group as registered today so current session lots stay together
+    return new Date().toISOString().split('T')[0];
+  };
+
   // Expiration entries mapping list
   const getFilteredEntries = () => {
-    let rows = filterHistoryForUser(validadesList, user, item => item.cadastradoEm ? item.cadastradoEm.split('T')[0] : item.validade);
+    let rows = filterHistoryForUser(validadesList, user, getRegDateKey);
     if (filterLoc !== 'todos') {
       rows = rows.filter(r => r.localizacao === filterLoc);
     }
@@ -487,7 +508,7 @@ export default function ValidadesPanel({ user, empresa }: ValidadesPanelProps) {
           onClick={() => setActiveTab('lista')}
           className={`ptab py-2 px-6 font-sans font-bold text-xs uppercase cursor-pointer relative ${activeTab === 'lista' ? 'text-[#8b5cf6] border-b-2 border-b-[#8b5cf6]' : 'text-[#6a7d92] hover:text-[#e8eef5]'}`}
         >
-          📋 Lista do Estoque <span className="ml-1.5 px-2 py-0.5 rounded-full bg-[#151b23] border border-[#222d3a] text-[10px] text-snow">{filterHistoryForUser(validadesList, user, item => item.cadastradoEm ? item.cadastradoEm.split('T')[0] : item.validade).length}</span>
+          📋 Lista do Estoque <span className="ml-1.5 px-2 py-0.5 rounded-full bg-[#151b23] border border-[#222d3a] text-[10px] text-snow">{filterHistoryForUser(validadesList, user, getRegDateKey).length}</span>
         </button>
       </div>
 
@@ -722,88 +743,110 @@ export default function ValidadesPanel({ user, empresa }: ValidadesPanelProps) {
           <div className="flex flex-col gap-3">
             {(() => {
               const grouped = entriesToDisplay.reduce((acc, r) => {
-                const key = r.validade || 'sem-data';
+                const key = getRegDateKey(r);
                 if (!acc[key]) acc[key] = [];
                 acc[key].push(r);
                 return acc;
               }, {} as Record<string, ValidadeRow[]>);
 
-              if (Object.keys(grouped).length === 0) {
+              const sortedRegDateKeys = Object.keys(grouped).sort((a, b) => b.localeCompare(a));
+
+              if (sortedRegDateKeys.length === 0) {
                 return <div className="g-card p-12 text-center text-[#6a7d92]">Nenhum produto cadastrado que corresponda a estes filtros.</div>;
               }
 
-              return (Object.entries(grouped) as [string, ValidadeRow[]][]).map(([dateKey, rows]) => {
-                const isOpen = !!expandedDates[dateKey];
-                const days = getDaysRemaining(dateKey);
-                const spec = getStatusLabelAndStyles(days);
+              return sortedRegDateKeys.map(regDateKey => {
+                const rows = grouped[regDateKey];
+                const isOpen = expandedDates[regDateKey] !== false;
 
-                let formattedDate = dateKey;
+                let formattedRegDate = regDateKey;
                 try {
-                  const [y, m, d] = dateKey.split('-');
+                  const [y, m, d] = regDateKey.split('-');
                   const dt = new Date(Number(y), Number(m) - 1, Number(d));
                   const daysOfWeek = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
-                  formattedDate = `${d}/${m}/${y} — ${daysOfWeek[dt.getDay()]}`;
+                  formattedRegDate = `${d}/${m}/${y} — ${daysOfWeek[dt.getDay()]}`;
                 } catch (e) {}
 
-                const descDays = days < 0 
-                  ? `${Math.abs(days)} dias atrasados` 
-                  : days === 0 
-                  ? 'Vence hoje' 
-                  : `${days} dias restantes`;
-
                 return (
-                  <div key={dateKey} className="g-card overflow-hidden">
+                  <div key={regDateKey} className="g-card overflow-hidden">
                     <div 
-                      onClick={() => toggleDateGroup(dateKey)}
-                      className="p-4 bg-[#151b23] flex items-center justify-between cursor-pointer select-none gap-4 flex-wrap"
+                      onClick={() => toggleDateGroup(regDateKey)}
+                      className="p-4 bg-[#151b23] flex items-center justify-between cursor-pointer select-none gap-4 flex-wrap hover:bg-[#1a222c] transition-colors border-b border-[#222d3a]/60"
                     >
                       <div className="flex items-center gap-3 flex-wrap">
-                        <span className="font-sans font-black text-sm text-[#8b5cf6] tracking-wide">📅 Vencimento: {formattedDate}</span>
-                        <span className="text-[10px] bg-[#11151c] border border-[#222d3a] px-2 py-0.5 rounded-full font-bold text-snow">
-                          {rows.length} lotes
+                        <span className="font-sans font-black text-sm text-[#8b5cf6] tracking-wide">
+                          📅 Registros de: {formattedRegDate}
                         </span>
-                        <span className={`text-[10px] font-black ${spec.text}`}>{spec.label}</span>
-                        <span className="text-[10px] text-[#6a7d92] font-semibold">⏳ {descDays}</span>
+                        <span className="text-[10px] bg-[#11151c] border border-[#222d3a] px-2.5 py-0.5 rounded-full font-bold text-snow">
+                          {rows.length} {rows.length === 1 ? 'lote registrado' : 'lotes registrados'}
+                        </span>
                       </div>
                       <span className="text-[#6a7d92] text-xs transition-transform" style={{ transform: isOpen ? 'rotate(180deg)' : 'rotate(0)' }}>▼</span>
                     </div>
 
                     {isOpen && (
                       <div className="p-4 flex flex-col gap-3 bg-[#0c1015]/40 border-t border-[#222d3a]/40">
-                        {rows.map((r, i) => (
-                          <div key={r.id || i} className="border border-[#222d3a] rounded-xl p-4 bg-[#0f1318] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 flex-wrap mb-1.5">
-                                <span className="text-[9px] bg-[#151b23] border border-[#222d3a] px-2 py-0.5 rounded font-black text-[#f5a623] font-mono">{r.codigo}</span>
-                                <span className="text-[9px] bg-[#151b23] px-2 py-0.5 rounded uppercase font-bold text-[#6a7d92]">
-                                  {r.localizacao === 'central' ? 'Estoque central' : r.localizacao === 'picking' ? 'Picking' : 'Marketplace'}
-                                  {r.bloco ? ` — Bloco ${r.bloco}` : ''}
-                                </span>
+                        {rows.map((r, i) => {
+                          const days = getDaysRemaining(r.validade);
+                          const spec = getStatusLabelAndStyles(days);
+                          const descDays = days < 0 
+                            ? `${Math.abs(days)} dias atrasados` 
+                            : days === 0 
+                            ? 'Vence hoje' 
+                            : `${days} dias restantes`;
+
+                          let formattedValidadeDate = r.validade;
+                          try {
+                            const [y, m, d] = r.validade.split('-');
+                            formattedValidadeDate = `${d}/${m}/${y}`;
+                          } catch (e) {}
+
+                          return (
+                            <div key={r.id || r._docId || i} className="border border-[#222d3a] rounded-xl p-4 bg-[#0f1318] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 hover:border-[#334155] transition-all shadow-sm">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap mb-1.5">
+                                  <span className="text-[9px] bg-[#151b23] border border-[#222d3a] px-2 py-0.5 rounded font-black text-[#f5a623] font-mono">
+                                    SKU: {r.codigo}
+                                  </span>
+                                  <span className="text-[9px] bg-[#151b23] px-2 py-0.5 rounded uppercase font-bold text-[#6a7d92]">
+                                    {r.localizacao === 'central' ? 'Estoque central' : r.localizacao === 'picking' ? 'Picking' : 'Marketplace'}
+                                    {r.bloco ? ` — Bloco ${r.bloco}` : ''}
+                                  </span>
+                                  <span className="text-[9px] bg-purple-500/10 border border-purple-500/30 px-2 py-0.5 rounded font-bold text-[#a78bfa]">
+                                    📅 Vencimento: {formattedValidadeDate}
+                                  </span>
+                                  <span className={`text-[9px] font-black px-2 py-0.5 rounded border ${spec.bg || 'bg-slate-800'} ${spec.text} border-current/20`}>
+                                    {spec.label}
+                                  </span>
+                                  <span className="text-[9px] text-[#6a7d92] font-semibold">
+                                    ⏳ {descDays}
+                                  </span>
+                                </div>
+                                <h4 className="text-sm font-bold text-snow truncate">{r.descricao}</h4>
+                                <div className="flex gap-4 flex-wrap text-xs text-[#6a7d92] mt-2 font-mono font-semibold">
+                                  {r.palhete > 0 && <span>🪵 {r.palhete} paletes</span>}
+                                  {r.lastro > 0 && <span>🗃 {r.lastro} lastros</span>}
+                                  {r.caixa > 0 && <span>📦 {r.caixa} SKUs</span>}
+                                </div>
                               </div>
-                              <h4 className="text-sm font-bold text-snow truncate">{r.descricao}</h4>
-                              <div className="flex gap-4 flex-wrap text-xs text-[#6a7d92] mt-2">
-                                {r.palhete > 0 && <span>🪵 {r.palhete} paletes</span>}
-                                {r.lastro > 0 && <span>🗃 {r.lastro} lastros</span>}
-                                {r.caixa > 0 && <span>📦 {r.caixa} SKUs</span>}
+                              
+                              <div className="flex gap-2 self-end sm:self-auto">
+                                <button 
+                                  onClick={() => handleEditInit(r)}
+                                  className="py-1.5 px-3 border border-[#222d3a] hover:border-[#6a7d92] bg-[#151b23] text-xs font-semibold text-snow rounded-lg cursor-pointer transition-colors"
+                                >
+                                  ✏️ Editar
+                                </button>
+                                <button 
+                                  onClick={() => handleDelete(r)}
+                                  className="py-1.5 px-3 border border-red/20 bg-red/10 hover:bg-red/20 text-[#fca5a5] text-xs font-semibold rounded-lg cursor-pointer transition-colors"
+                                >
+                                  🗑 Excluir
+                                </button>
                               </div>
                             </div>
-                            
-                            <div className="flex gap-2 self-end sm:self-auto">
-                              <button 
-                                onClick={() => handleEditInit(r)}
-                                className="py-1.5 px-3 border border-[#222d3a] hover:border-[#6a7d92] bg-[#151b23] text-xs font-semibold text-snow rounded-lg cursor-pointer"
-                              >
-                                ✏️ Editar
-                              </button>
-                              <button 
-                                onClick={() => handleDelete(r)}
-                                className="py-1.5 px-3 border border-red/20 bg-red/10 hover:bg-red/20 text-[#fca5a5] text-xs font-semibold rounded-lg cursor-pointer"
-                              >
-                                🗑 Excluir
-                              </button>
-                            </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
                   </div>

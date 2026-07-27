@@ -118,6 +118,40 @@ const getEmbalagemName = (desc: string): string => {
   return 'Outras Embalagens';
 };
 
+// Helper to classify grupo de produto
+export const getGrupoName = (desc: string): string => {
+  const d = (desc || '').toUpperCase();
+  if (
+    d.includes('GUARANA') || d.includes('PEPSI') || d.includes('SUKITA') || 
+    d.includes('SODA') || d.includes('H2OH') || d.includes('TONICA') || d.includes('CITRUS')
+  ) {
+    return 'Refrigerantes';
+  }
+  if (
+    d.includes('RED BULL') || d.includes('GATORADE') || d.includes('MONSTER') || d.includes('TNT')
+  ) {
+    return 'Energéticos & NABS';
+  }
+  if (
+    d.includes('AGUA') || d.includes('ÁGUA') || d.includes('INDAIA') || 
+    d.includes('INDAIÁ') || d.includes('DAVILA') || d.includes('SUCO') || d.includes('DEL VALLE')
+  ) {
+    return 'Águas & Sucos';
+  }
+  if (
+    d.includes('BEATS') || d.includes('SMIRNOFF') || d.includes('WALKER') || 
+    d.includes('TANQUERAY') || d.includes('PITU') || d.includes('PITÚ') || 
+    d.includes('WHISKY') || d.includes('GIN') || d.includes('VODKA') || 
+    d.includes('BALLANTINES') || d.includes('PASSPORT') || d.includes('ICE')
+  ) {
+    return 'Destilados & Beats';
+  }
+  if (d.includes('TRIDENT') || d.includes('HALLS')) {
+    return 'Confeitaria / Outros';
+  }
+  return 'Cervejas';
+};
+
 export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashboardProps) {
   const [actualQuebras, setActualQuebras] = useState<QuebraRow[]>([]);
   const [startDate, setStartDate] = useState<string>(() => {
@@ -129,6 +163,8 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
   const [filterArea, setFilterArea] = useState<string>('TODAS');
   const [filterTurno, setFilterTurno] = useState<string>('TODOS');
   const [filterEmbalagem, setFilterEmbalagem] = useState<string>('TODAS');
+  const [filterGrupo, setFilterGrupo] = useState<string>('TODOS');
+  const [secondChartMode, setSecondChartMode] = useState<'grupo' | 'embalagem'>('grupo');
   const [activeSubTab, setActiveSubTab] = useState<'indicadores' | 'wqi' | 'boarda3'>('indicadores');
   const [viewUnit, setViewUnit] = useState<'cx' | 'he'>('cx');
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
@@ -221,6 +257,8 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
       if (filterTurno !== 'TODOS' && q.turno !== filterTurno) return false;
       // Embalagem filter
       if (filterEmbalagem !== 'TODAS' && getEmbalagemName(q.descricao) !== filterEmbalagem) return false;
+      // Grupo filter
+      if (filterGrupo !== 'TODOS' && getGrupoName(q.descricao) !== filterGrupo) return false;
       
       // Date range filter
       if (startDate || endDate) {
@@ -324,6 +362,24 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
   const totalEmbalagemVolume = Math.round(embalagemChartData.reduce((acc, curr) => acc + curr.value, 0) * 100) / 100;
   const topEmbalagensPct = embalagemChartData.length > 0 && totalEmbalagemVolume > 0
     ? `${embalagemChartData[0].name} (${Math.round((embalagemChartData[0].value / totalEmbalagemVolume) * 100)}%)`
+    : '';
+
+  // Grupo Pareto Data
+  const grupoMap: Record<string, number> = {};
+  filteredData.forEach(q => {
+    const gName = getGrupoName(q.descricao);
+    const val = viewUnit === 'cx' ? q.quantidade : convertCxToHE(q.quantidade, q.descricao);
+    grupoMap[gName] = (grupoMap[gName] || 0) + val;
+  });
+
+  const grupoChartData = Object.entries(grupoMap)
+    .map(([name, value]) => ({ name, value: Math.round(value * 100) / 100 }))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 7);
+
+  const totalGrupoVolume = Math.round(grupoChartData.reduce((acc, curr) => acc + curr.value, 0) * 100) / 100;
+  const topGrupoPct = grupoChartData.length > 0 && totalGrupoVolume > 0
+    ? `${grupoChartData[0].name} (${Math.round((grupoChartData[0].value / totalGrupoVolume) * 100)}%)`
     : '';
 
   // Area Chart Data
@@ -570,7 +626,7 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
               </div>
 
               {/* Embalagem filter */}
-              <div className="flex flex-col gap-1 w-[150px]">
+              <div className="flex flex-col gap-1 w-[140px]">
                 <span className={`text-[9px] font-black uppercase tracking-widest ${theme === 'dark' ? 'text-slate-400' : 'text-gray-400'}`}>Embalagem</span>
                 <select 
                   value={filterEmbalagem} 
@@ -590,6 +646,28 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
                   <option value="Garrafa 1L">Garrafa 1L</option>
                   <option value="PET">PET</option>
                   <option value="Outras Embalagens">Outras Embalagens</option>
+                </select>
+              </div>
+
+              {/* Grupo filter */}
+              <div className="flex flex-col gap-1 w-[150px]">
+                <span className={`text-[9px] font-black uppercase tracking-widest ${theme === 'dark' ? 'text-slate-400' : 'text-gray-400'}`}>Grupo de Produto</span>
+                <select 
+                  value={filterGrupo} 
+                  onChange={e => setFilterGrupo(e.target.value)} 
+                  className={`w-full font-sans font-bold rounded-lg outline-none px-2.5 py-1 text-[10px] h-[28px] cursor-pointer transition-all ${
+                    theme === 'dark' 
+                      ? 'bg-[#1e2942] border border-slate-600 text-slate-100 hover:border-blue-400' 
+                      : 'bg-white border border-gray-200 text-[#032b5e] hover:border-blue-400 focus:border-[#032b5e]'
+                  }`}
+                >
+                  <option value="TODOS">Todos os Grupos</option>
+                  <option value="Cervejas">Cervejas</option>
+                  <option value="Refrigerantes">Refrigerantes</option>
+                  <option value="Energéticos & NABS">Energéticos & NABS</option>
+                  <option value="Águas & Sucos">Águas & Sucos</option>
+                  <option value="Destilados & Beats">Destilados & Beats</option>
+                  <option value="Confeitaria / Outros">Confeitaria / Outros</option>
                 </select>
               </div>
 
@@ -717,8 +795,8 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
 
       </div>
 
-      {/* CHARTS CONTAINER GRID - OPTIMIZED HORIZONTAL LAYOUT */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+      {/* CHARTS CONTAINER - TOP ROW (3 CHARTS) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         
         {/* CHART 1: Pareto por Código DPO / Motivo */}
         <div className={`p-4.5 rounded-xl border shadow-sm flex flex-col justify-between gap-3 min-h-[340px] transition-colors ${
@@ -783,36 +861,74 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
           </div>
         </div>
 
-        {/* CHART 2: Perdas por Embalagem */}
+        {/* CHART 2: Perdas por Grupo / Embalagem */}
         <div className={`p-4.5 rounded-xl border shadow-sm flex flex-col justify-between gap-3 min-h-[340px] transition-colors ${
           theme === 'dark' ? 'bg-[#131d38] border-slate-700/80 text-slate-100' : 'bg-white border-gray-200'
         }`}>
-          <div className="flex items-start justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div>
-              <h3 className={`font-sans font-black text-[11px] uppercase tracking-wider flex items-center gap-1.5 ${
-                theme === 'dark' ? 'text-blue-300' : 'text-[#032b5e]'
-              }`}>
-                <Package className="w-3.5 h-3.5 text-[#3b82f6]" /> PERDAS POR EMBALAGEM
-              </h3>
+              <div className="flex items-center gap-2">
+                <h3 className={`font-sans font-black text-[11px] uppercase tracking-wider flex items-center gap-1.5 ${
+                  theme === 'dark' ? 'text-blue-300' : 'text-[#032b5e]'
+                }`}>
+                  <Package className="w-3.5 h-3.5 text-[#3b82f6]" /> {secondChartMode === 'grupo' ? 'PERDAS POR GRUPO' : 'PERDAS POR EMBALAGEM'}
+                </h3>
+              </div>
               <span className="text-[9px] text-gray-400 font-bold mt-0.5 block">
-                Volume por tipo de vasilhame/lata
+                {secondChartMode === 'grupo' ? 'Volume de perdas por grupo/categoria de produto' : 'Volume por tipo de vasilhame/lata'}
               </span>
             </div>
-            <span className={`text-[10px] font-mono font-black border px-2 py-0.5 rounded-md ${
-              theme === 'dark' ? 'text-blue-300 bg-slate-800 border-slate-700' : 'text-[#032b5e] bg-slate-100 border-slate-200/80'
-            }`}>
-              {totalEmbalagemVolume.toLocaleString('pt-BR')} {viewUnit === 'cx' ? 'CX' : 'HL'}
-            </span>
+
+            <div className="flex items-center gap-2">
+              {/* Toggle Mode */}
+              <div className={`flex items-center p-0.5 rounded-lg border text-[9px] font-bold ${
+                theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-gray-100 border-gray-200'
+              }`}>
+                <button
+                  type="button"
+                  onClick={() => setSecondChartMode('grupo')}
+                  className={`px-2 py-0.5 rounded-md transition-all border-none cursor-pointer ${
+                    secondChartMode === 'grupo'
+                      ? (theme === 'dark' ? 'bg-blue-600 text-white shadow-sm' : 'bg-[#032b5e] text-white shadow-sm')
+                      : 'text-slate-400 hover:text-white bg-transparent'
+                  }`}
+                >
+                  GRUPO
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSecondChartMode('embalagem')}
+                  className={`px-2 py-0.5 rounded-md transition-all border-none cursor-pointer ${
+                    secondChartMode === 'embalagem'
+                      ? (theme === 'dark' ? 'bg-blue-600 text-white shadow-sm' : 'bg-[#032b5e] text-white shadow-sm')
+                      : 'text-slate-400 hover:text-white bg-transparent'
+                  }`}
+                >
+                  EMBALAGEM
+                </button>
+              </div>
+
+              <span className={`text-[10px] font-mono font-black border px-2 py-0.5 rounded-md ${
+                theme === 'dark' ? 'text-blue-300 bg-slate-800 border-slate-700' : 'text-[#032b5e] bg-slate-100 border-slate-200/80'
+              }`}>
+                {(secondChartMode === 'grupo' ? totalGrupoVolume : totalEmbalagemVolume).toLocaleString('pt-BR')} {viewUnit === 'cx' ? 'CX' : 'HL'}
+              </span>
+            </div>
           </div>
 
           <div className="h-48 w-full">
-            {embalagemChartData.length === 0 ? (
+            {(secondChartMode === 'grupo' ? grupoChartData : embalagemChartData).length === 0 ? (
               <div className="w-full h-full flex items-center justify-center text-xs text-gray-400">
-                Sem registros de embalagem.
+                Sem registros para exibição.
               </div>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={embalagemChartData} layout="vertical" margin={{ top: 5, right: 45, left: -5, bottom: 5 }} accessibilityLayer={false}>
+                <BarChart 
+                  data={secondChartMode === 'grupo' ? grupoChartData : embalagemChartData} 
+                  layout="vertical" 
+                  margin={{ top: 5, right: 45, left: -5, bottom: 5 }} 
+                  accessibilityLayer={false}
+                >
                   <CartesianGrid stroke="#f1f5f9" horizontal={false} />
                   <XAxis type="number" stroke="#94a3b8" fontSize={8} tickLine={false} axisLine={false} />
                   <YAxis 
@@ -823,7 +939,7 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
                     fontWeight={700}
                     tickLine={false} 
                     axisLine={false} 
-                    width={95}
+                    width={105}
                   />
                   <Tooltip 
                     cursor={{ fill: 'transparent' }}
@@ -841,7 +957,7 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
                       fill="#032b5e" 
                       formatter={(val: number) => `${val.toLocaleString('pt-BR')}`} 
                     />
-                    {embalagemChartData.map((entry, index) => (
+                    {(secondChartMode === 'grupo' ? grupoChartData : embalagemChartData).map((entry, index) => (
                       <Cell key={`cell-emb-${index}`} fill={COLORS[(index + 2) % COLORS.length]} />
                     ))}
                   </Bar>
@@ -850,10 +966,10 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
             )}
           </div>
           <div className="text-[9px] text-gray-500 font-semibold border-t border-gray-100 pt-1.5 flex items-center justify-between">
-            <span>Classificação por vasilhame</span>
-            {topEmbalagensPct && (
+            <span>{secondChartMode === 'grupo' ? 'Classificação por grupo de produto' : 'Classificação por vasilhame'}</span>
+            {(secondChartMode === 'grupo' ? topGrupoPct : topEmbalagensPct) && (
               <span className="font-bold text-[#032b5e] font-mono">
-                Maior: {topEmbalagensPct}
+                Maior: {secondChartMode === 'grupo' ? topGrupoPct : topEmbalagensPct}
               </span>
             )}
           </div>
@@ -911,7 +1027,12 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
           </div>
         </div>
 
-        {/* CHART 3: Tendência Diária */}
+      </div>
+
+      {/* CHARTS CONTAINER - BOTTOM ROW (2 CHARTS) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-1">
+
+        {/* CHART 4: Tendência Diária */}
         <div className="bg-white p-4.5 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between gap-3 min-h-[340px]">
           <div>
             <h3 className="font-sans font-black text-[11px] uppercase text-[#032b5e] tracking-wider">
@@ -955,7 +1076,7 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
           </div>
         </div>
 
-        {/* CHART 4: Perdas por Turno */}
+        {/* CHART 5: Perdas por Turno */}
         <div className="bg-white p-4.5 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between gap-3 min-h-[340px]">
           <div>
             <h3 className="font-sans font-black text-[11px] uppercase text-[#032b5e] tracking-wider">
