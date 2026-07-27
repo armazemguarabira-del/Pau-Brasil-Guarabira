@@ -763,29 +763,8 @@ export default function DashboardOverview({
           </div>
         </div>
 
-        {/* Info lateral & Chave de Visualização (CX / HE) */}
-        <div className="flex flex-wrap items-center justify-end gap-4 pl-0 lg:pl-6 border-t lg:border-t-0 lg:border-l border-slate-100 pt-4 lg:pt-0 shrink-0 min-w-[280px]">
-          
-          {/* Visualização Unit Toggle Key */}
-          <div className="flex flex-col items-start gap-1">
-            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">VISUALIZAÇÃO</span>
-            <div className="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200/60 h-[28px] w-[96px]">
-              <button
-                type="button"
-                onClick={() => setViewUnit('cx')}
-                className={`flex-1 rounded-md font-sans font-black text-[10px] transition-all border-none cursor-pointer h-full flex items-center justify-center ${viewUnit === 'cx' ? 'bg-[#032b5e] text-white shadow-sm' : 'text-slate-400 hover:text-[#032b5e] bg-transparent'}`}
-              >
-                CX
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewUnit('he')}
-                className={`flex-1 rounded-md font-sans font-black text-[10px] transition-all border-none cursor-pointer h-full flex items-center justify-center ${viewUnit === 'he' ? 'bg-[#032b5e] text-white shadow-sm' : 'text-slate-400 hover:text-[#032b5e] bg-transparent'}`}
-              >
-                HE
-              </button>
-            </div>
-          </div>
+        {/* Info lateral */}
+        <div className="flex flex-wrap items-center justify-end gap-4 pl-0 lg:pl-6 border-t lg:border-t-0 lg:border-l border-slate-100 pt-4 lg:pt-0 shrink-0">
 
           <div className="flex items-center gap-3 text-xs bg-slate-50 p-2.5 rounded-xl border border-slate-100/80">
             <div className="w-8 h-8 rounded-lg bg-blue-500/10 text-blue-600 flex items-center justify-center font-bold text-xs font-mono shrink-0">

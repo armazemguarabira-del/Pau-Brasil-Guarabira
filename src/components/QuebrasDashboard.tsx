@@ -44,7 +44,7 @@ import { useEmpresaData } from '../context/EmpresaDataContext';
 import { generateMockQuebras } from '../mockDataGenerator';
 import A3BoardComponent from './A3BoardComponent';
 import CalendarFilter from './CalendarFilter';
-import WqiTab from './WqiTab';
+import WqiTab, { getItemHlInfo } from './WqiTab';
 
 interface QuebrasDashboardProps {
   user: Usuario;
@@ -164,9 +164,17 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
   const [filterTurno, setFilterTurno] = useState<string>('TODOS');
   const [filterEmbalagem, setFilterEmbalagem] = useState<string>('TODAS');
   const [filterGrupo, setFilterGrupo] = useState<string>('TODOS');
+  const [filterMotivo, setFilterMotivo] = useState<string>('TODOS');
   const [secondChartMode, setSecondChartMode] = useState<'grupo' | 'embalagem'>('grupo');
   const [activeSubTab, setActiveSubTab] = useState<'indicadores' | 'wqi' | 'boarda3'>('indicadores');
-  const [viewUnit, setViewUnit] = useState<'cx' | 'he'>('cx');
+  const [viewUnit, setViewUnit] = useState<'cx' | 'he'>(() => {
+    return (localStorage.getItem('dashboard_view_unit') as 'cx' | 'he') || 'he';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('dashboard_view_unit', viewUnit);
+  }, [viewUnit]);
+
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     return (localStorage.getItem('dashboard_theme') as 'light' | 'dark') || 'light';
   });
@@ -185,20 +193,9 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
     return generateMockQuebras(companyId);
   }, [actualQuebras, empresa?.id]);
 
-  // Convert physical boxes to HE
-  const convertCxToHE = (quantidade: number, descricao: string = ''): number => {
-    const desc = (descricao || '').toUpperCase();
-    let litersPerCx = 9.0; // default factor
-    if (desc.includes('250')) litersPerCx = 6.0;
-    else if (desc.includes('269')) litersPerCx = 6.456;
-    else if (desc.includes('350')) litersPerCx = 8.4;
-    else if (desc.includes('473')) litersPerCx = 11.352;
-    else if (desc.includes('500')) litersPerCx = 6.0;
-    else if (desc.includes('600')) litersPerCx = 7.2;
-    else if (desc.includes('1L') || desc.includes('1 L')) litersPerCx = 12.0;
-    else if (desc.includes('2L') || desc.includes('2 L')) litersPerCx = 12.0;
-    else if (desc.includes('300')) litersPerCx = 7.2;
-    return (quantidade * litersPerCx) / 100;
+  // Convert physical units to HE (Hectolitros) accurately based on SKU factor / container volume
+  const convertCxToHE = (quantidade: number, descricao: string = '', codProduto?: string | number): number => {
+    return getItemHlInfo({ quantidade, descricao, codProduto }).totalHl;
   };
   
   // 5W2H state
@@ -248,6 +245,31 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
     localStorage.setItem(`quebras_planos_5w2h_${empresa?.id || 'demo'}`, JSON.stringify(updatedList));
   };
 
+  const availableMotivos = useMemo(() => {
+    const map = new Map<string, string>();
+    quebras.forEach(q => {
+      const cod = String(q.codQuebra || '').trim();
+      const mot = (q.motivo || '').trim();
+      if (cod && mot) {
+        map.set(cod, `[${cod}] ${mot}`);
+      } else if (mot) {
+        map.set(mot, mot);
+      } else if (cod) {
+        map.set(cod, `Código ${cod}`);
+      }
+    });
+
+    if (!map.has('539')) map.set('539', '[539] Quebra com Movimentação');
+    if (!map.has('540')) map.set('540', '[540] Avaria Física / Manuseio');
+    if (!map.has('541')) map.set('541', '[541] Choque de Palete');
+    if (!map.has('557')) map.set('557', '[557] Quebra na Entrega / Rota');
+    if (!map.has('589')) map.set('589', '[589] Quebra em Transferência');
+
+    return Array.from(map.entries())
+      .map(([value, label]) => ({ value, label }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [quebras]);
+
   // Filter Logic
   const getFilteredQuebras = () => {
     return quebras.filter(q => {
@@ -259,6 +281,15 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
       if (filterEmbalagem !== 'TODAS' && getEmbalagemName(q.descricao) !== filterEmbalagem) return false;
       // Grupo filter
       if (filterGrupo !== 'TODOS' && getGrupoName(q.descricao) !== filterGrupo) return false;
+      // Motivo filter
+      if (filterMotivo !== 'TODOS') {
+        const cod = String(q.codQuebra || '').trim();
+        const mot = (q.motivo || '').trim().toUpperCase();
+        const filterUpper = filterMotivo.toUpperCase();
+        
+        const match = cod === filterMotivo || mot === filterUpper || mot.includes(filterUpper) || `${cod} - ${q.motivo}`.toUpperCase().includes(filterUpper);
+        if (!match) return false;
+      }
       
       // Date range filter
       if (startDate || endDate) {
@@ -284,7 +315,7 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
 
   // Metric Calculation
   const totalQuantCx = filteredData.reduce((acc, curr) => acc + curr.quantidade, 0);
-  const totalQuantHE = filteredData.reduce((acc, curr) => acc + convertCxToHE(curr.quantidade, curr.descricao), 0);
+  const totalQuantHE = filteredData.reduce((acc, curr) => acc + convertCxToHE(curr.quantidade, curr.descricao, curr.codProduto), 0);
   const totalQuant = viewUnit === 'cx' ? totalQuantCx : Math.round(totalQuantHE * 100) / 100;
   const estimatedCost = totalQuantCx * 5.95; // Average cost factor per SKU unit
 
@@ -295,7 +326,7 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
       skuMap[q.codProduto] = { desc: q.descricao, quantCx: 0, quantHE: 0 };
     }
     skuMap[q.codProduto].quantCx += q.quantidade;
-    skuMap[q.codProduto].quantHE += convertCxToHE(q.quantidade, q.descricao);
+    skuMap[q.codProduto].quantHE += convertCxToHE(q.quantidade, q.descricao, q.codProduto);
   });
 
   const sortedSkus = Object.entries(skuMap)
@@ -317,7 +348,7 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
   filteredData.forEach(q => {
     if (areaVolumeMapCx[q.area] !== undefined) {
       areaVolumeMapCx[q.area] += q.quantidade;
-      areaVolumeMapHE[q.area] += convertCxToHE(q.quantidade, q.descricao);
+      areaVolumeMapHE[q.area] += convertCxToHE(q.quantidade, q.descricao, q.codProduto);
     }
   });
 
@@ -338,7 +369,7 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
     if (!motivosMap[key]) {
       motivosMap[key] = { desc: q.motivo, val: 0 };
     }
-    motivosMap[key].val += viewUnit === 'cx' ? q.quantidade : convertCxToHE(q.quantidade, q.descricao);
+    motivosMap[key].val += viewUnit === 'cx' ? q.quantidade : convertCxToHE(q.quantidade, q.descricao, q.codProduto);
   });
 
   const motivosChartData = Object.entries(motivosMap)
@@ -350,7 +381,7 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
   const embalagemMap: Record<string, number> = {};
   filteredData.forEach(q => {
     const embName = getEmbalagemName(q.descricao);
-    const val = viewUnit === 'cx' ? q.quantidade : convertCxToHE(q.quantidade, q.descricao);
+    const val = viewUnit === 'cx' ? q.quantidade : convertCxToHE(q.quantidade, q.descricao, q.codProduto);
     embalagemMap[embName] = (embalagemMap[embName] || 0) + val;
   });
 
@@ -368,7 +399,7 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
   const grupoMap: Record<string, number> = {};
   filteredData.forEach(q => {
     const gName = getGrupoName(q.descricao);
-    const val = viewUnit === 'cx' ? q.quantidade : convertCxToHE(q.quantidade, q.descricao);
+    const val = viewUnit === 'cx' ? q.quantidade : convertCxToHE(q.quantidade, q.descricao, q.codProduto);
     grupoMap[gName] = (grupoMap[gName] || 0) + val;
   });
 
@@ -401,7 +432,7 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
   const daysMap: Record<string, number> = {};
   filteredData.forEach(q => {
     const day = q.data.substring(0, 5); // DD/MM
-    daysMap[day] = (daysMap[day] || 0) + (viewUnit === 'cx' ? q.quantidade : convertCxToHE(q.quantidade, q.descricao));
+    daysMap[day] = (daysMap[day] || 0) + (viewUnit === 'cx' ? q.quantidade : convertCxToHE(q.quantidade, q.descricao, q.codProduto));
   });
 
   const sortedDays = Object.entries(daysMap)
@@ -417,7 +448,7 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
   const turnoMap: Record<string, number> = { 'MANHÃ': 0, 'NOITE / MADRUGADA': 0 };
   filteredData.forEach(q => {
     const norm = q.turno.toUpperCase().includes('MANHÃ') ? 'MANHÃ' : 'NOITE / MADRUGADA';
-    turnoMap[norm] = (turnoMap[norm] || 0) + (viewUnit === 'cx' ? q.quantidade : convertCxToHE(q.quantidade, q.descricao));
+    turnoMap[norm] = (turnoMap[norm] || 0) + (viewUnit === 'cx' ? q.quantidade : convertCxToHE(q.quantidade, q.descricao, q.codProduto));
   });
 
   const turnoChartData = Object.entries(turnoMap).map(([name, value]) => ({ name, value: Math.round(value * 100) / 100 }));
@@ -671,6 +702,25 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
                 </select>
               </div>
 
+              {/* Motivo filter */}
+              <div className="flex flex-col gap-1 w-[170px]">
+                <span className={`text-[9px] font-black uppercase tracking-widest ${theme === 'dark' ? 'text-slate-400' : 'text-gray-400'}`}>Motivo da Quebra</span>
+                <select 
+                  value={filterMotivo} 
+                  onChange={e => setFilterMotivo(e.target.value)} 
+                  className={`w-full font-sans font-bold rounded-lg outline-none px-2.5 py-1 text-[10px] h-[28px] cursor-pointer transition-all ${
+                    theme === 'dark' 
+                      ? 'bg-[#1e2942] border border-slate-600 text-slate-100 hover:border-blue-400' 
+                      : 'bg-white border border-gray-200 text-[#032b5e] hover:border-blue-400 focus:border-[#032b5e]'
+                  }`}
+                >
+                  <option value="TODOS">Todos os Motivos</option>
+                  {availableMotivos.map(m => (
+                    <option key={m.value} value={m.value}>{m.label}</option>
+                  ))}
+                </select>
+              </div>
+
               {/* Visualização Unit Toggle */}
               <div className="flex flex-col gap-1">
                 <span className={`text-[9px] font-black uppercase tracking-widest ${theme === 'dark' ? 'text-slate-400' : 'text-gray-400'}`}>Visualização</span>
@@ -686,7 +736,7 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
                         : 'text-slate-400 hover:text-white bg-transparent'
                     }`}
                   >
-                    CX
+                    UN
                   </button>
                   <button
                     type="button"
@@ -718,7 +768,11 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
               VOLUME TOTAL DE QUEBRAS
             </span>
             <div className="flex items-baseline mt-2">
-              <span className="text-4xl font-extrabold tracking-tight">{totalQuant}</span>
+              <span className="text-4xl font-extrabold tracking-tight">
+                {viewUnit === 'cx' 
+                  ? totalQuantCx.toLocaleString('pt-BR') 
+                  : totalQuant.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
               <span className="text-xs font-bold ml-1.5 text-[#fecaca]">{viewUnit === 'cx' ? 'unidades' : 'HE'}</span>
             </div>
           </div>
@@ -911,7 +965,7 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
               <span className={`text-[10px] font-mono font-black border px-2 py-0.5 rounded-md ${
                 theme === 'dark' ? 'text-blue-300 bg-slate-800 border-slate-700' : 'text-[#032b5e] bg-slate-100 border-slate-200/80'
               }`}>
-                {(secondChartMode === 'grupo' ? totalGrupoVolume : totalEmbalagemVolume).toLocaleString('pt-BR')} {viewUnit === 'cx' ? 'CX' : 'HL'}
+                {(secondChartMode === 'grupo' ? totalGrupoVolume : totalEmbalagemVolume).toLocaleString('pt-BR')} {viewUnit === 'cx' ? 'UN' : 'HL'}
               </span>
             </div>
           </div>
@@ -946,7 +1000,7 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
                     contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', fontSize: 10, color: '#fff' }}
                     labelStyle={{ color: '#38bdf8', fontWeight: 'bold' }}
                     itemStyle={{ color: '#cbd5e1' }}
-                    formatter={(val: any) => [`${val.toLocaleString('pt-BR')} ${viewUnit === 'cx' ? 'CX' : 'HL'}`, 'Volume']}
+                    formatter={(val: any) => [`${val.toLocaleString('pt-BR')} ${viewUnit === 'cx' ? 'UN' : 'HL'}`, 'Volume']}
                   />
                   <Bar dataKey="value" fill="#3b82f6" radius={[0, 6, 6, 0]} barSize={16}>
                     <LabelList 

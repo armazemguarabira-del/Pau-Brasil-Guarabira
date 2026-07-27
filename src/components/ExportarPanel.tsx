@@ -432,7 +432,8 @@ export default function ExportarPanel({ user, empresa }: ExportarPanelProps) {
           'Paletes (PL)': v.palhete || 0,
           'Lastro': v.lastro || 0,
           'Caixas por Lastro': v.caixa || 0,
-          'Total Caixas/Volume': totalCaixas,
+          'Quantidade (Caixas - CX)': totalCaixas,
+          'Quantidade (Unidades - UN)': v.totalUnitiesRaw ? `${v.totalUnitiesRaw} un` : '—',
           'Data de Vencimento': formattedVal,
           'Dias Restantes': days,
           'Localização': localizacaoCompleta,
@@ -463,7 +464,8 @@ export default function ExportarPanel({ user, empresa }: ExportarPanelProps) {
           'Paletes (PL)': 0,
           'Lastro': 0,
           'Caixas por Lastro': 0,
-          'Total Caixas/Volume': rv.quantidade || 0,
+          'Quantidade (Caixas - CX)': '—',
+          'Quantidade (Unidades - UN)': `${rv.quantidade || 0} un`,
           'Data de Vencimento': formattedVal,
           'Dias Restantes': days,
           'Localização': 'Setor Repack',
@@ -482,8 +484,33 @@ export default function ExportarPanel({ user, empresa }: ExportarPanelProps) {
       const ws = XLSX.utils.json_to_sheet(allRows);
       XLSX.utils.book_append_sheet(wb, ws, 'Validades Coletadas');
 
-      if (mappedRepack.length > 0) {
-        const wsRepack = XLSX.utils.json_to_sheet(mappedRepack.map((item, idx) => ({ 'Item (#)': idx + 1, ...item })));
+      if (filteredRV.length > 0) {
+        const wsRepack = XLSX.utils.json_to_sheet(filteredRV.map((rv, idx) => {
+          let formattedVal = rv.validade;
+          if (rv.validade && rv.validade.includes('-')) {
+            const [y, m, d] = rv.validade.split('-');
+            formattedVal = `${d}/${m}/${y}`;
+          }
+
+          let days = 0;
+          if (rv.validade) {
+            const expDate = new Date(rv.validade);
+            const diffTime = expDate.getTime() - today.getTime();
+            days = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          }
+
+          return {
+            'Item (#)': idx + 1,
+            'Código SKU': rv.codigo,
+            'Descrição do Produto': rv.descricao,
+            'Quantidade (Unidades - UN)': rv.quantidade || 0,
+            'Data de Vencimento': formattedVal,
+            'Dias Restantes': days,
+            'Localização / Destino': rv.nomeManual ? `Repack (${rv.nomeManual})` : 'Setor Repack',
+            'Operador Responsável': rv.operador || '—',
+            'Data do Cadastro': rv.cadastradoEm || '—'
+          };
+        }));
         XLSX.utils.book_append_sheet(wb, wsRepack, 'Validades Repack');
       }
 
@@ -930,7 +957,8 @@ export default function ExportarPanel({ user, empresa }: ExportarPanelProps) {
             const valorUnitario = Number(cleanRow['valor por unid'] || cleanRow.valorunitario || 0);
             const valorTotal = Number(cleanRow['valor tt'] || cleanRow.valortotal || cleanRow['valor total'] || cleanRow.valor || (valorUnitario * quantidade));
             const mes = String(cleanRow.mes || '').trim();
-            const fatorHl = Number(cleanRow['fator hl'] || cleanRow.fatorhl || 0);
+            const rawFatorHl = cleanRow['fator hecto por unidade'] || cleanRow['fator hecto por unid'] || cleanRow['fatorhectoporunidade'] || cleanRow['fator hl'] || cleanRow.fatorhl || cleanRow['fator hecto'] || 0;
+            const fatorHl = typeof rawFatorHl === 'string' ? Number(String(rawFatorHl).replace(',', '.')) : Number(rawFatorHl || 0);
             const hlPerdido = Number(cleanRow['hl perdido'] || cleanRow.hlperdido || 0);
             const tipoMarca = String(cleanRow['tipo marca'] || cleanRow.tipomarca || '').trim();
             const embalagem = String(cleanRow.embalagem || '').trim();

@@ -216,7 +216,8 @@ export default function QuebrasPanel({ user, empresa }: QuebrasPanelProps) {
     const valorUnitario = Number(cleanRow['valor por unid'] || cleanRow.valorunitario || 0);
     const valorTotal = Number(cleanRow['valor tt'] || cleanRow.valortotal || cleanRow['valor total'] || cleanRow.valor || (valorUnitario * quantidade));
     const mes = String(cleanRow.mes || '').trim();
-    const fatorHl = Number(cleanRow['fator hl'] || cleanRow.fatorhl || 0);
+    const rawFatorHl = cleanRow['fator hecto por unidade'] || cleanRow['fator hecto por unid'] || cleanRow['fatorhectoporunidade'] || cleanRow['fator hl'] || cleanRow.fatorhl || cleanRow['fator hecto'] || 0;
+    const fatorHl = typeof rawFatorHl === 'string' ? Number(String(rawFatorHl).replace(',', '.')) : Number(rawFatorHl || 0);
     const hlPerdido = Number(cleanRow['hl perdido'] || cleanRow.hlperdido || 0);
     const tipoMarca = String(cleanRow['tipo marca'] || cleanRow.tipomarca || '').trim();
     const embalagem = String(cleanRow.embalagem || '').trim();
