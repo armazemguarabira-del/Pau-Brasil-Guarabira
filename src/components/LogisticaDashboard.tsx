@@ -722,16 +722,38 @@ export default function LogisticaDashboard({ user, empresa, onBack }: LogisticaD
 
   // Historical 4 Months Trend data (EFD and EFC evolution + Loading times)
   // Dynamic: if date filters are active, it will adapt to show hourly or daily details
+  // Historical / Real Trend Data (EFD and EFC evolution + Loading times)
+  // Derived 100% dynamically from registered records in filteredRows without synthetic fallbacks
   const trend4MonthsData = useMemo(() => {
-    // Case 1: Active filters - single day (Hourly breakdown)
+    // Helper to calculate duration in minutes
+    const getDurationMin = (r: ArmazemRow) => {
+      if (r.inicio && r.fim) {
+        const start = timeToMinutes(r.inicio);
+        const end = timeToMinutes(r.fim);
+        if (end >= start) return end - start;
+        return (1440 - start) + end; // Overnight
+      }
+      return 0;
+    };
+
+    // Helper to check if row is inside operational window / meta
+    const isInsideWindow = (r: ArmazemRow, isCarregamento: boolean) => {
+      if (r.status?.toUpperCase().includes('DENTRO')) return true;
+      if (r.status?.toUpperCase().includes('FORA')) return false;
+      const duration = getDurationMin(r);
+      const limit = isCarregamento ? 90 : 45; // 90 min for Carregamento, 45 min for Descarregamento
+      return duration > 0 && duration <= limit;
+    };
+
+    // Case 1: Single day selected (Hourly breakdown)
     if (startDate && endDate && startDate === endDate) {
       const hourIntervals = [
-        { label: '06h-09h', min: 360, max: 540, baseEFC: 96, baseEFD: 85, baseC: 58, baseD: 42 },
-        { label: '09h-12h', min: 540, max: 720, baseEFC: 97, baseEFD: 88, baseC: 55, baseD: 38 },
-        { label: '12h-15h', min: 720, max: 900, baseEFC: 94, baseEFD: 83, baseC: 62, baseD: 46 },
-        { label: '15h-18h', min: 900, max: 1080, baseEFC: 95, baseEFD: 86, baseC: 59, baseD: 43 },
-        { label: '18h-21h', min: 1080, max: 1260, baseEFC: 96, baseEFD: 87, baseC: 57, baseD: 41 },
-        { label: '21h-00h', min: 1260, max: 1440, baseEFC: 98, baseEFD: 90, baseC: 52, baseD: 35 }
+        { label: '06h-09h', min: 360, max: 540 },
+        { label: '09h-12h', min: 540, max: 720 },
+        { label: '12h-15h', min: 720, max: 900 },
+        { label: '15h-18h', min: 900, max: 1080 },
+        { label: '18h-21h', min: 1080, max: 1260 },
+        { label: '21h-00h', min: 1260, max: 1440 }
       ];
 
       return hourIntervals.map(slot => {
@@ -740,35 +762,31 @@ export default function LogisticaDashboard({ user, empresa, onBack }: LogisticaD
           return startMin >= slot.min && startMin < slot.max;
         });
 
-        const carregamentos = slotRows.filter(r => r.operacao === 'Carregamento');
-        const descarregamentos = slotRows.filter(r => r.operacao === 'Descarregamento');
+        const carregamentos = slotRows.filter(r => r.operacao === 'Carregamento' || r.operacao?.toUpperCase().includes('CARREG'));
+        const descarregamentos = slotRows.filter(r => r.operacao === 'Descarregamento' || r.operacao?.toUpperCase().includes('DESCARG'));
 
-        const inWindowC = carregamentos.filter(r => r.status?.toUpperCase().includes('DENTRO')).length;
-        const inWindowD = descarregamentos.filter(r => r.status?.toUpperCase().includes('DENTRO')).length;
+        const inWindowC = carregamentos.filter(r => isInsideWindow(r, true)).length;
+        const inWindowD = descarregamentos.filter(r => isInsideWindow(r, false)).length;
 
-        const efc = carregamentos.length > 0 ? parseFloat(((inWindowC / carregamentos.length) * 100).toFixed(1)) : slot.baseEFC;
-        const efd = descarregamentos.length > 0 ? parseFloat(((inWindowD / descarregamentos.length) * 100).toFixed(1)) : slot.baseEFD;
+        const efc = carregamentos.length > 0 ? parseFloat(((inWindowC / carregamentos.length) * 100).toFixed(1)) : 0;
+        const efd = descarregamentos.length > 0 ? parseFloat(((inWindowD / descarregamentos.length) * 100).toFixed(1)) : 0;
 
         let sumC = 0, countC = 0;
         carregamentos.forEach(r => {
-          if (r.inicio && r.fim) {
-            const diff = timeToMinutes(r.fim) - timeToMinutes(r.inicio);
-            if (diff > 0) { sumC += diff; countC++; }
-          }
+          const diff = getDurationMin(r);
+          if (diff > 0) { sumC += diff; countC++; }
         });
-        const avgC = countC > 0 ? Math.round(sumC / countC) : slot.baseC;
+        const avgC = countC > 0 ? Math.round(sumC / countC) : 0;
 
         let sumD = 0, countD = 0;
         descarregamentos.forEach(r => {
-          if (r.inicio && r.fim) {
-            const diff = timeToMinutes(r.fim) - timeToMinutes(r.inicio);
-            if (diff > 0) { sumD += diff; countD++; }
-          }
+          const diff = getDurationMin(r);
+          if (diff > 0) { sumD += diff; countD++; }
         });
-        const avgD = countD > 0 ? Math.round(sumD / countD) : slot.baseD;
+        const avgD = countD > 0 ? Math.round(sumD / countD) : 0;
 
         return {
-          month: slot.label, // use "month" key to map to XAxis dataKey
+          month: slot.label,
           EFC: efc,
           EFD: efd,
           tempoCarregamento: avgC,
@@ -777,171 +795,80 @@ export default function LogisticaDashboard({ user, empresa, onBack }: LogisticaD
       });
     }
 
-    // Case 2: Active filters - range of multiple days (Daily breakdown)
-    if (startDate || endDate) {
-      const dailyGroups: Record<string, ArmazemRow[]> = {};
-      filteredRows.forEach(r => {
-        const dKey = r.data || 'Sem Data';
-        if (!dailyGroups[dKey]) dailyGroups[dKey] = [];
-        dailyGroups[dKey].push(r);
-      });
-
-      const sortedDates = Object.keys(dailyGroups).sort((a, b) => {
-        const parseDate = (dStr: string) => {
-          const p = dStr.split('/');
-          if (p.length === 3) return new Date(Number(p[2]), Number(p[1]) - 1, Number(p[0])).getTime();
-          return 0;
-        };
-        return parseDate(a) - parseDate(b);
-      });
-
-      // Take last 14 days for visual space if there are too many
-      const datesToUse = sortedDates.slice(-14);
-
-      if (datesToUse.length > 0) {
-        return datesToUse.map(dateStr => {
-          const rows = dailyGroups[dateStr];
-          const carregamentos = rows.filter(r => r.operacao === 'Carregamento');
-          const descarregamentos = rows.filter(r => r.operacao === 'Descarregamento');
-
-          const inWindowC = carregamentos.filter(r => r.status?.toUpperCase().includes('DENTRO')).length;
-          const inWindowD = descarregamentos.filter(r => r.status?.toUpperCase().includes('DENTRO')).length;
-
-          const efc = carregamentos.length > 0 ? parseFloat(((inWindowC / carregamentos.length) * 100).toFixed(1)) : 96.0;
-          const efd = descarregamentos.length > 0 ? parseFloat(((inWindowD / descarregamentos.length) * 100).toFixed(1)) : 85.0;
-
-          let sumC = 0, countC = 0;
-          carregamentos.forEach(r => {
-            if (r.inicio && r.fim) {
-              const diff = timeToMinutes(r.fim) - timeToMinutes(r.inicio);
-              if (diff > 0) { sumC += diff; countC++; }
-            }
-          });
-          const avgC = countC > 0 ? Math.round(sumC / countC) : 58;
-
-          let sumD = 0, countD = 0;
-          descarregamentos.forEach(r => {
-            if (r.inicio && r.fim) {
-              const diff = timeToMinutes(r.fim) - timeToMinutes(r.inicio);
-              if (diff > 0) { sumD += diff; countD++; }
-            }
-          });
-          const avgD = countD > 0 ? Math.round(sumD / countD) : 42;
-
-          const dateParts = dateStr.split('/');
-          const formattedLabel = dateParts.length === 3 ? `${dateParts[0]}/${dateParts[1]}` : dateStr;
-
-          return {
-            month: formattedLabel, // mapped to XAxis "month"
-            EFC: efc,
-            EFD: efd,
-            tempoCarregamento: avgC,
-            tempoDescarga: avgD
-          };
-        });
-      }
-    }
-
-    // Case 3: No date filters (Default historical 4-month trend)
-    const monthGroups: Record<string, ArmazemRow[]> = {};
+    // Case 2: Multi-day filter or default view - group by date from actual filteredRows
+    const dailyGroups: Record<string, ArmazemRow[]> = {};
     filteredRows.forEach(r => {
+      let dKey = r.data || r.dataISO || 'Sem Data';
       const dt = parseRowDate(r);
       if (dt) {
-        const monthKey = `${dt.year}-${dt.month}`; // e.g. "2026-05"
-        if (!monthGroups[monthKey]) monthGroups[monthKey] = [];
-        monthGroups[monthKey].push(r);
+        dKey = `${dt.year}-${dt.month}-${dt.day}`;
       }
+      if (!dailyGroups[dKey]) dailyGroups[dKey] = [];
+      dailyGroups[dKey].push(r);
     });
-    
-    // Find latest month in the dataset or fallback to 2026-07
-    let maxYear = 2026;
-    let maxMonth = 7;
 
-    armazemRows.forEach(r => {
-      const dt = parseRowDate(r);
-      if (dt) {
-        const y = parseInt(dt.year);
-        const m = parseInt(dt.month);
-        if (y > maxYear || (y === maxYear && m > maxMonth)) {
-          maxYear = y;
-          maxMonth = m;
+    const sortedDateKeys = Object.keys(dailyGroups).sort((a, b) => {
+      const parseDateVal = (dStr: string) => {
+        if (dStr.includes('-')) return new Date(dStr).getTime();
+        const p = dStr.split('/');
+        if (p.length === 3) return new Date(Number(p[2]), Number(p[1]) - 1, Number(p[0])).getTime();
+        return 0;
+      };
+      return parseDateVal(a) - parseDateVal(b);
+    });
+
+    // If there are dates present in filteredRows
+    if (sortedDateKeys.length > 0) {
+      // If there are many dates (e.g. > 25), take the latest 20 active days for visual clarity
+      const datesToUse = sortedDateKeys.length > 25 ? sortedDateKeys.slice(-20) : sortedDateKeys;
+
+      return datesToUse.map(dateKey => {
+        const rows = dailyGroups[dateKey];
+        const carregamentos = rows.filter(r => r.operacao === 'Carregamento' || r.operacao?.toUpperCase().includes('CARREG'));
+        const descarregamentos = rows.filter(r => r.operacao === 'Descarregamento' || r.operacao?.toUpperCase().includes('DESCARG'));
+
+        const inWindowC = carregamentos.filter(r => isInsideWindow(r, true)).length;
+        const inWindowD = descarregamentos.filter(r => isInsideWindow(r, false)).length;
+
+        const efc = carregamentos.length > 0 ? parseFloat(((inWindowC / carregamentos.length) * 100).toFixed(1)) : 0;
+        const efd = descarregamentos.length > 0 ? parseFloat(((inWindowD / descarregamentos.length) * 100).toFixed(1)) : 0;
+
+        let sumC = 0, countC = 0;
+        carregamentos.forEach(r => {
+          const diff = getDurationMin(r);
+          if (diff > 0) { sumC += diff; countC++; }
+        });
+        const avgC = countC > 0 ? Math.round(sumC / countC) : 0;
+
+        let sumD = 0, countD = 0;
+        descarregamentos.forEach(r => {
+          const diff = getDurationMin(r);
+          if (diff > 0) { sumD += diff; countD++; }
+        });
+        const avgD = countD > 0 ? Math.round(sumD / countD) : 0;
+
+        // Label formatting: YYYY-MM-DD -> DD/MM, or DD/MM/YYYY -> DD/MM
+        let formattedLabel = dateKey;
+        if (dateKey.includes('-')) {
+          const parts = dateKey.split('-');
+          if (parts.length === 3) formattedLabel = `${parts[2]}/${parts[1]}`;
+        } else if (dateKey.includes('/')) {
+          const parts = dateKey.split('/');
+          if (parts.length === 3) formattedLabel = `${parts[0]}/${parts[1]}`;
         }
-      }
-    });
 
-    // Generate exactly the last 4 month keys ending in maxYear and maxMonth
-    const targetKeys: string[] = [];
-    for (let i = 3; i >= 0; i--) {
-      let m = maxMonth - i;
-      let y = maxYear;
-      if (m <= 0) {
-        m += 12;
-        y -= 1;
-      }
-      const padM = String(m).padStart(2, '0');
-      targetKeys.push(`${y}-${padM}`);
+        return {
+          month: formattedLabel,
+          EFC: efc,
+          EFD: efd,
+          tempoCarregamento: avgC,
+          tempoDescarga: avgD
+        };
+      });
     }
 
-    // Realistic baselines for missing months to keep the dashboard visual continuous and functional
-    const baselines: Record<string, { EFC: number; EFD: number; tempoCarregamento: number; tempoDescarga: number }> = {
-      '2026-04': { EFC: 91.0, EFD: 12.0, tempoCarregamento: 68, tempoDescarga: 72 },
-      '2026-03': { EFC: 93.0, EFD: 10.0, tempoCarregamento: 65, tempoDescarga: 70 },
-      '2026-02': { EFC: 88.0, EFD: 15.0, tempoCarregamento: 71, tempoDescarga: 75 },
-      '2026-01': { EFC: 90.0, EFD: 11.0, tempoCarregamento: 66, tempoDescarga: 71 }
-    };
-
-    return targetKeys.map(key => {
-      const rows = monthGroups[key] || [];
-      const [year, month] = key.split('-');
-
-      if (rows.length === 0) {
-        const isFiltered = statusMeta !== 'Todos' || operacaoFilter !== 'Todos' || turnoFilter !== 'Todos' || empilhadorFilter !== 'Todos' || tipoVeiculoFilter !== 'Todos';
-        const base = isFiltered ? { EFC: 0, EFD: 0, tempoCarregamento: 0, tempoDescarga: 0 } : (baselines[key] || { EFC: 88.0, EFD: 13.0, tempoCarregamento: 69, tempoDescarga: 73 });
-        return {
-          month: `${getMonthName(month)}/${year.substring(2)}`,
-          EFC: base.EFC,
-          EFD: base.EFD,
-          tempoCarregamento: base.tempoCarregamento,
-          tempoDescarga: base.tempoDescarga
-        };
-      }
-      
-      const carregamentos = rows.filter(r => r.operacao === 'Carregamento');
-      const descarregamentos = rows.filter(r => r.operacao === 'Descarregamento');
-      
-      const inWindowC = carregamentos.filter(r => r.status?.toUpperCase().includes('DENTRO')).length;
-      const inWindowD = descarregamentos.filter(r => r.status?.toUpperCase().includes('DENTRO')).length;
-      
-      const efc = carregamentos.length > 0 ? parseFloat(((inWindowC / carregamentos.length) * 100).toFixed(1)) : 100;
-      const efd = descarregamentos.length > 0 ? parseFloat(((inWindowD / descarregamentos.length) * 100).toFixed(1)) : 100;
-      
-      let sumC = 0, countC = 0;
-      carregamentos.forEach(r => {
-        if (r.inicio && r.fim) {
-          const diff = timeToMinutes(r.fim) - timeToMinutes(r.inicio);
-          if (diff > 0) { sumC += diff; countC++; }
-        }
-      });
-      const avgC = countC > 0 ? Math.round(sumC / countC) : 0;
-      
-      let sumD = 0, countD = 0;
-      descarregamentos.forEach(r => {
-        if (r.inicio && r.fim) {
-          const diff = timeToMinutes(r.fim) - timeToMinutes(r.inicio);
-          if (diff > 0) { sumD += diff; countD++; }
-        }
-      });
-      const avgD = countD > 0 ? Math.round(sumD / countD) : 0;
-      
-      return {
-        month: `${getMonthName(month)}/${year.substring(2)}`,
-        EFC: efc,
-        EFD: efd,
-        tempoCarregamento: avgC > 0 ? avgC : 70,
-        tempoDescarga: avgD > 0 ? avgD : 68
-      };
-    });
-  }, [armazemRows, startDate, endDate, filteredRows]);
+    return [];
+  }, [filteredRows, startDate, endDate]);
 
   // Calculate dynamic minimums for the EFC and EFD Y-Axes to ensure optimal visual scaling and meta-line visibility
   const dynamicYMinEFC = useMemo(() => {

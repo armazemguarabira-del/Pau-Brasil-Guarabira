@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { db, isCustomFirebaseConnected } from '../firebase';
-import { collection, addDoc, deleteDoc, doc } from 'firebase/firestore';
+import { collection, addDoc, deleteDoc, doc, updateDoc } from 'firebase/firestore';
 import { Usuario, Empresa, ArmazemRow } from '../types';
 import { useEmpresaData } from '../context/EmpresaDataContext';
-import { TrendingUp, CheckCircle, Clock, Award, BarChart2 } from 'lucide-react';
+import { TrendingUp, CheckCircle, Clock, Award, BarChart2, Pencil } from 'lucide-react';
 import SugerirMelhoriaCard from './SugerirMelhoriaCard';
 
 interface ArmazemPanelProps {
@@ -80,6 +80,20 @@ export default function ArmazemPanel({ user, empresa }: ArmazemPanelProps) {
 
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  // State for editing record
+  const [editingRow, setEditingRow] = useState<ArmazemRow | null>(null);
+  const [editOperacao, setEditOperacao] = useState<'Carregamento' | 'Descarregamento'>('Carregamento');
+  const [editInicio, setEditInicio] = useState('');
+  const [editFim, setEditFim] = useState('');
+  const [editEmpilhador, setEditEmpilhador] = useState('');
+  const [editPlaca, setEditPlaca] = useState('');
+  const [editTipo, setEditTipo] = useState('rota');
+  const [editPalhete, setEditPalhete] = useState<number | ''>('');
+  const [editTurno, setEditTurno] = useState('Diurno');
+  const [editPernoite, setEditPernoite] = useState<'D0' | 'D1' | 'D2' | 'D3' | 'D4' | ''>('D0');
+  const [editObs, setEditObs] = useState('');
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
 
   // Sync state with local draft saving
   useEffect(() => {
@@ -365,6 +379,76 @@ export default function ArmazemPanel({ user, empresa }: ArmazemPanelProps) {
       setSuccessMsg('Registro excluído com sucesso!');
     } catch (e) {
       setErrorMsg('Erro ao excluir: ' + e);
+    }
+  };
+
+  const handleStartEdit = (row: ArmazemRow) => {
+    setEditingRow(row);
+    setEditOperacao(row.operacao || 'Carregamento');
+    setEditInicio(row.inicio || '');
+    setEditFim(row.fim || '');
+    setEditEmpilhador(row.empilhador || '');
+    setEditPlaca(row.placa || '');
+    setEditTipo(row.tipo || 'rota');
+    setEditPalhete(row.palhete ?? '');
+    setEditTurno(row.turno || 'Diurno');
+    setEditPernoite((row.pernoite as any) || 'D0');
+    setEditObs(row.obs || '');
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingRow) return;
+    if (!editInicio || !editFim || !editEmpilhador) {
+      setErrorMsg('Preencha os horários e o empilhador responsável.');
+      return;
+    }
+    if (editPalhete === '' || isNaN(Number(editPalhete)) || Number(editPalhete) < 0) {
+      setErrorMsg('Informe uma quantidade válida de paletes.');
+      return;
+    }
+
+    setIsSavingEdit(true);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+
+    const isNight = editTurno === 'Noturno';
+    const isConforme = isNight
+      ? (editInicio >= '21:00' || editInicio <= '06:30') && (editFim >= '21:00' || editFim <= '06:30')
+      : (editInicio >= '07:00' && editFim <= '21:00');
+
+    const updatedStatus = isConforme ? '✅ DENTRO DA JANELA' : '⚠ FORA DA JANELA';
+
+    const updatedFields = {
+      operacao: editOperacao,
+      inicio: editInicio,
+      fim: editFim,
+      empilhador: editEmpilhador.trim(),
+      placa: editPlaca.trim().toUpperCase(),
+      tipo: editTipo,
+      palhete: Number(editPalhete),
+      turno: editTurno,
+      pernoite: editOperacao === 'Descarregamento' ? editPernoite : '',
+      obs: editObs.trim(),
+      status: updatedStatus,
+    };
+
+    try {
+      if (db && editingRow._docId) {
+        await updateDoc(doc(db, 'armazem', editingRow._docId), updatedFields);
+      } else {
+        const updatedList = armazemRows.map(r => r._docId === editingRow._docId ? { ...r, ...updatedFields } : r);
+        setArmazemRows(updatedList);
+        localStorage.setItem(`armazem_rows_${empresaId}`, JSON.stringify(updatedList));
+      }
+
+      window.dispatchEvent(new CustomEvent('app_data_updated'));
+      window.dispatchEvent(new CustomEvent('local_data_changed'));
+      setSuccessMsg('Lançamento atualizado com sucesso!');
+      setEditingRow(null);
+    } catch (e) {
+      setErrorMsg('Erro ao atualizar registro: ' + e);
+    } finally {
+      setIsSavingEdit(false);
     }
   };
 
@@ -856,12 +940,25 @@ export default function ArmazemPanel({ user, empresa }: ArmazemPanelProps) {
                                   {r.obs || '—'}
                                 </td>
                                 <td className="p-3 text-right">
-                                  <button 
-                                    onClick={() => handleDelete(r._docId)}
-                                    className="py-1 px-2 border border-[#ef4444]/20 hover:bg-[#ef4444] text-[#fca5a5] hover:text-white rounded text-[10px] font-bold cursor-pointer"
-                                  >
-                                    ✕
-                                  </button>
+                                  <div className="flex items-center justify-end gap-1.5">
+                                    <button 
+                                      type="button"
+                                      onClick={() => handleStartEdit(r)}
+                                      title="Editar lançamento"
+                                      className="py-1 px-2 border border-[#7cc6ff]/30 hover:bg-[#7cc6ff] text-[#7cc6ff] hover:text-[#07090d] rounded text-[10px] font-bold cursor-pointer transition-colors flex items-center gap-1"
+                                    >
+                                      <Pencil className="w-3 h-3" />
+                                      Editar
+                                    </button>
+                                    <button 
+                                      type="button"
+                                      onClick={() => handleDelete(r._docId)}
+                                      title="Excluir lançamento"
+                                      className="py-1 px-2 border border-[#ef4444]/20 hover:bg-[#ef4444] text-[#fca5a5] hover:text-white rounded text-[10px] font-bold cursor-pointer transition-colors"
+                                    >
+                                      ✕
+                                    </button>
+                                  </div>
                                 </td>
                               </tr>
                             );
@@ -874,6 +971,174 @@ export default function ArmazemPanel({ user, empresa }: ArmazemPanelProps) {
               );
             })
           )}
+        </div>
+      )}
+
+      {/* Edit Record Modal */}
+      {editingRow && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-[#11151c] border border-[#222d3a] rounded-2xl p-6 max-w-2xl w-full text-snow shadow-2xl flex flex-col gap-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-[#222d3a] pb-3">
+              <h3 className="font-sans font-black text-sm tracking-wider text-[#7cc6ff] uppercase flex items-center gap-2">
+                <Pencil className="w-4 h-4 text-[#7cc6ff]" /> Editar Lançamento de Pátio
+              </h3>
+              <button 
+                type="button"
+                onClick={() => setEditingRow(null)}
+                className="text-[#6a7d92] hover:text-white text-lg font-bold p-1 cursor-pointer transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+              {/* Operação */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-extrabold text-[#6a7d92] uppercase tracking-wider">Operação</label>
+                <select 
+                  value={editOperacao}
+                  onChange={e => setEditOperacao(e.target.value as 'Carregamento' | 'Descarregamento')}
+                  className="g-input"
+                >
+                  <option value="Carregamento">Carregamento</option>
+                  <option value="Descarregamento">Descarregamento</option>
+                </select>
+              </div>
+
+              {/* Turno */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-extrabold text-[#6a7d92] uppercase tracking-wider">Turno</label>
+                <select 
+                  value={editTurno}
+                  onChange={e => setEditTurno(e.target.value)}
+                  className="g-input"
+                >
+                  <option value="Diurno">Diurno</option>
+                  <option value="Noturno">Noturno</option>
+                </select>
+              </div>
+
+              {/* Horário de Início */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-extrabold text-[#6a7d92] uppercase tracking-wider">Horário Início</label>
+                <input 
+                  type="time" 
+                  value={editInicio}
+                  onChange={e => setEditInicio(e.target.value)}
+                  className="g-input font-mono"
+                />
+              </div>
+
+              {/* Horário de Fim */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-extrabold text-[#6a7d92] uppercase tracking-wider">Horário Fim</label>
+                <input 
+                  type="time" 
+                  value={editFim}
+                  onChange={e => setEditFim(e.target.value)}
+                  className="g-input font-mono"
+                />
+              </div>
+
+              {/* Empilhador */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-extrabold text-[#6a7d92] uppercase tracking-wider">Empilhador</label>
+                <input 
+                  type="text" 
+                  value={editEmpilhador}
+                  onChange={e => setEditEmpilhador(e.target.value)}
+                  placeholder="Nome do empilhador"
+                  className="g-input uppercase"
+                />
+              </div>
+
+              {/* Placa / Veículo */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-extrabold text-[#6a7d92] uppercase tracking-wider">Veículo / Placa</label>
+                <input 
+                  type="text" 
+                  value={editPlaca}
+                  onChange={e => setEditPlaca(e.target.value.toUpperCase())}
+                  placeholder="Placa do veículo"
+                  className="g-input font-mono uppercase"
+                />
+              </div>
+
+              {/* Tipo */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-extrabold text-[#6a7d92] uppercase tracking-wider">Tipo</label>
+                <select 
+                  value={editTipo}
+                  onChange={e => setEditTipo(e.target.value)}
+                  className="g-input capitalize"
+                >
+                  <option value="rota">Rota</option>
+                  <option value="puxada">Puxada</option>
+                  <option value="recarga">Recarga</option>
+                  <option value="terceiro">Terceiro</option>
+                </select>
+              </div>
+
+              {/* Paletes */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-extrabold text-[#6a7d92] uppercase tracking-wider">Paletes</label>
+                <input 
+                  type="number" 
+                  value={editPalhete}
+                  onChange={e => setEditPalhete(e.target.value === '' ? '' : Number(e.target.value))}
+                  placeholder="Quantidade de paletes"
+                  className="g-input font-mono"
+                />
+              </div>
+
+              {/* Pernoite (se Descarregamento) */}
+              {editOperacao === 'Descarregamento' && (
+                <div className="flex flex-col gap-1.5 md:col-span-2">
+                  <label className="text-[10px] font-extrabold text-[#6a7d92] uppercase tracking-wider">Classificação de Pernoite</label>
+                  <select 
+                    value={editPernoite}
+                    onChange={e => setEditPernoite(e.target.value as any)}
+                    className="g-input font-mono"
+                  >
+                    <option value="D0">D0 — Mesmo Dia</option>
+                    <option value="D1">D1 — 1 Pernoite</option>
+                    <option value="D2">D2 — 2 Pernoites</option>
+                    <option value="D3">D3 — 3 Pernoites</option>
+                    <option value="D4">D4 — 4+ Pernoites</option>
+                  </select>
+                </div>
+              )}
+
+              {/* Justificativa / Observação */}
+              <div className="flex flex-col gap-1.5 md:col-span-2">
+                <label className="text-[10px] font-extrabold text-[#6a7d92] uppercase tracking-wider">Justificativa / Observações</label>
+                <textarea 
+                  value={editObs}
+                  onChange={e => setEditObs(e.target.value)}
+                  placeholder="Observações do lançamento..."
+                  className="g-input h-20 resize-none"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-[#222d3a] mt-2">
+              <button 
+                type="button"
+                onClick={() => setEditingRow(null)}
+                className="px-4 py-2 text-xs font-bold uppercase text-[#6a7d92] hover:text-white bg-[#151b23] border border-[#222d3a] rounded-xl cursor-pointer transition-colors"
+              >
+                Cancelar
+              </button>
+              <button 
+                type="button"
+                disabled={isSavingEdit}
+                onClick={handleSaveEdit}
+                className="px-5 py-2 text-xs font-bold uppercase text-[#07090d] bg-gradient-to-br from-[#7cc6ff] to-[#3a9ad3] hover:shadow-[0_4px_16px_rgba(124,198,255,0.25)] rounded-xl cursor-pointer disabled:opacity-50 transition-all"
+              >
+                {isSavingEdit ? 'Salvando...' : '💾 Salvar Alterações'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
