@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { db, isCustomFirebaseConnected } from '../firebase';
-import { collection, addDoc, deleteDoc, doc } from 'firebase/firestore';
+import { collection, addDoc, deleteDoc, doc, updateDoc } from 'firebase/firestore';
 import { Usuario, Empresa, QuebraRow } from '../types';
 import { useEmpresaData } from '../context/EmpresaDataContext';
 import { PRODUCTS } from '../planosData';
@@ -116,6 +116,9 @@ export const COLABORADORES_QUEBRA = [
 export default function QuebrasPanel({ user, empresa }: QuebrasPanelProps) {
   const empresaId = empresa?.id || 'demo';
   const draftKey = `quebras_draft_${empresaId}_${user.nome || 'guest'}`;
+  const empresaData = useEmpresaData();
+
+  const colaboradoresList = COLABORADORES_QUEBRA;
 
   // Helper to load safe initial state
   const getDraftValue = (key: string, defaultValue: any) => {
@@ -141,15 +144,15 @@ export default function QuebrasPanel({ user, empresa }: QuebrasPanelProps) {
   const [colaboradorQuebrou, setColaboradorQuebrou] = useState<string>(() => getDraftValue('colaboradorQuebrou', ''));
   const [showCustomInput, setShowCustomInput] = useState<boolean>(() => {
     const initial = getDraftValue('colaboradorQuebrou', '');
-    return initial !== '' && !COLABORADORES_QUEBRA.includes(initial);
+    return initial !== '' && !colaboradoresList.includes(initial);
   });
 
   // Sync custom input state if colaboradorQuebrou updates with a valid custom name
   useEffect(() => {
-    if (colaboradorQuebrou && !COLABORADORES_QUEBRA.includes(colaboradorQuebrou)) {
+    if (colaboradorQuebrou && !colaboradoresList.includes(colaboradorQuebrou)) {
       setShowCustomInput(true);
     }
-  }, [colaboradorQuebrou]);
+  }, [colaboradorQuebrou, colaboradoresList]);
   
   const [activeTab, setActiveTab] = useState<'form' | 'import' | 'stats' | 'hist'>('form');
   const [quebras, setQuebras] = useState<QuebraRow[]>([]);
@@ -476,7 +479,7 @@ export default function QuebrasPanel({ user, empresa }: QuebrasPanelProps) {
         setMotivoCod(parsed.motivoCod || 0);
         const colabVal = parsed.colaboradorQuebrou || '';
         setColaboradorQuebrou(colabVal);
-        setShowCustomInput(colabVal !== '' && !COLABORADORES_QUEBRA.includes(colabVal));
+        setShowCustomInput(colabVal !== '' && !colaboradoresList.includes(colabVal));
         setDraftRestored(!!(parsed.produtoBusca || parsed.selectedProd || (parsed.quantidade !== undefined && parsed.quantidade !== '') || parsed.area !== 'ARMAZEM' || parsed.turno !== 'MANHÃ' || parsed.colaboradorQuebrou));
       } else {
         setProdutoBusca('');
@@ -493,8 +496,6 @@ export default function QuebrasPanel({ user, empresa }: QuebrasPanelProps) {
       console.error(e);
     }
   }, [draftKey]);
-
-  const empresaData = useEmpresaData();
 
   // Sync with Firestore (scoped to company)
   useEffect(() => {
@@ -576,6 +577,20 @@ export default function QuebrasPanel({ user, empresa }: QuebrasPanelProps) {
     }
   };
 
+  // Editing state for history items
+  const [editingRow, setEditingRow] = useState<QuebraRow | null>(null);
+  const [editQuantidade, setEditQuantidade] = useState<string>('');
+  const [editArea, setEditArea] = useState<string>('ARMAZEM');
+  const [editTurno, setEditTurno] = useState<string>('MANHÃ');
+  const [editMotivoCod, setEditMotivoCod] = useState<number | ''>('');
+  const [editColaborador, setEditColaborador] = useState<string>('');
+  const [showEditCustomInput, setShowEditCustomInput] = useState<boolean>(false);
+  const [editDataISO, setEditDataISO] = useState<string>('');
+  const [editProdBusca, setEditProdBusca] = useState<string>('');
+  const [editSelectedProd, setEditSelectedProd] = useState<{ codigo: number; descricao: string } | null>(null);
+  const [showEditProdDropdown, setShowEditProdDropdown] = useState<boolean>(false);
+  const [savingEdit, setSavingEdit] = useState<boolean>(false);
+
   const handleDelete = async (docId?: string) => {
     if (!docId || !confirm('Excluir este lançamento de quebras?')) return;
     try {
@@ -588,6 +603,79 @@ export default function QuebrasPanel({ user, empresa }: QuebrasPanelProps) {
       }
     } catch (e) {
       alert('Erro ao excluir: ' + e);
+    }
+  };
+
+  const handleStartEdit = (q: QuebraRow) => {
+    setEditingRow(q);
+    setEditQuantidade(String(q.quantidade || ''));
+    setEditArea(q.area || 'ARMAZEM');
+    setEditTurno(q.turno || 'MANHÃ');
+    setEditMotivoCod(q.codQuebra ? Number(q.codQuebra) : '');
+    const colabVal = q.colaboradorQuebrou || '';
+    setEditColaborador(colabVal);
+    setShowEditCustomInput(colabVal !== '' && !colaboradoresList.includes(colabVal));
+    setEditDataISO(q.dataISO || (q.data ? q.data.split('/').reverse().join('-') : new Date().toISOString().split('T')[0]));
+
+    const foundProd = PRODUCTS.find(p => String(p.codigo) === String(q.codProduto) || p.descricao.toLowerCase() === (q.descricao || '').toLowerCase());
+    if (foundProd) {
+      setEditSelectedProd(foundProd);
+      setEditProdBusca(foundProd.descricao);
+    } else {
+      setEditSelectedProd({ codigo: Number(q.codProduto) || 0, descricao: q.descricao });
+      setEditProdBusca(q.descricao);
+    }
+    setShowEditProdDropdown(false);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingRow) return;
+    if (!editSelectedProd || !editQuantidade || Number(editQuantidade) <= 0 || !editArea || !editTurno || !editMotivoCod) {
+      alert('Preencha os campos obrigatórios para atualizar a quebra.');
+      return;
+    }
+
+    const motives = QB_TIPOS[editArea] || QB_TIPOS['ARMAZEM'];
+    const chosenMotive = motives.find(m => m.cod === Number(editMotivoCod))?.motivo || String(editMotivoCod);
+    const isQuebraMovimentacao = Number(editMotivoCod) === 539 || Number(editMotivoCod) === 557 || Number(editMotivoCod) === 589;
+
+    let formattedData = editingRow.data;
+    if (editDataISO) {
+      const parts = editDataISO.split('-');
+      if (parts.length === 3) {
+        formattedData = `${parts[2]}/${parts[1]}/${parts[0]}`;
+      }
+    }
+
+    setSavingEdit(true);
+
+    const updatedFields: Partial<QuebraRow> = {
+      codProduto: String(editSelectedProd.codigo),
+      descricao: editSelectedProd.descricao,
+      quantidade: Number(editQuantidade),
+      area: editArea,
+      turno: editTurno,
+      codQuebra: String(editMotivoCod),
+      motivo: chosenMotive,
+      dataISO: editDataISO,
+      data: formattedData,
+      colaboradorQuebrou: isQuebraMovimentacao || editColaborador ? editColaborador.trim() : ''
+    };
+
+    try {
+      if (db && editingRow._docId) {
+        await updateDoc(doc(db, 'quebras', editingRow._docId), updatedFields);
+      }
+
+      const nextQuebras = quebras.map(r => (r._docId === editingRow._docId ? { ...r, ...updatedFields } : r));
+      setQuebras(nextQuebras);
+      localStorage.setItem(`quebras_${empresa?.id || 'demo'}`, JSON.stringify(nextQuebras));
+
+      setEditingRow(null);
+    } catch (e) {
+      alert('Erro ao atualizar lançamento: ' + e);
+    } finally {
+      setSavingEdit(false);
     }
   };
 
@@ -1003,7 +1091,7 @@ export default function QuebrasPanel({ user, empresa }: QuebrasPanelProps) {
                 value={
                   showCustomInput 
                     ? 'OUTRO' 
-                    : (colaboradorQuebrou === '' ? '' : (COLABORADORES_QUEBRA.includes(colaboradorQuebrou) ? colaboradorQuebrou : 'OUTRO'))
+                    : (colaboradorQuebrou === '' ? '' : (colaboradoresList.includes(colaboradorQuebrou) ? colaboradorQuebrou : 'OUTRO'))
                 }
                 onChange={e => {
                   const val = e.target.value;
@@ -1019,7 +1107,7 @@ export default function QuebrasPanel({ user, empresa }: QuebrasPanelProps) {
                 required
               >
                 <option value="">Selecione o colaborador...</option>
-                {COLABORADORES_QUEBRA.map(name => (
+                {colaboradoresList.map(name => (
                   <option key={name} value={name}>{name}</option>
                 ))}
                 <option value="OUTRO">OUTRO / NÃO LISTADO (Digitar manualmente)...</option>
@@ -1127,12 +1215,22 @@ export default function QuebrasPanel({ user, empresa }: QuebrasPanelProps) {
                                 )}
                               </td>
                               <td className="p-3 text-right">
-                                <button 
-                                  onClick={() => handleDelete(q._docId)}
-                                  className="py-1 px-2 border border-[#ef4444]/20 hover:bg-[#ef4444] text-[#fca5a5] hover:text-white rounded text-[10px] font-bold cursor-pointer"
-                                >
-                                  ✕
-                                </button>
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <button 
+                                    onClick={() => handleStartEdit(q)}
+                                    className="py-1 px-2 bg-blue-500/10 border border-blue-500/30 hover:bg-blue-600 text-blue-400 hover:text-white rounded text-[10px] font-bold cursor-pointer transition-all flex items-center gap-1"
+                                    title="Editar informações do registro"
+                                  >
+                                    ✏️ Editar
+                                  </button>
+                                  <button 
+                                    onClick={() => handleDelete(q._docId)}
+                                    className="py-1 px-2 bg-red-500/10 border border-[#ef4444]/20 hover:bg-[#ef4444] text-[#fca5a5] hover:text-white rounded text-[10px] font-bold cursor-pointer transition-all"
+                                    title="Excluir lançamento"
+                                  >
+                                    ✕
+                                  </button>
+                                </div>
                               </td>
                             </tr>
                           ))}
@@ -1149,6 +1247,197 @@ export default function QuebrasPanel({ user, empresa }: QuebrasPanelProps) {
 
       {/* Sugerir Melhoria / Plano de Ação para Supervisores */}
       <SugerirMelhoriaCard user={user} empresa={empresa} setor="Quebras" />
+
+      {/* Modal de Edição de Lançamento no Histórico */}
+      {editingRow && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#11151c] border border-[#222d3a] rounded-xl max-w-lg w-full p-6 shadow-2xl flex flex-col gap-4 text-snow max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-[#222d3a] pb-3">
+              <h3 className="font-sans font-black text-sm uppercase tracking-wider text-[#ef4444] flex items-center gap-2">
+                ✏️ EDITAR INFORMAÇÕES DO REGISTRO
+              </h3>
+              <button 
+                onClick={() => setEditingRow(null)}
+                className="text-[#6a7d92] hover:text-white font-bold text-base p-1 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-3.5 text-xs">
+              {/* Data do Lançamento */}
+              <div>
+                <label className="block text-[11px] font-bold text-[#6a7d92] uppercase mb-1">Data do Lançamento</label>
+                <input 
+                  type="date"
+                  value={editDataISO}
+                  onChange={(e) => setEditDataISO(e.target.value)}
+                  className="w-full bg-[#151b23] border border-[#222d3a] rounded p-2.5 text-snow font-mono focus:border-[#ef4444] outline-none"
+                />
+              </div>
+
+              {/* Produto Autocomplete */}
+              <div className="relative">
+                <label className="block text-[11px] font-bold text-[#6a7d92] uppercase mb-1">Produto / SKU</label>
+                <input 
+                  type="text"
+                  value={editProdBusca}
+                  onChange={(e) => {
+                    setEditProdBusca(e.target.value);
+                    setShowEditProdDropdown(true);
+                  }}
+                  onFocus={() => setShowEditProdDropdown(true)}
+                  placeholder="Digite o código ou descrição do produto..."
+                  className="w-full bg-[#151b23] border border-[#222d3a] rounded p-2.5 text-snow font-mono focus:border-[#ef4444] outline-none"
+                />
+                {showEditProdDropdown && (
+                  <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-[#151b23] border border-[#222d3a] rounded shadow-xl max-h-48 overflow-y-auto divide-y divide-[#222d3a]">
+                    {PRODUCTS.filter(p => {
+                      const q = editProdBusca.toLowerCase();
+                      return String(p.codigo).includes(q) || p.descricao.toLowerCase().includes(q);
+                    }).slice(0, 8).map(p => (
+                      <div 
+                        key={p.codigo}
+                        onClick={() => {
+                          setEditSelectedProd(p);
+                          setEditProdBusca(p.descricao);
+                          setShowEditProdDropdown(false);
+                        }}
+                        className="p-2.5 hover:bg-[#222d3a] cursor-pointer flex justify-between items-center text-xs"
+                      >
+                        <span className="font-bold text-snow">{p.descricao}</span>
+                        <span className="font-mono text-[#f5a623] text-[11px]">Cód: {p.codigo}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Quantidade */}
+              <div>
+                <label className="block text-[11px] font-bold text-[#6a7d92] uppercase mb-1">Quantidade (Unidades)</label>
+                <input 
+                  type="number"
+                  value={editQuantidade}
+                  onChange={(e) => setEditQuantidade(e.target.value)}
+                  min="1"
+                  className="w-full bg-[#151b23] border border-[#222d3a] rounded p-2.5 text-snow font-bold text-sm focus:border-[#ef4444] outline-none"
+                />
+              </div>
+
+              {/* Área */}
+              <div>
+                <label className="block text-[11px] font-bold text-[#6a7d92] uppercase mb-1">Área Operacional</label>
+                <select 
+                  value={editArea}
+                  onChange={(e) => {
+                    const newArea = e.target.value;
+                    setEditArea(newArea);
+                    const availableMotives = QB_TIPOS[newArea] || [];
+                    if (availableMotives.length > 0) {
+                      setEditMotivoCod(availableMotives[0].cod);
+                    }
+                  }}
+                  className="w-full bg-[#151b23] border border-[#222d3a] rounded p-2.5 text-snow font-bold focus:border-[#ef4444] outline-none"
+                >
+                  <option value="ARMAZEM">ARMAZÉM</option>
+                  <option value="ENTREGA">ENTREGA</option>
+                  <option value="MERCADO">MERCADO</option>
+                  <option value="PUXADA">PUXADA</option>
+                </select>
+              </div>
+
+              {/* Turno */}
+              <div>
+                <label className="block text-[11px] font-bold text-[#6a7d92] uppercase mb-1">Turno</label>
+                <select 
+                  value={editTurno}
+                  onChange={(e) => setEditTurno(e.target.value)}
+                  className="w-full bg-[#151b23] border border-[#222d3a] rounded p-2.5 text-snow font-bold focus:border-[#ef4444] outline-none"
+                >
+                  <option value="MANHÃ">MANHÃ</option>
+                  <option value="TARDE">TARDE</option>
+                  <option value="NOITE / MADRUGADA">NOITE / MADRUGADA</option>
+                </select>
+              </div>
+
+              {/* Motivo */}
+              <div>
+                <label className="block text-[11px] font-bold text-[#6a7d92] uppercase mb-1">Motivo da Quebra</label>
+                <select 
+                  value={editMotivoCod}
+                  onChange={(e) => setEditMotivoCod(Number(e.target.value))}
+                  className="w-full bg-[#151b23] border border-[#222d3a] rounded p-2.5 text-snow font-bold focus:border-[#ef4444] outline-none"
+                >
+                  {(QB_TIPOS[editArea] || QB_TIPOS['ARMAZEM']).map(m => (
+                    <option key={m.cod} value={m.cod}>
+                      [{m.cod}] {m.motivo}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Colaborador */}
+              {(editMotivoCod === 539 || editMotivoCod === 557 || editMotivoCod === 589 || editColaborador || showEditCustomInput) && (
+                <div className="flex flex-col gap-1.5">
+                  <label className="block text-[11px] font-bold text-[#6a7d92] uppercase mb-1">Colaborador / Operador</label>
+                  <select 
+                    value={
+                      showEditCustomInput 
+                        ? 'OUTRO' 
+                        : (editColaborador === '' ? '' : (colaboradoresList.includes(editColaborador) ? editColaborador : 'OUTRO'))
+                    }
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === 'OUTRO') {
+                        setShowEditCustomInput(true);
+                        setEditColaborador('');
+                      } else {
+                        setShowEditCustomInput(false);
+                        setEditColaborador(val);
+                      }
+                    }}
+                    className="w-full bg-[#151b23] border border-[#222d3a] rounded p-2.5 text-snow font-bold focus:border-[#ef4444] outline-none"
+                  >
+                    <option value="">Selecione o Colaborador...</option>
+                    {colaboradoresList.map(c => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                    <option value="OUTRO">OUTRO / NÃO LISTADO (Digitar manualmente)...</option>
+                  </select>
+
+                  {showEditCustomInput && (
+                    <input 
+                      type="text"
+                      placeholder="Digite o nome do colaborador..."
+                      value={editColaborador}
+                      onChange={(e) => setEditColaborador(e.target.value)}
+                      className="w-full bg-[#151b23] border border-[#ef4444]/40 rounded p-2.5 text-snow font-bold text-xs focus:border-[#ef4444] outline-none animate-fadeIn"
+                      required
+                    />
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-3 border-t border-[#222d3a] pt-4 mt-2">
+              <button 
+                onClick={() => setEditingRow(null)}
+                className="px-4 py-2 border border-[#222d3a] hover:bg-[#151b23] text-[#6a7d92] hover:text-white rounded-lg text-xs font-bold cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={handleSaveEdit}
+                disabled={savingEdit}
+                className="px-5 py-2 bg-[#ef4444] hover:bg-red-600 text-white rounded-lg text-xs font-black cursor-pointer shadow-lg disabled:opacity-50 flex items-center gap-2"
+              >
+                {savingEdit ? 'Salvando...' : '💾 Salvar Alterações'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { db, isCustomFirebaseConnected } from '../firebase';
-import { collection, addDoc, deleteDoc, doc } from 'firebase/firestore';
+import { collection, addDoc, deleteDoc, doc, updateDoc } from 'firebase/firestore';
 import { Usuario, Empresa, RepackRow, RepackValidadeRow } from '../types';
 import { useEmpresaData } from '../context/EmpresaDataContext';
 import { PRODUCTS } from '../planosData';
@@ -298,6 +298,48 @@ export default function RepackPanel({ user, empresa }: RepackPanelProps) {
       }
     } catch (e) {
       alert('Erro ao deletar: ' + e);
+    }
+  };
+
+  const [editingRepack, setEditingRepack] = useState<RepackRow | null>(null);
+  const [editRepackEmbalagem, setEditRepackEmbalagem] = useState<string>('');
+  const [editRepackQtd, setEditRepackQtd] = useState<string>('');
+  const [editRepackMotivo, setEditRepackMotivo] = useState<string>('');
+  const [savingRepackEdit, setSavingRepackEdit] = useState<boolean>(false);
+
+  const handleStartEditRepack = (r: RepackRow) => {
+    setEditingRepack(r);
+    setEditRepackEmbalagem(r.embalagem || REPACK_EMBALAGENS[0].nome);
+    setEditRepackQtd(String(r.quantidade || ''));
+    setEditRepackMotivo(r.motivoNaoBaterMeta || '');
+  };
+
+  const handleSaveEditRepack = async () => {
+    if (!editingRepack) return;
+    if (!editRepackEmbalagem || !editRepackQtd || Number(editRepackQtd) <= 0) {
+      alert('Preencha a embalagem e a quantidade.');
+      return;
+    }
+
+    setSavingRepackEdit(true);
+    const updatedFields: Partial<RepackRow> = {
+      embalagem: editRepackEmbalagem,
+      quantidade: Number(editRepackQtd),
+      motivoNaoBaterMeta: editRepackMotivo.trim()
+    };
+
+    try {
+      if (db && editingRepack._docId) {
+        await updateDoc(doc(db, 'repack', editingRepack._docId), updatedFields);
+      }
+      const nextRows = repackRows.map(r => (r._docId === editingRepack._docId ? { ...r, ...updatedFields } : r));
+      setRepackRows(nextRows);
+      localStorage.setItem(`repack_rows_${empresa?.id || 'demo'}`, JSON.stringify(nextRows));
+      setEditingRepack(null);
+    } catch (e) {
+      alert('Erro ao atualizar repack: ' + e);
+    } finally {
+      setSavingRepackEdit(false);
     }
   };
 
@@ -797,12 +839,22 @@ export default function RepackPanel({ user, empresa }: RepackPanelProps) {
                                 </div>
                               </td>
                               <td className="p-3 text-right">
-                                <button 
-                                  onClick={() => handleDelete(r._docId)}
-                                  className="py-1 px-2.5 bg-[#ef4444]/10 border border-[#ef4444]/20 hover:bg-[#ef4444] text-[#fca5a5] hover:text-white rounded-md text-[10px] font-bold cursor-pointer"
-                                >
-                                  ✕
-                                </button>
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <button 
+                                    onClick={() => handleStartEditRepack(r)}
+                                    className="py-1 px-2 bg-blue-500/10 border border-blue-500/30 hover:bg-blue-600 text-blue-400 hover:text-white rounded-md text-[10px] font-bold cursor-pointer transition-all flex items-center gap-1"
+                                    title="Editar registro"
+                                  >
+                                    ✏️ Editar
+                                  </button>
+                                  <button 
+                                    onClick={() => handleDelete(r._docId)}
+                                    className="py-1 px-2.5 bg-[#ef4444]/10 border border-[#ef4444]/20 hover:bg-[#ef4444] text-[#fca5a5] hover:text-white rounded-md text-[10px] font-bold cursor-pointer transition-all"
+                                    title="Excluir registro"
+                                  >
+                                    ✕
+                                  </button>
+                                </div>
                               </td>
                             </tr>
                           ))}
@@ -1385,6 +1437,78 @@ export default function RepackPanel({ user, empresa }: RepackPanelProps) {
 
       {/* Sugerir Melhoria / Plano de Ação para Supervisores */}
       <SugerirMelhoriaCard user={user} empresa={empresa} setor="Repack" />
+
+      {/* Modal de Edição de Repack */}
+      {editingRepack && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#11151c] border border-[#222d3a] rounded-xl max-w-md w-full p-6 shadow-2xl flex flex-col gap-4 text-snow">
+            <div className="flex items-center justify-between border-b border-[#222d3a] pb-3">
+              <h3 className="font-sans font-black text-sm uppercase tracking-wider text-[#3b82f6] flex items-center gap-2">
+                ✏️ EDITAR REGISTRO DE REPACK
+              </h3>
+              <button 
+                onClick={() => setEditingRepack(null)}
+                className="text-[#6a7d92] hover:text-white font-bold text-base p-1 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-3.5 text-xs">
+              <div>
+                <label className="block text-[11px] font-bold text-[#6a7d92] uppercase mb-1">Tipo de Embalagem</label>
+                <select 
+                  value={editRepackEmbalagem}
+                  onChange={(e) => setEditRepackEmbalagem(e.target.value)}
+                  className="w-full bg-[#151b23] border border-[#222d3a] rounded p-2.5 text-snow font-bold focus:border-[#3b82f6] outline-none"
+                >
+                  {REPACK_EMBALAGENS.map(item => (
+                    <option key={item.nome} value={item.nome}>{item.nome} (Meta: {item.meta})</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-[#6a7d92] uppercase mb-1">Quantidade de Caixas</label>
+                <input 
+                  type="number"
+                  value={editRepackQtd}
+                  onChange={(e) => setEditRepackQtd(e.target.value)}
+                  min="1"
+                  className="w-full bg-[#151b23] border border-[#222d3a] rounded p-2.5 text-snow font-bold text-sm focus:border-[#3b82f6] outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-[#6a7d92] uppercase mb-1">Motivo / Observação</label>
+                <textarea 
+                  value={editRepackMotivo}
+                  onChange={(e) => setEditRepackMotivo(e.target.value)}
+                  rows={3}
+                  placeholder="Justificativa ou detalhes do processo..."
+                  className="w-full bg-[#151b23] border border-[#222d3a] rounded p-2.5 text-snow focus:border-[#3b82f6] outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 border-t border-[#222d3a] pt-4 mt-2">
+              <button 
+                onClick={() => setEditingRepack(null)}
+                className="px-4 py-2 border border-[#222d3a] hover:bg-[#151b23] text-[#6a7d92] hover:text-white rounded-lg text-xs font-bold cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={handleSaveEditRepack}
+                disabled={savingRepackEdit}
+                className="px-5 py-2 bg-[#3b82f6] hover:bg-blue-600 text-white rounded-lg text-xs font-black cursor-pointer shadow-lg disabled:opacity-50 flex items-center gap-2"
+              >
+                {savingRepackEdit ? 'Salvando...' : '💾 Salvar Alterações'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
