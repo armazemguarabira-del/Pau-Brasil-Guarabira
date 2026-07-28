@@ -64,7 +64,7 @@ export default function LandingPage({ onEnterApp }: LandingPageProps) {
       };
 
       try {
-        const qRepack = query(collection(db, 'repack'), limit(300));
+        const qRepack = query(collection(db, 'repack'), limit(15));
         const snapRepack = await getDocs(qRepack);
         const rowsRepack = snapRepack.docs.map(doc => doc.data());
         if (rowsRepack.length > 0) {
@@ -90,7 +90,7 @@ export default function LandingPage({ onEnterApp }: LandingPageProps) {
       }
 
       try {
-        const qQuebras = query(collection(db, 'quebras'), limit(300));
+        const qQuebras = query(collection(db, 'quebras'), limit(15));
         const snapQuebras = await getDocs(qQuebras);
         const rowsQuebras = snapQuebras.docs.map(doc => doc.data());
         if (rowsQuebras.length > 0) {
@@ -102,7 +102,7 @@ export default function LandingPage({ onEnterApp }: LandingPageProps) {
       }
 
       try {
-        const qValidades = query(collection(db, 'validades'), limit(300));
+        const qValidades = query(collection(db, 'validades'), limit(15));
         const snapValidades = await getDocs(qValidades);
         const rowsValidades = snapValidades.docs.map(doc => doc.data());
         if (rowsValidades.length > 0) {

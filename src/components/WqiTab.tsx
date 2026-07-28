@@ -43,6 +43,7 @@ import { QuebraRow } from '../types';
 import { generateMockQuebras } from '../mockDataGenerator';
 import CalendarFilter from './CalendarFilter';
 import { PRODUCTS } from '../planosData';
+import { useEmpresaData } from '../context/EmpresaDataContext';
 
 interface WqiTabProps {
   empresaId: string;
@@ -218,45 +219,28 @@ export default function WqiTab({
   const [recordsFilterProduto, setRecordsFilterProduto] = useState<string>('TODOS');
   const [recordsFilterEmbalagem, setRecordsFilterEmbalagem] = useState<string>('TODAS');
 
-  // Single read with getDocs() (No real-time listener to optimize Firestore read costs)
-  const fetchWqiData = async () => {
+  const empresaData = useEmpresaData();
+
+  const fetchWqiData = () => {
     setLoading(true);
-    try {
-      if (db && empresaId && empresaId !== 'demo') {
-        const q = query(collection(db, 'quebras'), where('empresaId', '==', empresaId));
-        const snap = await getDocs(q);
-        const rows = snap.docs.map(doc => ({ _docId: doc.id, ...doc.data() } as QuebraRow));
-        rows.sort((a, b) => (b.dataISO || '').localeCompare(a.dataISO || ''));
-        if (rows.length > 0) {
-          setData(rows);
-          setLoading(false);
-          return;
-        }
-      }
-      
-      // Fallback to local storage or mock generator
+    if (empresaData.quebras && empresaData.quebras.length > 0) {
+      const rows = [...empresaData.quebras];
+      rows.sort((a, b) => (b.dataISO || '').localeCompare(a.dataISO || ''));
+      setData(rows);
+    } else {
       const localSaved = localStorage.getItem(`quebras_${empresaId || 'demo'}`);
       if (localSaved) {
         setData(JSON.parse(localSaved));
       } else {
         setData(generateMockQuebras(empresaId || 'demo'));
       }
-    } catch (err) {
-      console.warn('WQI fetch fallback to mock:', err);
-      const localSaved = localStorage.getItem(`quebras_${empresaId || 'demo'}`);
-      if (localSaved) {
-        setData(JSON.parse(localSaved));
-      } else {
-        setData(generateMockQuebras(empresaId || 'demo'));
-      }
-    } finally {
-      setLoading(false);
     }
+    setLoading(false);
   };
 
   useEffect(() => {
     fetchWqiData();
-  }, [empresaId]);
+  }, [empresaData.quebras, empresaData.loaded, empresaId]);
 
   const availableWqiMotivos = useMemo(() => {
     const map = new Map<string, string>();

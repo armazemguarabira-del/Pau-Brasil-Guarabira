@@ -251,9 +251,14 @@ function QuebrasDashboardInner({ user, empresa, onBack }: QuebrasDashboardProps)
         if (q.dataISO) {
           rowISO = q.dataISO.split('T')[0];
         } else if (q.data) {
-          const parts = q.data.split('/');
-          if (parts.length === 3) {
-            rowISO = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+          if (q.data.includes('/')) {
+            const parts = q.data.split('/');
+            if (parts.length === 3) {
+              const yyyy = parts[2].length === 2 ? `20${parts[2]}` : parts[2];
+              rowISO = `${yyyy}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+            }
+          } else if (q.data.includes('-')) {
+            rowISO = q.data.split('T')[0];
           }
         }
         if (rowISO) {
@@ -446,8 +451,10 @@ function QuebrasDashboardInner({ user, empresa, onBack }: QuebrasDashboardProps)
   const sortedDays = useMemo(() => {
     const map: Record<string, number> = {};
     timelineData.forEach(q => {
-      const day = q.data.substring(0, 5); // DD/MM
-      map[day] = (map[day] || 0) + (viewUnit === 'cx' ? q.quantidade : convertCxToHE(q.quantidade, q.descricao, q.codProduto));
+      const day = q.data ? q.data.substring(0, 5) : ''; // DD/MM
+      if (day) {
+        map[day] = (map[day] || 0) + (viewUnit === 'cx' ? q.quantidade : convertCxToHE(q.quantidade, q.descricao, q.codProduto));
+      }
     });
 
     return Object.entries(map)
@@ -456,8 +463,7 @@ function QuebrasDashboardInner({ user, empresa, onBack }: QuebrasDashboardProps)
         const [dayA, monthA] = a.date.split('/');
         const [dayB, monthB] = b.date.split('/');
         return `${monthA}-${dayA}`.localeCompare(`${monthB}-${dayB}`);
-      })
-      .slice(-10);
+      });
   }, [timelineData, viewUnit]);
 
   // Turno Chart Data (computed from turnoData)
@@ -1180,7 +1186,9 @@ function QuebrasDashboardInner({ user, empresa, onBack }: QuebrasDashboardProps)
               <div className={`text-[9px] text-gray-400 font-semibold border-t pt-1 text-center ${
                 theme === 'dark' ? 'border-slate-800' : 'border-gray-100'
               }`}>
-                Últimos 10 dias com lançamentos
+                {sortedDays.length > 0 
+                  ? `Exibindo todas as ${sortedDays.length} datas com lançamentos`
+                  : 'Sem lançamentos no período'}
               </div>
             </div>
 
@@ -1448,14 +1456,14 @@ function QuebrasDashboardInner({ user, empresa, onBack }: QuebrasDashboardProps)
                 <h3 className={`font-sans font-black text-xs uppercase tracking-wider ${
                   theme === 'dark' ? 'text-blue-300' : 'text-[#032b5e]'
                 }`}>
-                  RANKING DE PRODUTOS OFENSORES (SKUs)
+                  RANKING DE PRODUTOS OFENSORES (SKUs) ({sortedSkus.length})
                 </h3>
                 <span className="text-[10px] text-slate-400 font-medium">Clique na linha para filtrar</span>
               </div>
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto max-h-[350px] overflow-y-auto">
                 <table className="w-full border-collapse font-sans text-xs">
                   <thead>
-                    <tr className={`border-b ${theme === 'dark' ? 'bg-slate-800/80 border-slate-700 text-slate-300' : 'bg-slate-50 border-gray-200 text-gray-500'}`}>
+                    <tr className={`border-b sticky top-0 z-10 ${theme === 'dark' ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-slate-100 border-gray-200 text-gray-500'}`}>
                       <th className="p-2 text-left uppercase tracking-wider text-[9px]">Posição</th>
                       <th className="p-2 text-left uppercase tracking-wider text-[9px]">Código</th>
                       <th className="p-2 text-left uppercase tracking-wider text-[9px]">SKU Descrição</th>
@@ -1469,7 +1477,7 @@ function QuebrasDashboardInner({ user, empresa, onBack }: QuebrasDashboardProps)
                         <td colSpan={5} className="p-4 text-center text-gray-400">Sem produtos no ranking</td>
                       </tr>
                     ) : (
-                      sortedSkus.slice(0, 7).map((item, index) => {
+                      sortedSkus.map((item, index) => {
                         const pct = totalQuant > 0 ? ((item.quant / totalQuant) * 100).toFixed(1) : '0';
                         const isSelected = isFiltered('produto', item.desc);
                         return (
@@ -1506,13 +1514,13 @@ function QuebrasDashboardInner({ user, empresa, onBack }: QuebrasDashboardProps)
                 <h3 className={`font-sans font-black text-xs uppercase tracking-wider mb-3 ${
                   theme === 'dark' ? 'text-blue-300' : 'text-[#032b5e]'
                 }`}>
-                  ÚLTIMOS LANÇAMENTOS DO PERÍODO
+                  LANÇAMENTOS DO PERÍODO ({crossFilteredData.length})
                 </h3>
-                <div className="overflow-x-auto max-h-[250px] overflow-y-auto">
+                <div className="overflow-x-auto max-h-[350px] overflow-y-auto">
                   <table className="w-full border-collapse font-sans text-[11px]">
                     <thead>
-                      <tr className={`border-b sticky top-0 ${
-                        theme === 'dark' ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-slate-50 border-gray-200 text-gray-500'
+                      <tr className={`border-b sticky top-0 z-10 ${
+                        theme === 'dark' ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-slate-100 border-gray-200 text-gray-500'
                       }`}>
                         <th className="p-2 text-left uppercase tracking-wider text-[9px]">Data</th>
                         <th className="p-2 text-left uppercase tracking-wider text-[9px]">SKU</th>
@@ -1527,7 +1535,7 @@ function QuebrasDashboardInner({ user, empresa, onBack }: QuebrasDashboardProps)
                           <td colSpan={5} className="p-4 text-center text-gray-400">Nenhum registro encontrado</td>
                         </tr>
                       ) : (
-                        crossFilteredData.slice(0, 10).map((q, idx) => (
+                        crossFilteredData.map((q, idx) => (
                           <tr key={idx} className={theme === 'dark' ? 'hover:bg-slate-800/50' : 'hover:bg-slate-50/50'}>
                             <td className={`p-2 font-medium ${theme === 'dark' ? 'text-slate-300' : 'text-slate-600'}`}>{q.data}</td>
                             <td 

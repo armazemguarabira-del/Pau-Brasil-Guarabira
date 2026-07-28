@@ -147,26 +147,29 @@ export default function App() {
     }
     const companyId = user.empresaId || 'demo';
     
-    // Listen to pending actions for this specific collaborator
-    const q = query(
-      collection(db, 'acoes'),
-      where('empresaId', '==', companyId),
-      where('colaboradorId', '==', user.uid),
-      where('status', '==', 'pendente'),
-      where('tipo', '==', 'colaborador')
-    );
+    // Listen to pending actions for this specific collaborator (limited to 10 active items)
+    import('firebase/firestore').then(({ limit }) => {
+      const q = query(
+        collection(db, 'acoes'),
+        where('empresaId', '==', companyId),
+        where('colaboradorId', '==', user.uid),
+        where('status', '==', 'pendente'),
+        where('tipo', '==', 'colaborador'),
+        limit(10)
+      );
 
-    const unsub = onSnapshot(q, (snapshot) => {
-      const docs = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setActiveActions(docs);
-    }, (err) => {
-      console.error("Erro ao escutar ações ativas", err);
+      const unsub = onSnapshot(q, (snapshot) => {
+        const docs = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+        setActiveActions(docs);
+      }, (err) => {
+        console.error("Erro ao escutar ações ativas", err);
+      });
+
+      return () => unsub();
     });
-
-    return () => unsub();
   }, [user?.uid, user?.empresaId]);
 
   const isBlockedByActionPlan = () => {
@@ -246,32 +249,16 @@ export default function App() {
           localStorage.setItem(`local_acessos_${empresaId}`, JSON.stringify(localSessions.slice(0, 100)));
         }
       } else {
-        // Update existing session
+        // Update existing session without performing a getDoc read
         if (db && !currentSessionId.startsWith('local_')) {
           try {
-            const { doc, getDoc, updateDoc } = await import('firebase/firestore');
+            const { doc, updateDoc, arrayUnion } = await import('firebase/firestore');
             const docRef = doc(db, 'acessos', currentSessionId);
-            const docSnap = await getDoc(docRef);
-            if (docSnap.exists()) {
-              const data = docSnap.data();
-              const existingAbas = data.abasAcessadas || [];
-              const updatedAbas = existingAbas.includes(activePanel) 
-                ? existingAbas 
-                : [...existingAbas, activePanel];
-              const existingAtividades = data.atividades || [];
-              
-              // Only add if the last activity was a different panel
-              const lastAct = existingAtividades[existingAtividades.length - 1];
-              const updatedAtividades = lastAct?.aba === activePanel 
-                ? existingAtividades 
-                : [...existingAtividades, activityItem];
-
-              await updateDoc(docRef, {
-                ultimoAcesso: nowStr,
-                abasAcessadas: updatedAbas,
-                atividades: updatedAtividades
-              });
-            }
+            await updateDoc(docRef, {
+              ultimoAcesso: nowStr,
+              abasAcessadas: arrayUnion(activePanel),
+              atividades: arrayUnion(activityItem)
+            });
           } catch (e) {
             console.error('Error updating access log in Firestore:', e);
           }

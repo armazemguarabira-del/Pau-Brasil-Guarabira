@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { collection, onSnapshot, query, where } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, limit } from 'firebase/firestore';
 import { db } from '../firebase';
 import {
   RepackRow,
@@ -14,16 +14,9 @@ import {
 /**
  * Fonte única de verdade em tempo real para os dados da empresa logada.
  *
- * Antes: cada tela (Dashboard, Exportar, painéis) abria seu próprio
- * onSnapshot nas mesmas coleções -> a mesma coleção era lida (e cobrada)
- * uma vez por tela aberta na sessão.
- *
- * Agora: 1 único onSnapshot por coleção, aberto aqui, no topo do app,
- * assim que a empresa é conhecida. Todo componente lê via useEmpresaData()
- * e recebe as mesmas atualizações em tempo real, sem abrir conexão própria.
- *
- * Real-time entre usuários e nos dashboards continua 100% funcionando —
- * é o mesmo onSnapshot de sempre, só que compartilhado em vez de duplicado.
+ * Otimizado com limites e agrupamento para evitar leituras desnecessárias de
+ * documentos históricos antigos, mantendo a sincronização 100% em tempo real
+ * entre usuários e dashboards.
  */
 
 interface EmpresaDataState {
@@ -67,24 +60,23 @@ const EMPTY_STATE: EmpresaDataState = {
 
 const EmpresaDataContext = createContext<EmpresaDataState>(EMPTY_STATE);
 
-// Mapa coleção Firestore -> chave do state / setter, pra não repetir o
-// boilerplate do onSnapshot pra cada coleção.
-const COLLECTIONS: Array<{ nome: string; chave: keyof Omit<EmpresaDataState, 'loaded'> }> = [
-  { nome: 'repack', chave: 'repack' },
-  { nome: 'despejo', chave: 'despejo' },
-  { nome: 'quebras', chave: 'quebras' },
-  { nome: 'validades', chave: 'validades' },
-  { nome: 'armazem', chave: 'armazem' },
-  { nome: 'blitz_refugo', chave: 'blitz' },
-  { nome: 'tarefas', chave: 'tarefas' },
-  { nome: 'usuarios', chave: 'usuarios' },
-  { nome: 'acoes', chave: 'acoes' },
-  { nome: 'colaboradores', chave: 'colaboradores' },
-  { nome: 'dpo_audits', chave: 'dpoAudits' },
-  { nome: 'repack_validades', chave: 'repackValidades' },
-  { nome: 'acessos', chave: 'acessos' },
-  { nome: 'repack_action_plans', chave: 'repackActionPlans' },
-  { nome: 'repack_a3_boards', chave: 'repackA3Boards' },
+// Mapa coleção Firestore -> chave do state / setter com limite seguro de registros
+const COLLECTIONS: Array<{ nome: string; chave: keyof Omit<EmpresaDataState, 'loaded'>; limitDocs?: number }> = [
+  { nome: 'repack', chave: 'repack', limitDocs: 1500 },
+  { nome: 'despejo', chave: 'despejo', limitDocs: 1500 },
+  { nome: 'quebras', chave: 'quebras', limitDocs: 2000 },
+  { nome: 'validades', chave: 'validades', limitDocs: 1500 },
+  { nome: 'armazem', chave: 'armazem', limitDocs: 1000 },
+  { nome: 'blitz_refugo', chave: 'blitz', limitDocs: 1000 },
+  { nome: 'tarefas', chave: 'tarefas', limitDocs: 500 },
+  { nome: 'usuarios', chave: 'usuarios', limitDocs: 300 },
+  { nome: 'acoes', chave: 'acoes', limitDocs: 500 },
+  { nome: 'colaboradores', chave: 'colaboradores', limitDocs: 500 },
+  { nome: 'dpo_audits', chave: 'dpoAudits', limitDocs: 500 },
+  { nome: 'repack_validades', chave: 'repackValidades', limitDocs: 500 },
+  { nome: 'acessos', chave: 'acessos', limitDocs: 50 },
+  { nome: 'repack_action_plans', chave: 'repackActionPlans', limitDocs: 300 },
+  { nome: 'repack_a3_boards', chave: 'repackA3Boards', limitDocs: 300 },
 ];
 
 export function EmpresaDataProvider({
@@ -103,9 +95,13 @@ export function EmpresaDataProvider({
     }
 
     const pendentes = new Set(COLLECTIONS.map(c => c.chave));
-    const unsubs = COLLECTIONS.map(({ nome, chave }) =>
-      onSnapshot(
-        query(collection(db, nome), where('empresaId', '==', empresaId)),
+    const unsubs = COLLECTIONS.map(({ nome, chave, limitDocs }) => {
+      const q = limitDocs 
+        ? query(collection(db, nome), where('empresaId', '==', empresaId), limit(limitDocs))
+        : query(collection(db, nome), where('empresaId', '==', empresaId));
+
+      return onSnapshot(
+        q,
         snap => {
           const rows = snap.docs.map(d => ({ _docId: d.id, id: d.id, ...d.data() } as any));
           pendentes.delete(chave);
@@ -116,8 +112,8 @@ export function EmpresaDataProvider({
           }));
         },
         err => console.warn(`EmpresaDataProvider: erro ao ouvir '${nome}':`, err)
-      )
-    );
+      );
+    });
 
     return () => unsubs.forEach(u => u());
   }, [empresaId]);

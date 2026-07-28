@@ -191,8 +191,49 @@ export const CrossFilterProvider: React.FC<{ children: React.ReactNode }> = ({ c
           }
 
           if (field === 'data') {
-            const d = String(obj.data || '').substring(0, 5);
-            return d === String(targetVal).trim();
+            const tgt = String(targetVal).trim();
+            const rawData = String(obj.data || '').trim();
+            const rawISO = String(obj.dataISO || '').trim().split('T')[0];
+
+            const candidates = new Set<string>();
+
+            if (rawData) {
+              candidates.add(rawData);
+              if (rawData.includes('/')) {
+                const parts = rawData.split('/');
+                if (parts.length >= 2) {
+                  const dd = parts[0].padStart(2, '0');
+                  const mm = parts[1].padStart(2, '0');
+                  candidates.add(`${dd}/${mm}`);
+                  if (parts.length === 3) {
+                    const yyyy = parts[2].length === 2 ? `20${parts[2]}` : parts[2];
+                    candidates.add(`${dd}/${mm}/${yyyy}`);
+                    candidates.add(`${yyyy}-${mm}-${dd}`);
+                  }
+                }
+              } else if (rawData.includes('-')) {
+                const parts = rawData.split('-');
+                if (parts.length === 3) {
+                  const [yyyy, mm, dd] = parts;
+                  candidates.add(`${dd}/${mm}`);
+                  candidates.add(`${dd}/${mm}/${yyyy}`);
+                  candidates.add(`${yyyy}-${mm}-${dd}`);
+                }
+              }
+            }
+
+            if (rawISO && rawISO.includes('-')) {
+              const parts = rawISO.split('-');
+              if (parts.length === 3) {
+                const [yyyy, mm, dd] = parts;
+                candidates.add(`${dd}/${mm}`);
+                candidates.add(`${dd}/${mm}/${yyyy}`);
+                candidates.add(`${yyyy}-${mm}-${dd}`);
+              }
+            }
+
+            if (candidates.has(tgt)) return true;
+            return Array.from(candidates).some(c => c === tgt || c.startsWith(tgt) || tgt.startsWith(c));
           }
 
           if (field === 'motorista' || field === 'responsavel') {
