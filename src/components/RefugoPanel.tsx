@@ -302,7 +302,7 @@ export default function RefugoPanel({ user, empresa }: RefugoPanelProps) {
     }
   };
 
-  const filteredHistory = filterHistoryForUser(blitzRows, user).filter(r => {
+  const filteredHistory = filterHistoryForUser<BlitzRefugoRow>(blitzRows, user).filter((r: BlitzRefugoRow) => {
     const q = searchQuery.toLowerCase();
     const str = `${r.placa} ${r.ajudante} ${r.mapa || ''} ${r.rota || ''} ${r.data}`.toLowerCase();
     return !q || str.includes(q);

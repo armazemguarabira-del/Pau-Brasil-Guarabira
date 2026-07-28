@@ -21,7 +21,7 @@ export function isGestorOrSupervisor(user?: Usuario | { papel?: string; isContro
  * Para Gestores e Supervisores: exibe o histórico completo.
  * Para demais papéis (operadores/conferentes/empilhadores): exibe APENAS os últimos 2 dias de registros.
  */
-export function filterHistoryForUser<T>(
+export function filterHistoryForUser<T = any>(
   items: T[],
   user?: Usuario | null,
   customGetDateKey?: (item: T) => string

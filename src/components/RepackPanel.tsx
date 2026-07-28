@@ -752,7 +752,7 @@ export default function RepackPanel({ user, empresa }: RepackPanelProps) {
         <div className="flex flex-col gap-3">
           <HistoryRestrictionNotice user={user} />
           {(() => {
-            const filteredRepackRows = filterHistoryForUser(repackRows, user);
+            const filteredRepackRows = filterHistoryForUser<RepackRow>(repackRows, user);
             const grouped = filteredRepackRows.reduce((acc, r) => {
               const key = r.dataISO || (r.data ? r.data.split('/').reverse().join('-') : 'sem-data');
               if (!acc[key]) acc[key] = [];

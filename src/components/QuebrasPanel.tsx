@@ -1140,7 +1140,7 @@ export default function QuebrasPanel({ user, empresa }: QuebrasPanelProps) {
         <div className="flex flex-col gap-3">
           <HistoryRestrictionNotice user={user} />
           {(() => {
-            const filteredQuebras = filterHistoryForUser(quebras, user);
+            const filteredQuebras = filterHistoryForUser<QuebraRow>(quebras, user);
             const grouped = filteredQuebras.reduce((acc, q) => {
               const key = q.dataISO || (q.data ? q.data.split('/').reverse().join('-') : 'sem-data');
               if (!acc[key]) acc[key] = [];

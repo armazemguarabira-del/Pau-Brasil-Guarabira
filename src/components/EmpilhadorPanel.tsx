@@ -305,7 +305,7 @@ export default function EmpilhadorPanel({ user, empresa }: EmpilhadorPanelProps)
 
   const pendingTasks  = tasks.filter(t => t.status === 'pending' && matchOp(t.operador));
   const progressTasks = tasks.filter(t => t.status === 'in_progress' && matchOp(t.operador));
-  const completedTasks= filterHistoryForUser(tasks.filter(t => t.status === 'done' && matchOp(t.operador)), user, item => item.finalizadoEm ? item.finalizadoEm.split('T')[0] : (item.criadoEm ? item.criadoEm.split('T')[0] : ''));
+  const completedTasks= filterHistoryForUser<Tarefa>(tasks.filter(t => t.status === 'done' && matchOp(t.operador)), user, (item: Tarefa) => item.finalizadoEm ? item.finalizadoEm.split('T')[0] : (item.criadoEm ? item.criadoEm.split('T')[0] : ''));
 
   return (
     <div className="flex flex-col gap-6">

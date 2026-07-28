@@ -255,7 +255,7 @@ export default function ConferentePanel({ user, empresa }: ConferentePanelProps)
 
   // Sync data lists
   const openTasksList = tasks.filter(t => t.status !== 'done');
-  const doneTasksList = filterHistoryForUser(tasks.filter(t => t.status === 'done'), user, (item) => item.finalizadoEm ? item.finalizadoEm.split('T')[0] : (item.criadoEm ? item.criadoEm.split('T')[0] : ''));
+  const doneTasksList = filterHistoryForUser<Tarefa>(tasks.filter(t => t.status === 'done'), user, (item: Tarefa) => item.finalizadoEm ? item.finalizadoEm.split('T')[0] : (item.criadoEm ? item.criadoEm.split('T')[0] : ''));
 
   return (
     <div className="flex flex-col gap-6">

@@ -490,7 +490,7 @@ export default function DespejoPanel({ user, empresa }: DespejoPanelProps) {
         <div className="flex flex-col gap-3">
           <HistoryRestrictionNotice user={user} />
           {(() => {
-            const filteredDespejoRows = filterHistoryForUser(despejoRows, user);
+            const filteredDespejoRows = filterHistoryForUser<DespejoRow>(despejoRows, user);
             const grouped = filteredDespejoRows.reduce((acc, r) => {
               const key = r.dataISO || (r.data ? r.data.split('/').reverse().join('-') : 'sem-data');
               if (!acc[key]) acc[key] = [];
