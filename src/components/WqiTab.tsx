@@ -44,6 +44,7 @@ import { generateMockQuebras } from '../mockDataGenerator';
 import CalendarFilter from './CalendarFilter';
 import { PRODUCTS } from '../planosData';
 import { useEmpresaData } from '../context/EmpresaDataContext';
+import { COLABORADORES_QUEBRA } from './QuebrasPanel';
 
 interface WqiTabProps {
   empresaId: string;
@@ -213,6 +214,7 @@ export default function WqiTab({
   const [filterEmbalagem, setFilterEmbalagem] = useState<string>('TODAS');
   const [filterTipoQuebra, setFilterTipoQuebra] = useState<string>('MOVIMENTACAO');
   const [filterMotivo, setFilterMotivo] = useState<string>('TODOS');
+  const [filterAjudante, setFilterAjudante] = useState<string>('TODOS');
 
   // State for Dedicated Records Card (Card 6)
   const [recordsSearchQuery, setRecordsSearchQuery] = useState<string>('');
@@ -267,7 +269,21 @@ export default function WqiTab({
       .sort((a, b) => a.label.localeCompare(b.label));
   }, [data]);
 
-  // Client-side filtering by Date, Area, Embalagem, Motivo (Always strictly Quebra por Movimentação in WQI)
+  const availableAjudantes = useMemo(() => {
+    const set = new Set<string>();
+    if (Array.isArray(COLABORADORES_QUEBRA)) {
+      COLABORADORES_QUEBRA.forEach(c => {
+        if (c && c.trim()) set.add(c.trim());
+      });
+    }
+    data.forEach(q => {
+      const colab = (q.colaboradorQuebrou || q.responsavel || q.ajudante || '').trim();
+      if (colab) set.add(colab);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [data]);
+
+  // Client-side filtering by Date, Area, Embalagem, Motivo, Ajudante (Always strictly Quebra por Movimentação in WQI)
   const filteredData = useMemo(() => {
     return data.filter(q => {
       // WQI focus: Strictly Quebra por Movimentação
@@ -290,6 +306,12 @@ export default function WqiTab({
         if (!match) return false;
       }
 
+      // Ajudante / Colaborador filter
+      if (filterAjudante !== 'TODOS') {
+        const colab = (q.colaboradorQuebrou || q.responsavel || q.ajudante || '').trim().toUpperCase();
+        if (colab !== filterAjudante.trim().toUpperCase()) return false;
+      }
+
       // Date range filter
       if (startDate || endDate) {
         let rowISO = '';
@@ -304,7 +326,7 @@ export default function WqiTab({
       }
       return true;
     });
-  }, [data, startDate, endDate, filterArea, filterEmbalagem, filterTipoQuebra, filterMotivo]);
+  }, [data, startDate, endDate, filterArea, filterEmbalagem, filterTipoQuebra, filterMotivo, filterAjudante]);
 
   // Detailed records filter for Card 6 (Card de Registros Individuais)
   const detailedRecordsRows = useMemo(() => {
@@ -750,6 +772,25 @@ export default function WqiTab({
               <option value="TODOS">Todos os Motivos</option>
               {availableWqiMotivos.map(m => (
                 <option key={m.value} value={m.value}>{m.label}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Ajudante / Colaborador Filter */}
+          <div className="flex flex-col gap-1 w-[180px]">
+            <span className={`text-[9px] font-black uppercase tracking-widest ${isDark ? 'text-slate-400' : 'text-gray-400'}`}>Ajudante / Colaborador</span>
+            <select 
+              value={filterAjudante} 
+              onChange={e => setFilterAjudante(e.target.value)} 
+              className={`w-full font-sans font-bold rounded-lg outline-none px-2.5 py-1 text-[10px] h-[32px] cursor-pointer transition-colors ${
+                isDark 
+                  ? 'bg-[#1e2942] border border-slate-600 text-slate-100 hover:border-blue-400' 
+                  : 'bg-white border border-gray-200 text-[#032b5e] hover:border-blue-400 focus:border-[#032b5e]'
+              }`}
+            >
+              <option value="TODOS">Todos os Ajudantes</option>
+              {availableAjudantes.map(name => (
+                <option key={name} value={name}>{name}</option>
               ))}
             </select>
           </div>

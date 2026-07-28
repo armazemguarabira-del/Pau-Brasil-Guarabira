@@ -1,4 +1,4 @@
-import { Query, DocumentData, getDocsFromCache, getDocsFromServer, QuerySnapshot } from 'firebase/firestore';
+import { Query, DocumentData, getDocsFromCache, getDocsFromServer, getDocs, QuerySnapshot } from 'firebase/firestore';
 
 /**
  * Busca os documentos de uma query priorizando o cache local do aparelho
@@ -9,10 +9,7 @@ import { Query, DocumentData, getDocsFromCache, getDocsFromServer, QuerySnapshot
  * - Se o cache estiver vazio para essa query (primeira vez, aparelho novo,
  *   cache limpo), busca do servidor normalmente e o resultado fica salvo
  *   automaticamente no cache para a próxima vez.
- *
- * Ideal para telas de consulta/histórico (Dashboard, Exportar, relatórios).
- * NÃO usar em telas que precisam de atualização ao vivo (ex: Repack e
- * Despejo continuam com onSnapshot normal).
+ * - Se o servidor estiver inacessível ou offline, faz fallback seguro para getDocs.
  */
 export async function fetchComCache<T = DocumentData>(
   q: Query<T>
@@ -25,5 +22,10 @@ export async function fetchComCache<T = DocumentData>(
   } catch (e) {
     // Cache ainda não tem nada para essa query específica — segue pro servidor
   }
-  return getDocsFromServer(q);
+  try {
+    return await getDocsFromServer(q);
+  } catch (e) {
+    console.warn('Servidor do Firestore inacessível ou offline. Usando fallback de consulta local.', e);
+    return getDocs(q);
+  }
 }

@@ -1,6 +1,13 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from 'firebase/firestore';
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, setLogLevel } from 'firebase/firestore';
+
+// Set Firestore log level to silent to suppress backend retry warnings in offline mode
+try {
+  setLogLevel('silent');
+} catch (e) {
+  // Ignore if already initialized
+}
 
 interface FirebaseConfigExtended {
   apiKey: string;

@@ -243,21 +243,40 @@ export default function LogisticaDashboard({ user, empresa, onBack }: LogisticaD
 
   // Dynamic unique lists for filtering dropdowns
   const uniqueEmpilhadores = useMemo(() => {
-    const names = new Set<string>();
+    const map = new Map<string, string>();
     armazemRows.forEach(r => {
-      if (r.empilhador) names.add(r.empilhador.trim().toUpperCase());
+      if (r.empilhador && r.empilhador.trim()) {
+        const trimmed = r.empilhador.trim();
+        const upper = trimmed.toUpperCase();
+        if (!map.has(upper)) {
+          const formatted = trimmed.toUpperCase();
+          map.set(upper, formatted);
+        }
+      }
     });
-    return Array.from(names).sort();
+    return Array.from(map.values()).sort((a, b) => a.localeCompare(b));
   }, [armazemRows]);
 
   const uniqueTipos = useMemo(() => {
-    const types = new Set<string>();
+    const map = new Map<string, string>();
     armazemRows.forEach(r => {
-      if (r.tipo) types.add(r.tipo.trim());
+      if (r.tipo && r.tipo.trim()) {
+        const trimmed = r.tipo.trim();
+        const upper = trimmed.toUpperCase();
+        if (!map.has(upper)) {
+          const formatted = trimmed.charAt(0).toUpperCase() + trimmed.slice(1).toLowerCase();
+          map.set(upper, formatted);
+        }
+      }
     });
-    // Ensure we support standard user requested options even if not in dataset
-    ['Puxada', 'Rota', 'Recarga', 'Terceiro'].forEach(t => types.add(t));
-    return Array.from(types).sort();
+    // Ensure standard user requested options exist
+    ['Puxada', 'Rota', 'Recarga', 'Terceiro'].forEach(t => {
+      const upper = t.toUpperCase();
+      if (!map.has(upper)) {
+        map.set(upper, t);
+      }
+    });
+    return Array.from(map.values()).sort((a, b) => a.localeCompare(b));
   }, [armazemRows]);
 
   // Compute filtered rows using calendar dates (YYYY-MM-DD), meta status and all other user-specified filters
@@ -2341,12 +2360,12 @@ export default function LogisticaDashboard({ user, empresa, onBack }: LogisticaD
       {/* GRAPH GRIDS SECTION (MIDDLE OF PAGE) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         
-        {/* MERGED CHART 1: DESEMPENHO OPERACIONAL – EFC E EFD */}
+        {/* CHART 1: DESEMPENHO OPERACIONAL – EFC (CARREGAMENTO) */}
         <div className="bg-white p-6 rounded-xl border border-gray-200/80 shadow-xs flex flex-col gap-4">
           <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between border-b border-gray-100 pb-4 gap-3">
             <div>
-              <h3 className="font-sans font-black text-sm uppercase text-slate-800 tracking-wider">
-                DESEMPENHO OPERACIONAL – <span className="text-[#032b5e]">EFC (CARREGAMENTO)</span> E <span className="text-[#f97316]">EFD (DESCARGA)</span>
+              <h3 className="font-sans font-black text-sm uppercase text-[#032b5e] tracking-wider">
+                DESEMPENHO OPERACIONAL – EFC (CARREGAMENTO)
               </h3>
               <p className="text-[11px] text-gray-400 font-bold uppercase mt-0.5 tracking-wide">Acompanhamento de performance vs. meta</p>
             </div>
@@ -2360,14 +2379,6 @@ export default function LogisticaDashboard({ user, empresa, onBack }: LogisticaD
               <div className="flex items-center gap-1.5">
                 <span className="w-4 h-0 border-t-2 border-dashed border-[#032b5e]"></span>
                 <span className="text-slate-500">Meta EFC: 96%</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="w-4 h-1 bg-[#f97316] rounded-full"></span>
-                <span>EFD Real</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="w-4 h-0 border-t-2 border-dashed border-[#f97316]"></span>
-                <span className="text-slate-500">Meta EFD: 85%</span>
               </div>
             </div>
           </div>
@@ -2396,6 +2407,59 @@ export default function LogisticaDashboard({ user, empresa, onBack }: LogisticaD
                   label={{ value: 'Meta: 96%', fill: '#032b5e', position: 'right', fontSize: 10, fontWeight: 'black', offset: 8 }} 
                 />
 
+                <Line 
+                  type="monotone" 
+                  dataKey="EFC" 
+                  stroke="#032b5e" 
+                  strokeWidth={3} 
+                  dot={{ r: 5, stroke: '#032b5e', strokeWidth: 2, fill: '#fff' }} 
+                  activeDot={{ r: 7 }}
+                  label={<CustomizedPercentLabel fill="#032b5e" position="top" />}
+                  isAnimationActive={false}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* CHART 2: DESEMPENHO OPERACIONAL – EFD (DESCARGA) */}
+        <div className="bg-white p-6 rounded-xl border border-gray-200/80 shadow-xs flex flex-col gap-4">
+          <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between border-b border-gray-100 pb-4 gap-3">
+            <div>
+              <h3 className="font-sans font-black text-sm uppercase text-[#f97316] tracking-wider">
+                DESEMPENHO OPERACIONAL – EFD (DESCARGA)
+              </h3>
+              <p className="text-[11px] text-gray-400 font-bold uppercase mt-0.5 tracking-wide">Acompanhamento de performance vs. meta</p>
+            </div>
+            
+            {/* Custom Legend */}
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[10px] font-black uppercase tracking-wider text-slate-600 bg-slate-50/80 p-2 rounded-lg border border-slate-100/80">
+              <div className="flex items-center gap-1.5">
+                <span className="w-4 h-1 bg-[#f97316] rounded-full"></span>
+                <span>EFD Real</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-4 h-0 border-t-2 border-dashed border-[#f97316]"></span>
+                <span className="text-slate-500">Meta EFD: 85%</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="h-72 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={trend4MonthsData} margin={{ top: 30, right: 85, left: 10, bottom: 10 }}>
+                <CartesianGrid stroke="#f1f5f9" vertical={false} />
+                <XAxis dataKey="month" stroke="#94a3b8" fontSize={11} fontWeight="bold" tickLine={false} padding={{ left: 35, right: 35 }} />
+                <YAxis 
+                  domain={[0, 105]} 
+                  stroke="#94a3b8" 
+                  fontSize={11} 
+                  tickLine={false} 
+                  axisLine={false}
+                  label={{ value: '%', angle: -90, position: 'insideLeft', style: { textAnchor: 'middle', fontSize: 11, fill: '#64748b', fontWeight: 'bold' }, offset: -5 }} 
+                />
+                <Tooltip contentStyle={{ backgroundColor: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px' }} />
+
                 {/* Reference line EFD at 85% */}
                 <ReferenceLine 
                   y={85} 
@@ -2407,23 +2471,12 @@ export default function LogisticaDashboard({ user, empresa, onBack }: LogisticaD
 
                 <Line 
                   type="monotone" 
-                  dataKey="EFC" 
-                  stroke="#032b5e" 
-                  strokeWidth={3} 
-                  dot={{ r: 5, stroke: '#032b5e', strokeWidth: 2, fill: '#fff' }} 
-                  activeDot={{ r: 7 }}
-                  label={<CustomizedPercentLabel fill="#032b5e" position="top" />}
-                  isAnimationActive={false}
-                />
-
-                <Line 
-                  type="monotone" 
                   dataKey="EFD" 
                   stroke="#f97316" 
                   strokeWidth={3} 
                   dot={{ r: 5, stroke: '#f97316', strokeWidth: 2, fill: '#fff' }} 
                   activeDot={{ r: 7 }}
-                  label={<CustomizedPercentLabel fill="#f97316" position="bottom" />}
+                  label={<CustomizedPercentLabel fill="#f97316" position="top" />}
                   isAnimationActive={false}
                 />
               </LineChart>
@@ -2431,12 +2484,12 @@ export default function LogisticaDashboard({ user, empresa, onBack }: LogisticaD
           </div>
         </div>
 
-        {/* MERGED CHART 2: TEMPO MÉDIO – CARREGAMENTO E DESCARGA */}
+        {/* CHART 3: TEMPO MÉDIO – CARREGAMENTO (MINUTOS) */}
         <div className="bg-white p-6 rounded-xl border border-gray-200/80 shadow-xs flex flex-col gap-4">
           <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between border-b border-gray-100 pb-4 gap-3">
             <div>
-              <h3 className="font-sans font-black text-sm uppercase text-slate-800 tracking-wider">
-                TEMPO MÉDIO – CARREGAMENTO E DESCARGA (MINUTOS)
+              <h3 className="font-sans font-black text-sm uppercase text-[#032b5e] tracking-wider">
+                TEMPO MÉDIO – CARREGAMENTO (MINUTOS)
               </h3>
               <p className="text-[11px] text-gray-400 font-bold uppercase mt-0.5 tracking-wide">Acompanhamento de tempo médio vs. meta</p>
             </div>
@@ -2450,14 +2503,6 @@ export default function LogisticaDashboard({ user, empresa, onBack }: LogisticaD
               <div className="flex items-center gap-1.5">
                 <span className="w-4 h-0 border-t-2 border-dashed border-[#032b5e]"></span>
                 <span className="text-slate-500">Meta: ≤ 15 min</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="w-4 h-1 bg-[#f97316] rounded-full"></span>
-                <span>Média Descarga</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="w-4 h-0 border-t-2 border-dashed border-[#f97316]"></span>
-                <span className="text-slate-500">Meta: ≤ 10 min</span>
               </div>
             </div>
           </div>
@@ -2485,6 +2530,58 @@ export default function LogisticaDashboard({ user, empresa, onBack }: LogisticaD
                   label={{ value: 'Meta: ≤ 15 min', fill: '#032b5e', position: 'right', fontSize: 10, fontWeight: 'black', offset: 8 }} 
                 />
 
+                <Line 
+                  type="monotone" 
+                  dataKey="tempoCarregamento" 
+                  stroke="#032b5e" 
+                  strokeWidth={3} 
+                  dot={{ r: 5, stroke: '#032b5e', strokeWidth: 2, fill: '#fff' }} 
+                  activeDot={{ r: 7 }}
+                  label={<CustomizedMinLabel fill="#032b5e" position="top" />}
+                  isAnimationActive={false}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* CHART 4: TEMPO MÉDIO – DESCARGA (MINUTOS) */}
+        <div className="bg-white p-6 rounded-xl border border-gray-200/80 shadow-xs flex flex-col gap-4">
+          <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between border-b border-gray-100 pb-4 gap-3">
+            <div>
+              <h3 className="font-sans font-black text-sm uppercase text-[#f97316] tracking-wider">
+                TEMPO MÉDIO – DESCARGA (MINUTOS)
+              </h3>
+              <p className="text-[11px] text-gray-400 font-bold uppercase mt-0.5 tracking-wide">Acompanhamento de tempo médio vs. meta</p>
+            </div>
+            
+            {/* Custom Legend */}
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[10px] font-black uppercase tracking-wider text-slate-600 bg-slate-50/80 p-2 rounded-lg border border-slate-100/80">
+              <div className="flex items-center gap-1.5">
+                <span className="w-4 h-1 bg-[#f97316] rounded-full"></span>
+                <span>Média Descarga</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-4 h-0 border-t-2 border-dashed border-[#f97316]"></span>
+                <span className="text-slate-500">Meta: ≤ 10 min</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="h-72 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={trend4MonthsData} margin={{ top: 30, right: 85, left: 10, bottom: 10 }}>
+                <CartesianGrid stroke="#f1f5f9" vertical={false} />
+                <XAxis dataKey="month" stroke="#94a3b8" fontSize={11} fontWeight="bold" tickLine={false} padding={{ left: 35, right: 35 }} />
+                <YAxis 
+                  stroke="#94a3b8" 
+                  fontSize={11} 
+                  tickLine={false} 
+                  axisLine={false}
+                  label={{ value: 'Minutos', angle: -90, position: 'insideLeft', style: { textAnchor: 'middle', fontSize: 11, fill: '#64748b', fontWeight: 'bold' }, offset: -5 }} 
+                />
+                <Tooltip contentStyle={{ backgroundColor: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px' }} />
+
                 {/* Reference line at 10 min */}
                 <ReferenceLine 
                   y={10} 
@@ -2496,23 +2593,12 @@ export default function LogisticaDashboard({ user, empresa, onBack }: LogisticaD
 
                 <Line 
                   type="monotone" 
-                  dataKey="tempoCarregamento" 
-                  stroke="#032b5e" 
-                  strokeWidth={3} 
-                  dot={{ r: 5, stroke: '#032b5e', strokeWidth: 2, fill: '#fff' }} 
-                  activeDot={{ r: 7 }}
-                  label={<CustomizedMinLabel fill="#032b5e" position="top" />}
-                  isAnimationActive={false}
-                />
-
-                <Line 
-                  type="monotone" 
                   dataKey="tempoDescarga" 
                   stroke="#f97316" 
                   strokeWidth={3} 
                   dot={{ r: 5, stroke: '#f97316', strokeWidth: 2, fill: '#fff' }} 
                   activeDot={{ r: 7 }}
-                  label={<CustomizedMinLabel fill="#f97316" position="bottom" />}
+                  label={<CustomizedMinLabel fill="#f97316" position="top" />}
                   isAnimationActive={false}
                 />
               </LineChart>
