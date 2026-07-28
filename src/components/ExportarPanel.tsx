@@ -40,7 +40,7 @@ export default function ExportarPanel({ user, empresa }: ExportarPanelProps) {
   const [despejo, setDespejo] = useState<DespejoRow[]>([]);
   const [quebras, setQuebras] = useState<QuebraRow[]>([]);
   const [validades, setValidades] = useState<ValidadeRow[]>([]);
-  const [repackValidades, setRepackValidades] = useState<RepackValidadeRow[]>([]);
+  const [repackValidades, setRepackValidades] = useState<any[]>([]);
   const [armazem, setArmazem] = useState<ArmazemRow[]>([]);
   const [blitz, setBlitz] = useState<BlitzRefugoRow[]>([]);
   const [tasks, setTasks] = useState<Tarefa[]>([]);

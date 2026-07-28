@@ -12,39 +12,29 @@ import {
   Line,
   PieChart,
   Pie,
-  Legend,
   LabelList
 } from 'recharts';
 import { 
-  Calendar, 
-  ChevronDown, 
   AlertTriangle,
   ArrowLeft,
-  Download,
-  DollarSign,
   TrendingUp,
-  Award,
-  Filter,
-  CheckCircle,
-  Clock,
-  Plus,
-  Trash2,
-  FileText,
-  User,
-  ShieldAlert,
-  Archive,
-  Truck,
   Package,
   Sun,
-  Moon
+  Moon,
+  Archive,
+  Truck,
+  Table,
+  Layers
 } from 'lucide-react';
 import { Usuario, Empresa, QuebraRow } from '../types';
-import { db, isCustomFirebaseConnected } from '../firebase';
+import { db } from '../firebase';
 import { useEmpresaData } from '../context/EmpresaDataContext';
 import { generateMockQuebras } from '../mockDataGenerator';
 import A3BoardComponent from './A3BoardComponent';
 import CalendarFilter from './CalendarFilter';
 import WqiTab, { getItemHlInfo } from './WqiTab';
+import { CrossFilterProvider, useCrossFilter, ActiveCrossFiltersBar } from '../context/CrossFilterContext';
+import { CrosstabMatrix } from './CrosstabMatrix';
 
 interface QuebrasDashboardProps {
   user: Usuario;
@@ -152,7 +142,9 @@ export const getGrupoName = (desc: string): string => {
   return 'Cervejas';
 };
 
-export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashboardProps) {
+function QuebrasDashboardInner({ user, empresa, onBack }: QuebrasDashboardProps) {
+  const { filters, toggleFilter, isFiltered, filterData } = useCrossFilter();
+
   const [actualQuebras, setActualQuebras] = useState<QuebraRow[]>([]);
   const [startDate, setStartDate] = useState<string>(() => {
     const d = new Date();
@@ -193,26 +185,11 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
     return generateMockQuebras(companyId);
   }, [actualQuebras, empresa?.id]);
 
-  // Convert physical units to HE (Hectolitros) accurately based on SKU factor / container volume
+  // Convert physical units to HE (Hectolitros) accurately
   const convertCxToHE = (quantidade: number, descricao: string = '', codProduto?: string | number): number => {
-    return getItemHlInfo({ quantidade, descricao, codProduto }).totalHl;
+    return getItemHlInfo({ quantidade, descricao, codProduto: codProduto ? String(codProduto) : undefined }).totalHl;
   };
   
-  // 5W2H state
-  const [planos, setPlanos] = useState<ActionPlan5W2H[]>([]);
-  const [showAddPlan, setShowAddPlan] = useState(false);
-  const [newPlan, setNewPlan] = useState<Omit<ActionPlan5W2H, 'id'>>({
-    what: '',
-    why: '',
-    who: '',
-    where: '',
-    when: '',
-    how: '',
-    howMuch: 0,
-    status: 'Pendente',
-    codeDPO: '539'
-  });
-
   const empresaData = useEmpresaData();
 
   // Sync Quebras
@@ -227,23 +204,6 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
     rows.sort((a, b) => (b.dataISO || '').localeCompare(a.dataISO || ''));
     setActualQuebras(rows);
   }, [empresaData.quebras, empresa?.id]);
-
-  // Sync Action Plans 5W2H
-  useEffect(() => {
-    const key = `quebras_planos_5w2h_${empresa?.id || 'demo'}`;
-    const saved = localStorage.getItem(key);
-    if (saved) {
-      setPlanos(JSON.parse(saved));
-    } else {
-      setPlanos(DEFAULT_PLANS);
-      localStorage.setItem(key, JSON.stringify(DEFAULT_PLANS));
-    }
-  }, [empresa?.id]);
-
-  const savePlanosToLocal = (updatedList: ActionPlan5W2H[]) => {
-    setPlanos(updatedList);
-    localStorage.setItem(`quebras_planos_5w2h_${empresa?.id || 'demo'}`, JSON.stringify(updatedList));
-  };
 
   const availableMotivos = useMemo(() => {
     const map = new Map<string, string>();
@@ -270,18 +230,13 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
       .sort((a, b) => a.label.localeCompare(b.label));
   }, [quebras]);
 
-  // Filter Logic
-  const getFilteredQuebras = () => {
+  // Header Dropdown Filter Logic
+  const baseFilteredData = useMemo(() => {
     return quebras.filter(q => {
-      // Area filter
       if (filterArea !== 'TODAS' && q.area !== filterArea) return false;
-      // Turno filter
       if (filterTurno !== 'TODOS' && q.turno !== filterTurno) return false;
-      // Embalagem filter
       if (filterEmbalagem !== 'TODAS' && getEmbalagemName(q.descricao) !== filterEmbalagem) return false;
-      // Grupo filter
       if (filterGrupo !== 'TODOS' && getGrupoName(q.descricao) !== filterGrupo) return false;
-      // Motivo filter
       if (filterMotivo !== 'TODOS') {
         const cod = String(q.codQuebra || '').trim();
         const mot = (q.motivo || '').trim().toUpperCase();
@@ -291,7 +246,6 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
         if (!match) return false;
       }
       
-      // Date range filter
       if (startDate || endDate) {
         let rowISO = '';
         if (q.dataISO) {
@@ -309,196 +263,210 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
       }
       return true;
     });
-  };
+  }, [quebras, filterArea, filterTurno, filterEmbalagem, filterGrupo, filterMotivo, startDate, endDate]);
 
-  const filteredData = getFilteredQuebras();
+  // Full Cross-Filtered Data for KPIs and Tables
+  const crossFilteredData = useMemo(() => {
+    return filterData(baseFilteredData);
+  }, [baseFilteredData, filterData]);
 
-  // Metric Calculation
-  const totalQuantCx = filteredData.reduce((acc, curr) => acc + curr.quantidade, 0);
-  const totalQuantHE = filteredData.reduce((acc, curr) => acc + convertCxToHE(curr.quantidade, curr.descricao, curr.codProduto), 0);
+  // Dimension-specific datasets for charts (excluding own dimension so chart elements stay visible)
+  const motivosData = useMemo(() => {
+    return filterData(baseFilteredData, undefined, 'motivo');
+  }, [baseFilteredData, filterData]);
+
+  const grupoEmbalagemData = useMemo(() => {
+    return filterData(baseFilteredData, undefined, secondChartMode);
+  }, [baseFilteredData, filterData, secondChartMode]);
+
+  const areaData = useMemo(() => {
+    return filterData(baseFilteredData, undefined, 'area');
+  }, [baseFilteredData, filterData]);
+
+  const timelineData = useMemo(() => {
+    return filterData(baseFilteredData, undefined, 'data');
+  }, [baseFilteredData, filterData]);
+
+  const turnoData = useMemo(() => {
+    return filterData(baseFilteredData, undefined, 'turno');
+  }, [baseFilteredData, filterData]);
+
+  // Metric Calculation from crossFilteredData
+  const totalQuantCx = crossFilteredData.reduce((acc, curr) => acc + curr.quantidade, 0);
+  const totalQuantHE = crossFilteredData.reduce((acc, curr) => acc + convertCxToHE(curr.quantidade, curr.descricao, curr.codProduto), 0);
   const totalQuant = viewUnit === 'cx' ? totalQuantCx : Math.round(totalQuantHE * 100) / 100;
-  const estimatedCost = totalQuantCx * 5.95; // Average cost factor per SKU unit
+  const estimatedCost = totalQuantCx * 5.95;
 
   // SKU Pareto computation
-  const skuMap: Record<string, { desc: string, quantCx: number, quantHE: number }> = {};
-  filteredData.forEach(q => {
-    if (!skuMap[q.codProduto]) {
-      skuMap[q.codProduto] = { desc: q.descricao, quantCx: 0, quantHE: 0 };
-    }
-    skuMap[q.codProduto].quantCx += q.quantidade;
-    skuMap[q.codProduto].quantHE += convertCxToHE(q.quantidade, q.descricao, q.codProduto);
-  });
+  const sortedSkus = useMemo(() => {
+    const skuMap: Record<string, { desc: string, quantCx: number, quantHE: number }> = {};
+    crossFilteredData.forEach(q => {
+      if (!skuMap[q.codProduto]) {
+        skuMap[q.codProduto] = { desc: q.descricao, quantCx: 0, quantHE: 0 };
+      }
+      skuMap[q.codProduto].quantCx += q.quantidade;
+      skuMap[q.codProduto].quantHE += convertCxToHE(q.quantidade, q.descricao, q.codProduto);
+    });
 
-  const sortedSkus = Object.entries(skuMap)
-    .map(([cod, item]) => ({
-      cod,
-      desc: item.desc,
-      quant: viewUnit === 'cx' ? item.quantCx : Math.round(item.quantHE * 100) / 100,
-      quantCx: item.quantCx
-    }))
-    .sort((a, b) => b.quant - a.quant || b.quantCx - a.quantCx || a.cod.localeCompare(b.cod));
+    return Object.entries(skuMap)
+      .map(([cod, item]) => ({
+        cod,
+        desc: item.desc,
+        quant: viewUnit === 'cx' ? item.quantCx : Math.round(item.quantHE * 100) / 100,
+        quantCx: item.quantCx
+      }))
+      .sort((a, b) => b.quant - a.quant || b.quantCx - a.quantCx || a.cod.localeCompare(b.cod));
+  }, [crossFilteredData, viewUnit]);
 
   const topSku = sortedSkus[0] || { cod: '-', desc: 'Nenhum', quant: 0, quantCx: 0 };
   const topSkuPct = totalQuantCx > 0 ? ((topSku.quantCx / totalQuantCx) * 100).toFixed(1) : '0';
 
   // Critical Area computation
-  const areaVolumeMapCx: Record<string, number> = { 'ARMAZEM': 0, 'ENTREGA': 0, 'MERCADO': 0, 'PUXADA': 0 };
-  const areaVolumeMapHE: Record<string, number> = { 'ARMAZEM': 0, 'ENTREGA': 0, 'MERCADO': 0, 'PUXADA': 0 };
+  const { areaVolumeMap, criticalAreaKey, criticalAreaName } = useMemo(() => {
+    const areaMapCx: Record<string, number> = { 'ARMAZEM': 0, 'ENTREGA': 0, 'MERCADO': 0, 'PUXADA': 0 };
+    const areaMapHE: Record<string, number> = { 'ARMAZEM': 0, 'ENTREGA': 0, 'MERCADO': 0, 'PUXADA': 0 };
 
-  filteredData.forEach(q => {
-    if (areaVolumeMapCx[q.area] !== undefined) {
-      areaVolumeMapCx[q.area] += q.quantidade;
-      areaVolumeMapHE[q.area] += convertCxToHE(q.quantidade, q.descricao, q.codProduto);
-    }
-  });
+    crossFilteredData.forEach(q => {
+      if (areaMapCx[q.area] !== undefined) {
+        areaMapCx[q.area] += q.quantidade;
+        areaMapHE[q.area] += convertCxToHE(q.quantidade, q.descricao, q.codProduto);
+      }
+    });
 
-  const areaVolumeMap = viewUnit === 'cx' ? areaVolumeMapCx : areaVolumeMapHE;
+    const activeMap = viewUnit === 'cx' ? areaMapCx : areaMapHE;
+    const cKey = Object.keys(areaMapCx).reduce((a, b) => areaMapCx[a] > areaMapCx[b] ? a : b, 'ARMAZEM');
+    const cName = {
+      'ARMAZEM': 'Armazém / Depósito',
+      'ENTREGA': 'Rota de Entrega',
+      'MERCADO': 'Mercado / Retorno',
+      'PUXADA': 'Puxada / Transferência'
+    }[cKey] || 'Nenhuma';
 
-  const criticalAreaKey = Object.keys(areaVolumeMapCx).reduce((a, b) => areaVolumeMapCx[a] > areaVolumeMapCx[b] ? a : b, 'ARMAZEM');
-  const criticalAreaName = {
-    'ARMAZEM': 'Armazém / Depósito',
-    'ENTREGA': 'Rota de Entrega',
-    'MERCADO': 'Mercado / Retorno',
-    'PUXADA': 'Puxada / Transferência'
-  }[criticalAreaKey] || 'Nenhuma';
+    return { areaVolumeMap: activeMap, criticalAreaKey: cKey, criticalAreaName: cName };
+  }, [crossFilteredData, viewUnit]);
 
-  // Motivos Pareto data
-  const motivosMap: Record<string, { desc: string, val: number }> = {};
-  filteredData.forEach(q => {
-    const key = `${q.codQuebra} - ${q.motivo}`;
-    if (!motivosMap[key]) {
-      motivosMap[key] = { desc: q.motivo, val: 0 };
-    }
-    motivosMap[key].val += viewUnit === 'cx' ? q.quantidade : convertCxToHE(q.quantidade, q.descricao, q.codProduto);
-  });
+  // Motivos Chart Data (computed from motivosData)
+  const motivosChartData = useMemo(() => {
+    const map: Record<string, { desc: string, val: number, rawMotivo: string }> = {};
+    motivosData.forEach(q => {
+      const rawMot = q.motivo || q.codQuebra || 'Outros';
+      const key = `${q.codQuebra} - ${q.motivo}`;
+      if (!map[key]) {
+        map[key] = { desc: q.motivo, val: 0, rawMotivo: rawMot };
+      }
+      map[key].val += viewUnit === 'cx' ? q.quantidade : convertCxToHE(q.quantidade, q.descricao, q.codProduto);
+    });
 
-  const motivosChartData = Object.entries(motivosMap)
-    .map(([codMotivo, item]) => ({ name: codMotivo, value: Math.round(item.val * 100) / 100 }))
-    .sort((a, b) => b.value - a.value)
-    .slice(0, 7);
+    return Object.entries(map)
+      .map(([codMotivo, item]) => ({
+        name: codMotivo,
+        rawMotivo: item.rawMotivo,
+        value: Math.round(item.val * 100) / 100
+      }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 7);
+  }, [motivosData, viewUnit]);
 
-  // Embalagem Pareto Data
-  const embalagemMap: Record<string, number> = {};
-  filteredData.forEach(q => {
-    const embName = getEmbalagemName(q.descricao);
-    const val = viewUnit === 'cx' ? q.quantidade : convertCxToHE(q.quantidade, q.descricao, q.codProduto);
-    embalagemMap[embName] = (embalagemMap[embName] || 0) + val;
-  });
+  // Embalagem Chart Data (computed from grupoEmbalagemData)
+  const embalagemChartData = useMemo(() => {
+    const map: Record<string, number> = {};
+    grupoEmbalagemData.forEach(q => {
+      const embName = getEmbalagemName(q.descricao);
+      const val = viewUnit === 'cx' ? q.quantidade : convertCxToHE(q.quantidade, q.descricao, q.codProduto);
+      map[embName] = (map[embName] || 0) + val;
+    });
 
-  const embalagemChartData = Object.entries(embalagemMap)
-    .map(([name, value]) => ({ name, value: Math.round(value * 100) / 100 }))
-    .sort((a, b) => b.value - a.value)
-    .slice(0, 7);
+    return Object.entries(map)
+      .map(([name, value]) => ({ name, value: Math.round(value * 100) / 100 }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 7);
+  }, [grupoEmbalagemData, viewUnit]);
 
   const totalEmbalagemVolume = Math.round(embalagemChartData.reduce((acc, curr) => acc + curr.value, 0) * 100) / 100;
   const topEmbalagensPct = embalagemChartData.length > 0 && totalEmbalagemVolume > 0
     ? `${embalagemChartData[0].name} (${Math.round((embalagemChartData[0].value / totalEmbalagemVolume) * 100)}%)`
     : '';
 
-  // Grupo Pareto Data
-  const grupoMap: Record<string, number> = {};
-  filteredData.forEach(q => {
-    const gName = getGrupoName(q.descricao);
-    const val = viewUnit === 'cx' ? q.quantidade : convertCxToHE(q.quantidade, q.descricao, q.codProduto);
-    grupoMap[gName] = (grupoMap[gName] || 0) + val;
-  });
+  // Grupo Chart Data (computed from grupoEmbalagemData)
+  const grupoChartData = useMemo(() => {
+    const map: Record<string, number> = {};
+    grupoEmbalagemData.forEach(q => {
+      const gName = getGrupoName(q.descricao);
+      const val = viewUnit === 'cx' ? q.quantidade : convertCxToHE(q.quantidade, q.descricao, q.codProduto);
+      map[gName] = (map[gName] || 0) + val;
+    });
 
-  const grupoChartData = Object.entries(grupoMap)
-    .map(([name, value]) => ({ name, value: Math.round(value * 100) / 100 }))
-    .sort((a, b) => b.value - a.value)
-    .slice(0, 7);
+    return Object.entries(map)
+      .map(([name, value]) => ({ name, value: Math.round(value * 100) / 100 }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 7);
+  }, [grupoEmbalagemData, viewUnit]);
 
   const totalGrupoVolume = Math.round(grupoChartData.reduce((acc, curr) => acc + curr.value, 0) * 100) / 100;
   const topGrupoPct = grupoChartData.length > 0 && totalGrupoVolume > 0
     ? `${grupoChartData[0].name} (${Math.round((grupoChartData[0].value / totalGrupoVolume) * 100)}%)`
     : '';
 
-  // Area Chart Data
-  const areaChartData = Object.entries(areaVolumeMap)
-    .map(([key, value]) => {
-      const name = {
-        'ARMAZEM': 'Armazém',
-        'ENTREGA': 'Rota Entrega',
-        'MERCADO': 'Mercado',
-        'PUXADA': 'Puxada/Transf'
-      }[key] || key;
-      return { name, value: Math.round(value * 100) / 100 };
-    })
-    .filter(item => item.value > 0);
+  // Area Chart Data (computed from areaData)
+  const areaChartData = useMemo(() => {
+    const map: Record<string, number> = { 'ARMAZEM': 0, 'ENTREGA': 0, 'MERCADO': 0, 'PUXADA': 0 };
+    areaData.forEach(q => {
+      if (map[q.area] !== undefined) {
+        map[q.area] += viewUnit === 'cx' ? q.quantidade : convertCxToHE(q.quantidade, q.descricao, q.codProduto);
+      }
+    });
+
+    return Object.entries(map)
+      .map(([key, value]) => {
+        const name = {
+          'ARMAZEM': 'Armazém',
+          'ENTREGA': 'Rota Entrega',
+          'MERCADO': 'Mercado',
+          'PUXADA': 'Puxada/Transf'
+        }[key] || key;
+        return { name, rawArea: key, value: Math.round(value * 100) / 100 };
+      })
+      .filter(item => item.value > 0);
+  }, [areaData, viewUnit]);
 
   const COLORS = ['#ef4444', '#f5a623', '#3b82f6', '#10b981', '#8b5cf6', '#ec4899', '#6366f1'];
 
-  // Trend Chart Data (Last 7 active days with entries)
-  const daysMap: Record<string, number> = {};
-  filteredData.forEach(q => {
-    const day = q.data.substring(0, 5); // DD/MM
-    daysMap[day] = (daysMap[day] || 0) + (viewUnit === 'cx' ? q.quantidade : convertCxToHE(q.quantidade, q.descricao, q.codProduto));
-  });
-
-  const sortedDays = Object.entries(daysMap)
-    .map(([date, value]) => ({ date, quebras: Math.round(value * 100) / 100 }))
-    .sort((a, b) => {
-      const [dayA, monthA] = a.date.split('/');
-      const [dayB, monthB] = b.date.split('/');
-      return `${monthA}-${dayA}`.localeCompare(`${monthB}-${dayB}`);
-    })
-    .slice(-10);
-
-  // Turno Chart Data
-  const turnoMap: Record<string, number> = { 'MANHÃ': 0, 'NOITE / MADRUGADA': 0 };
-  filteredData.forEach(q => {
-    const norm = q.turno.toUpperCase().includes('MANHÃ') ? 'MANHÃ' : 'NOITE / MADRUGADA';
-    turnoMap[norm] = (turnoMap[norm] || 0) + (viewUnit === 'cx' ? q.quantidade : convertCxToHE(q.quantidade, q.descricao, q.codProduto));
-  });
-
-  const turnoChartData = Object.entries(turnoMap).map(([name, value]) => ({ name, value: Math.round(value * 100) / 100 }));
-
-  // Handle addition of 5W2H Action Plan
-  const handleAddPlan = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newPlan.what || !newPlan.who || !newPlan.when) {
-      alert('Preencha os campos obrigatórios (O quê, Quem e Quando).');
-      return;
-    }
-
-    const plan: ActionPlan5W2H = {
-      id: `plan-${Date.now()}`,
-      ...newPlan
-    };
-
-    savePlanosToLocal([...planos, plan]);
-    setNewPlan({
-      what: '',
-      why: '',
-      who: '',
-      where: '',
-      when: '',
-      how: '',
-      howMuch: 0,
-      status: 'Pendente',
-      codeDPO: '539'
+  // Trend Chart Data (computed from timelineData)
+  const sortedDays = useMemo(() => {
+    const map: Record<string, number> = {};
+    timelineData.forEach(q => {
+      const day = q.data.substring(0, 5); // DD/MM
+      map[day] = (map[day] || 0) + (viewUnit === 'cx' ? q.quantidade : convertCxToHE(q.quantidade, q.descricao, q.codProduto));
     });
-    setShowAddPlan(false);
-  };
 
-  const handleDeletePlan = (id: string) => {
-    if (confirm('Deseja realmente remover este plano de ação 5W2H?')) {
-      const remaining = planos.filter(p => p.id !== id);
-      savePlanosToLocal(remaining);
-    }
-  };
+    return Object.entries(map)
+      .map(([date, value]) => ({ date, quebras: Math.round(value * 100) / 100 }))
+      .sort((a, b) => {
+        const [dayA, monthA] = a.date.split('/');
+        const [dayB, monthB] = b.date.split('/');
+        return `${monthA}-${dayA}`.localeCompare(`${monthB}-${dayB}`);
+      })
+      .slice(-10);
+  }, [timelineData, viewUnit]);
 
-  const handleTogglePlanStatus = (id: string) => {
-    const statuses: Array<ActionPlan5W2H['status']> = ['Pendente', 'Em Andamento', 'Concluído', 'Atrasado'];
-    const updated = planos.map(p => {
-      if (p.id === id) {
-        const nextIdx = (statuses.indexOf(p.status) + 1) % statuses.length;
-        return { ...p, status: statuses[nextIdx] };
-      }
-      return p;
+  // Turno Chart Data (computed from turnoData)
+  const { turnoChartData, turnoMap } = useMemo(() => {
+    const tMap: Record<string, number> = { 'MANHÃ': 0, 'NOITE / MADRUGADA': 0 };
+    turnoData.forEach(q => {
+      const norm = q.turno.toUpperCase().includes('MANHÃ') ? 'MANHÃ' : 'NOITE / MADRUGADA';
+      tMap[norm] = (tMap[norm] || 0) + (viewUnit === 'cx' ? q.quantidade : convertCxToHE(q.quantidade, q.descricao, q.codProduto));
     });
-    savePlanosToLocal(updated);
-  };
+
+    const cData = Object.entries(tMap).map(([name, value]) => ({ name, value: Math.round(value * 100) / 100 }));
+    return { turnoChartData: cData, turnoMap: tMap };
+  }, [turnoData, viewUnit]);
+
+  // Active CrossFilter indicators
+  const isMotivoFiltered = isFiltered('motivo');
+  const isSecondChartFiltered = isFiltered(secondChartMode);
+  const isAreaFiltered = isFiltered('area');
+  const isDateFiltered = isFiltered('data');
+  const isTurnoFiltered = isFiltered('turno');
 
   return (
     <div id="quebras-dashboard-wrapper" className={`flex flex-col gap-4 p-4 lg:p-6 rounded-2xl shadow-sm border transition-colors duration-300 ${
@@ -530,7 +498,7 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
             <p className={`text-[10px] tracking-wider font-bold uppercase mt-0.5 ${
               theme === 'dark' ? 'text-slate-400' : 'text-gray-500'
             }`}>
-              Painel Corporativo de Desempenho, Análise Pareto e Planos de Ação 5W2H
+              Painel Corporativo de Desempenho, Análise Pareto, Matriz Cruzada e Planos de Ação 5W2H
             </p>
           </div>
         </div>
@@ -600,7 +568,7 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
 
       {activeSubTab === 'indicadores' && (
         <>
-          {/* FILTERS BAR */}
+          {/* HEADER DROPDOWN FILTERS */}
           <div className={`flex flex-wrap items-center justify-between gap-4 p-3.5 rounded-xl border shadow-sm transition-colors ${
             theme === 'dark' ? 'bg-[#131d38] border-slate-700/80 text-slate-100' : 'bg-white border-gray-200'
           }`}>
@@ -758,736 +726,753 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
             </div>
           </div>
 
-      {/* TOP KPI CARDS */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        
-        {/* KPI 1: Total Quebrada (unidades) */}
-        <div className="bg-gradient-to-br from-[#ef4444] to-[#b91c1c] text-white p-4.5 rounded-xl shadow-sm relative overflow-hidden flex flex-col justify-between min-h-[125px]">
-          <div>
-            <span className="text-[9px] uppercase font-black tracking-widest text-[#fecaca]/80 block">
-              VOLUME TOTAL DE QUEBRAS
-            </span>
-            <div className="flex items-baseline mt-2">
-              <span className="text-4xl font-extrabold tracking-tight">
-                {viewUnit === 'cx' 
-                  ? totalQuantCx.toLocaleString('pt-BR') 
-                  : totalQuant.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </span>
-              <span className="text-xs font-bold ml-1.5 text-[#fecaca]">{viewUnit === 'cx' ? 'unidades' : 'HE'}</span>
-            </div>
-          </div>
-          <p className="text-[10px] text-red-100 font-medium leading-normal mt-2 border-t border-red-500/30 pt-2 flex items-center gap-1">
-            <AlertTriangle className="w-3.5 h-3.5" /> Meta Operacional da Unidade: Zero Perdas
-          </p>
-        </div>
+          {/* ACTIVE CROSS-FILTERS TOOLBAR BANNER */}
+          <ActiveCrossFiltersBar />
 
-        {/* KPI 2: Finance Impact */}
-        <div className={`p-4.5 rounded-xl border shadow-sm flex flex-col justify-between min-h-[125px] transition-colors ${
-          theme === 'dark' ? 'bg-[#131d38] border-slate-700/80 text-slate-100' : 'bg-white border-gray-200'
-        }`}>
-          <div>
-            <span className={`text-[9px] uppercase font-black tracking-widest block ${theme === 'dark' ? 'text-slate-400' : 'text-gray-400'}`}>
-              IMPACTO FINANCEIRO ESTIMADO
-            </span>
-            <span className={`text-3xl font-extrabold mt-2 block ${theme === 'dark' ? 'text-blue-300' : 'text-[#032b5e]'}`}>
-              {estimatedCost.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-            </span>
-          </div>
-          <div className={`mt-2 border-t pt-2 ${theme === 'dark' ? 'border-slate-800' : 'border-gray-100'}`}>
-            <span className="text-[10px] text-gray-400 font-bold block uppercase">
-              Custo médio ponderado por SKU
-            </span>
-          </div>
-        </div>
-
-        {/* KPI 3: Principal SKU Ofensor */}
-        <div className={`p-4.5 rounded-xl border shadow-sm flex flex-col justify-between min-h-[125px] transition-colors ${
-          theme === 'dark' ? 'bg-[#131d38] border-slate-700/80 text-slate-100' : 'bg-white border-gray-200'
-        }`}>
-          <div>
-            <span className={`text-[9px] uppercase font-black tracking-widest block ${theme === 'dark' ? 'text-slate-400' : 'text-gray-400'}`}>
-              OFENSOR PRINCIPAL (80/20)
-            </span>
-            <span className="text-lg font-black text-[#f5a623] mt-2 block truncate uppercase" title={topSku.desc}>
-              {topSku.desc}
-            </span>
-            <span className={`text-[10px] font-semibold mt-1 block ${theme === 'dark' ? 'text-slate-400' : 'text-gray-500'}`}>
-              Código: <strong className={theme === 'dark' ? 'text-slate-200' : 'text-gray-700'}>{topSku.cod}</strong>
-            </span>
-          </div>
-          <div className={`mt-2 border-t pt-2 flex justify-between items-center text-[10px] font-bold uppercase ${
-            theme === 'dark' ? 'border-slate-800 text-slate-400' : 'border-gray-100 text-gray-500'
-          }`}>
-            <span>Volumetria SKU</span>
-            <span className="text-[#ef4444]">{topSku.quant} {viewUnit === 'cx' ? 'un' : 'HE'} ({topSkuPct}%)</span>
-          </div>
-        </div>
-
-        {/* KPI 4: Área Mais Crítica */}
-        <div className={`p-4.5 rounded-xl border shadow-sm flex flex-col justify-between min-h-[125px] transition-colors ${
-          theme === 'dark' ? 'bg-[#131d38] border-slate-700/80 text-slate-100' : 'bg-white border-gray-200'
-        }`}>
-          <div>
-            <span className={`text-[9px] uppercase font-black tracking-widest block ${theme === 'dark' ? 'text-slate-400' : 'text-gray-400'}`}>
-              ÁREA OPERACIONAL CRÍTICA
-            </span>
-            <span className={`text-xl font-extrabold mt-2 block uppercase flex items-center gap-1 ${theme === 'dark' ? 'text-slate-100' : 'text-slate-800'}`}>
-              {criticalAreaKey === 'ARMAZEM' && <Archive className="w-5 h-5 text-amber-500" />}
-              {criticalAreaKey === 'ENTREGA' && <Truck className="w-5 h-5 text-sky-500" />}
-              {criticalAreaName}
-            </span>
-          </div>
-          <div className={`mt-2 border-t pt-2 flex justify-between items-center text-[10px] font-bold uppercase ${
-            theme === 'dark' ? 'border-slate-800 text-slate-400' : 'border-gray-100 text-gray-500'
-          }`}>
-            <span>Concentração</span>
-            <span className={theme === 'dark' ? 'text-slate-200' : 'text-slate-800'}>
-              {totalQuant > 0 ? ((areaVolumeMap[criticalAreaKey] / totalQuant) * 100).toFixed(0) : 0}% de quebras
-            </span>
-          </div>
-        </div>
-
-      </div>
-
-      {/* CHARTS CONTAINER - TOP ROW (3 CHARTS) */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        
-        {/* CHART 1: Pareto por Código DPO / Motivo */}
-        <div className={`p-4.5 rounded-xl border shadow-sm flex flex-col justify-between gap-3 min-h-[340px] transition-colors ${
-          theme === 'dark' ? 'bg-[#131d38] border-slate-700/80 text-slate-100' : 'bg-white border-gray-200'
-        }`}>
-          <div>
-            <h3 className={`font-sans font-black text-[11px] uppercase tracking-wider flex items-center gap-1.5 ${
-              theme === 'dark' ? 'text-blue-300' : 'text-[#032b5e]'
-            }`}>
-              <TrendingUp className="w-3.5 h-3.5 text-[#ef4444]" /> PERDAS POR MOTIVO
-            </h3>
-            <span className="text-[9px] text-gray-400 font-bold mt-0.5 block">
-              Volume de perdas por motivo
-            </span>
-          </div>
-
-          <div className="h-48 w-full">
-            {motivosChartData.length === 0 ? (
-              <div className="w-full h-full flex items-center justify-center text-xs text-gray-400">
-                Sem registros para gerar o Pareto.
+          {/* TOP KPI CARDS */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            
+            {/* KPI 1: Total Quebrada */}
+            <div className="bg-gradient-to-br from-[#ef4444] to-[#b91c1c] text-white p-4.5 rounded-xl shadow-sm relative overflow-hidden flex flex-col justify-between min-h-[125px]">
+              <div>
+                <span className="text-[9px] uppercase font-black tracking-widest text-[#fecaca]/80 block">
+                  VOLUME TOTAL DE QUEBRAS
+                </span>
+                <div className="flex items-baseline mt-2">
+                  <span className="text-4xl font-extrabold tracking-tight">
+                    {viewUnit === 'cx' 
+                      ? totalQuantCx.toLocaleString('pt-BR') 
+                      : totalQuant.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                  <span className="text-xs font-bold ml-1.5 text-[#fecaca]">{viewUnit === 'cx' ? 'unidades' : 'HE'}</span>
+                </div>
               </div>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={motivosChartData} layout="vertical" margin={{ top: 5, right: 10, left: 15, bottom: 5 }} accessibilityLayer={false}>
-                  <CartesianGrid stroke={theme === 'dark' ? '#1e293b' : '#f1f5f9'} horizontal={false} />
-                  <XAxis type="number" stroke={theme === 'dark' ? '#64748b' : '#94a3b8'} fontSize={8} tickLine={false} axisLine={false} />
-                  <YAxis 
-                    type="category" 
-                    dataKey="name" 
-                    stroke={theme === 'dark' ? '#94a3b8' : '#475569'} 
-                    fontSize={8} 
-                    tickLine={false} 
-                    axisLine={false} 
-                    width={45}
-                    tickFormatter={(val) => val.split(' — ')[0] || val} // Just show code
-                  />
-                  <Tooltip 
-                    cursor={{ fill: 'transparent' }}
-                    contentStyle={{ 
-                      backgroundColor: theme === 'dark' ? '#0f172a' : '#fff', 
-                      border: theme === 'dark' ? '1px solid #334155' : '1px solid #e2e8f0', 
-                      borderRadius: '8px', 
-                      fontSize: 9,
-                      color: theme === 'dark' ? '#f8fafc' : '#0f172a'
-                    }}
-                    labelStyle={{ color: theme === 'dark' ? '#93c5fd' : '#032b5e', fontWeight: 'bold' }}
-                    itemStyle={{ color: '#ef4444' }}
-                  />
-                  <Bar dataKey="value" fill="#ef4444" radius={[0, 4, 4, 0]} barSize={12}>
-                    {motivosChartData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-          <div className={`text-[9px] font-semibold border-t pt-1 text-center ${
-            theme === 'dark' ? 'border-slate-800 text-slate-400' : 'border-gray-100 text-gray-400'
-          }`}>
-            Códigos conforme manual operacional
-          </div>
-        </div>
+              <p className="text-[10px] text-red-100 font-medium leading-normal mt-2 border-t border-red-500/30 pt-2 flex items-center gap-1">
+                <AlertTriangle className="w-3.5 h-3.5" /> Meta Operacional da Unidade: Zero Perdas
+              </p>
+            </div>
 
-        {/* CHART 2: Perdas por Grupo / Embalagem */}
-        <div className={`p-4.5 rounded-xl border shadow-sm flex flex-col justify-between gap-3 min-h-[340px] transition-colors ${
-          theme === 'dark' ? 'bg-[#131d38] border-slate-700/80 text-slate-100' : 'bg-white border-gray-200'
-        }`}>
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-            <div>
-              <div className="flex items-center gap-2">
+            {/* KPI 2: Finance Impact */}
+            <div className={`p-4.5 rounded-xl border shadow-sm flex flex-col justify-between min-h-[125px] transition-colors ${
+              theme === 'dark' ? 'bg-[#131d38] border-slate-700/80 text-slate-100' : 'bg-white border-gray-200'
+            }`}>
+              <div>
+                <span className={`text-[9px] uppercase font-black tracking-widest block ${theme === 'dark' ? 'text-slate-400' : 'text-gray-400'}`}>
+                  IMPACTO FINANCEIRO ESTIMADO
+                </span>
+                <span className={`text-3xl font-extrabold mt-2 block ${theme === 'dark' ? 'text-blue-300' : 'text-[#032b5e]'}`}>
+                  {estimatedCost.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                </span>
+              </div>
+              <div className={`mt-2 border-t pt-2 ${theme === 'dark' ? 'border-slate-800' : 'border-gray-100'}`}>
+                <span className="text-[10px] text-gray-400 font-bold block uppercase">
+                  Custo médio ponderado por SKU
+                </span>
+              </div>
+            </div>
+
+            {/* KPI 3: Principal SKU Ofensor */}
+            <div className={`p-4.5 rounded-xl border shadow-sm flex flex-col justify-between min-h-[125px] transition-colors ${
+              theme === 'dark' ? 'bg-[#131d38] border-slate-700/80 text-slate-100' : 'bg-white border-gray-200'
+            }`}>
+              <div>
+                <span className={`text-[9px] uppercase font-black tracking-widest block ${theme === 'dark' ? 'text-slate-400' : 'text-gray-400'}`}>
+                  OFENSOR PRINCIPAL (80/20)
+                </span>
+                <span className="text-lg font-black text-[#f5a623] mt-2 block truncate uppercase" title={topSku.desc}>
+                  {topSku.desc}
+                </span>
+                <span className={`text-[10px] font-semibold mt-1 block ${theme === 'dark' ? 'text-slate-400' : 'text-gray-500'}`}>
+                  Código: <strong className={theme === 'dark' ? 'text-slate-200' : 'text-gray-700'}>{topSku.cod}</strong>
+                </span>
+              </div>
+              <div className={`mt-2 border-t pt-2 flex justify-between items-center text-[10px] font-bold uppercase ${
+                theme === 'dark' ? 'border-slate-800 text-slate-400' : 'border-gray-100 text-gray-500'
+              }`}>
+                <span>Volumetria SKU</span>
+                <span className="text-[#ef4444]">{topSku.quant} {viewUnit === 'cx' ? 'un' : 'HE'} ({topSkuPct}%)</span>
+              </div>
+            </div>
+
+            {/* KPI 4: Área Mais Crítica */}
+            <div className={`p-4.5 rounded-xl border shadow-sm flex flex-col justify-between min-h-[125px] transition-colors ${
+              theme === 'dark' ? 'bg-[#131d38] border-slate-700/80 text-slate-100' : 'bg-white border-gray-200'
+            }`}>
+              <div>
+                <span className={`text-[9px] uppercase font-black tracking-widest block ${theme === 'dark' ? 'text-slate-400' : 'text-gray-400'}`}>
+                  ÁREA OPERACIONAL CRÍTICA
+                </span>
+                <span className={`text-xl font-extrabold mt-2 block uppercase flex items-center gap-1 ${theme === 'dark' ? 'text-slate-100' : 'text-slate-800'}`}>
+                  {criticalAreaKey === 'ARMAZEM' && <Archive className="w-5 h-5 text-amber-500" />}
+                  {criticalAreaKey === 'ENTREGA' && <Truck className="w-5 h-5 text-sky-500" />}
+                  {criticalAreaName}
+                </span>
+              </div>
+              <div className={`mt-2 border-t pt-2 flex justify-between items-center text-[10px] font-bold uppercase ${
+                theme === 'dark' ? 'border-slate-800 text-slate-400' : 'border-gray-100 text-gray-500'
+              }`}>
+                <span>Concentração</span>
+                <span className={theme === 'dark' ? 'text-slate-200' : 'text-slate-800'}>
+                  {totalQuant > 0 ? ((areaVolumeMap[criticalAreaKey] / totalQuant) * 100).toFixed(0) : 0}% de quebras
+                </span>
+              </div>
+            </div>
+
+          </div>
+
+          {/* CHARTS CONTAINER - TOP ROW (3 CHARTS) */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            
+            {/* CHART 1: Pareto por Código DPO / Motivo */}
+            <div className={`p-4.5 rounded-xl border shadow-sm flex flex-col justify-between gap-3 min-h-[340px] transition-colors ${
+              theme === 'dark' ? 'bg-[#131d38] border-slate-700/80 text-slate-100' : 'bg-white border-gray-200'
+            }`}>
+              <div>
                 <h3 className={`font-sans font-black text-[11px] uppercase tracking-wider flex items-center gap-1.5 ${
                   theme === 'dark' ? 'text-blue-300' : 'text-[#032b5e]'
                 }`}>
-                  <Package className="w-3.5 h-3.5 text-[#3b82f6]" /> {secondChartMode === 'grupo' ? 'PERDAS POR GRUPO' : 'PERDAS POR EMBALAGEM'}
+                  <TrendingUp className="w-3.5 h-3.5 text-[#ef4444]" /> PERDAS POR MOTIVO
                 </h3>
-              </div>
-              <span className="text-[9px] text-gray-400 font-bold mt-0.5 block">
-                {secondChartMode === 'grupo' ? 'Volume de perdas por grupo/categoria de produto' : 'Volume por tipo de vasilhame/lata'}
-              </span>
-            </div>
-
-            <div className="flex items-center gap-2">
-              {/* Toggle Mode */}
-              <div className={`flex items-center p-0.5 rounded-lg border text-[9px] font-bold ${
-                theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-gray-100 border-gray-200'
-              }`}>
-                <button
-                  type="button"
-                  onClick={() => setSecondChartMode('grupo')}
-                  className={`px-2 py-0.5 rounded-md transition-all border-none cursor-pointer ${
-                    secondChartMode === 'grupo'
-                      ? (theme === 'dark' ? 'bg-blue-600 text-white shadow-sm' : 'bg-[#032b5e] text-white shadow-sm')
-                      : 'text-slate-400 hover:text-white bg-transparent'
-                  }`}
-                >
-                  GRUPO
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSecondChartMode('embalagem')}
-                  className={`px-2 py-0.5 rounded-md transition-all border-none cursor-pointer ${
-                    secondChartMode === 'embalagem'
-                      ? (theme === 'dark' ? 'bg-blue-600 text-white shadow-sm' : 'bg-[#032b5e] text-white shadow-sm')
-                      : 'text-slate-400 hover:text-white bg-transparent'
-                  }`}
-                >
-                  EMBALAGEM
-                </button>
-              </div>
-
-              <span className={`text-[10px] font-mono font-black border px-2 py-0.5 rounded-md ${
-                theme === 'dark' ? 'text-blue-300 bg-slate-800 border-slate-700' : 'text-[#032b5e] bg-slate-100 border-slate-200/80'
-              }`}>
-                {(secondChartMode === 'grupo' ? totalGrupoVolume : totalEmbalagemVolume).toLocaleString('pt-BR')} {viewUnit === 'cx' ? 'UN' : 'HL'}
-              </span>
-            </div>
-          </div>
-
-          <div className="h-48 w-full">
-            {(secondChartMode === 'grupo' ? grupoChartData : embalagemChartData).length === 0 ? (
-              <div className="w-full h-full flex items-center justify-center text-xs text-gray-400">
-                Sem registros para exibição.
-              </div>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart 
-                  data={secondChartMode === 'grupo' ? grupoChartData : embalagemChartData} 
-                  layout="vertical" 
-                  margin={{ top: 5, right: 45, left: -5, bottom: 5 }} 
-                  accessibilityLayer={false}
-                >
-                  <CartesianGrid stroke="#f1f5f9" horizontal={false} />
-                  <XAxis type="number" stroke="#94a3b8" fontSize={8} tickLine={false} axisLine={false} />
-                  <YAxis 
-                    type="category" 
-                    dataKey="name" 
-                    stroke="#334155" 
-                    fontSize={9}
-                    fontWeight={700}
-                    tickLine={false} 
-                    axisLine={false} 
-                    width={105}
-                  />
-                  <Tooltip 
-                    cursor={{ fill: 'transparent' }}
-                    contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', fontSize: 10, color: '#fff' }}
-                    labelStyle={{ color: '#38bdf8', fontWeight: 'bold' }}
-                    itemStyle={{ color: '#cbd5e1' }}
-                    formatter={(val: any) => [`${val.toLocaleString('pt-BR')} ${viewUnit === 'cx' ? 'UN' : 'HL'}`, 'Volume']}
-                  />
-                  <Bar dataKey="value" fill="#3b82f6" radius={[0, 6, 6, 0]} barSize={16}>
-                    <LabelList 
-                      dataKey="value" 
-                      position="right" 
-                      fontSize={9} 
-                      fontWeight={800} 
-                      fill="#032b5e" 
-                      formatter={(val: number) => `${val.toLocaleString('pt-BR')}`} 
-                    />
-                    {(secondChartMode === 'grupo' ? grupoChartData : embalagemChartData).map((entry, index) => (
-                      <Cell key={`cell-emb-${index}`} fill={COLORS[(index + 2) % COLORS.length]} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-          <div className="text-[9px] text-gray-500 font-semibold border-t border-gray-100 pt-1.5 flex items-center justify-between">
-            <span>{secondChartMode === 'grupo' ? 'Classificação por grupo de produto' : 'Classificação por vasilhame'}</span>
-            {(secondChartMode === 'grupo' ? topGrupoPct : topEmbalagensPct) && (
-              <span className="font-bold text-[#032b5e] font-mono">
-                Maior: {secondChartMode === 'grupo' ? topGrupoPct : topEmbalagensPct}
-              </span>
-            )}
-          </div>
-        </div>
-
-        {/* CHART 3: Distribuição por Área */}
-        <div className="bg-white p-4.5 rounded-xl border border-gray-200/80 shadow-sm flex flex-col justify-between gap-3 min-h-[340px]">
-          <div>
-            <h3 className="font-sans font-black text-[11px] uppercase text-[#032b5e] tracking-wider">
-              DISTRIBUIÇÃO POR ÁREA
-            </h3>
-            <span className="text-[9px] text-gray-400 font-bold mt-0.5 block">
-              Origem física dos descartes
-            </span>
-          </div>
-
-          <div className="h-32 w-full relative flex items-center justify-center">
-            {areaChartData.length === 0 ? (
-              <div className="text-xs text-gray-400">Sem dados</div>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={areaChartData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={35}
-                    outerRadius={48}
-                    paddingAngle={3}
-                    dataKey="value"
-                  >
-                    {areaChartData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip 
-                    contentStyle={{ fontSize: 9 }}
-                    itemStyle={{ fontSize: 9 }}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-
-          {/* Legend Area indicators */}
-          <div className="grid grid-cols-2 gap-1.5 border-t border-gray-100 pt-2.5">
-            {areaChartData.map((entry, idx) => (
-              <div key={entry.name} className="flex items-center gap-1">
-                <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: COLORS[idx % COLORS.length] }} />
-                <span className="text-[8.5px] font-bold text-gray-600 uppercase tracking-tight truncate">
-                  {entry.name}: <strong>{entry.value} u</strong>
+                <span className="text-[9px] text-gray-400 font-bold mt-0.5 block">
+                  Clique na barra para filtrar por motivo
                 </span>
               </div>
-            ))}
-          </div>
-        </div>
 
-      </div>
-
-      {/* CHARTS CONTAINER - BOTTOM ROW (2 CHARTS) */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-1">
-
-        {/* CHART 4: Tendência Diária */}
-        <div className="bg-white p-4.5 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between gap-3 min-h-[340px]">
-          <div>
-            <h3 className="font-sans font-black text-[11px] uppercase text-[#032b5e] tracking-wider">
-              TENDÊNCIA TEMPORAL (DIÁRIO)
-            </h3>
-            <span className="text-[9px] text-gray-400 font-bold mt-0.5 block">
-              Acompanhamento de evolução volumétrica
-            </span>
-          </div>
-
-          <div className="h-48 w-full">
-            {sortedDays.length === 0 ? (
-              <div className="w-full h-full flex items-center justify-center text-xs text-gray-400">
-                Sem dados temporais.
-              </div>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={sortedDays} margin={{ top: 5, right: 5, left: -30, bottom: 5 }}>
-                  <CartesianGrid stroke="#f1f5f9" vertical={false} />
-                  <XAxis dataKey="date" stroke="#94a3b8" fontSize={8} tickLine={false} axisLine={false} />
-                  <YAxis stroke="#94a3b8" fontSize={8} tickLine={false} axisLine={false} />
-                  <Tooltip 
-                    contentStyle={{ backgroundColor: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: 9 }}
-                    labelStyle={{ color: '#032b5e', fontWeight: 'bold' }}
-                    itemStyle={{ color: '#3b82f6' }}
-                  />
-                  <Line 
-                    type="monotone" 
-                    dataKey="quebras" 
-                    stroke="#ef4444" 
-                    strokeWidth={2} 
-                    activeDot={{ r: 5 }} 
-                    dot={{ r: 2 }}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-          <div className="text-[9px] text-gray-400 font-semibold border-t border-gray-100 pt-1 text-center">
-            Últimos 10 dias com lançamentos
-          </div>
-        </div>
-
-        {/* CHART 5: Perdas por Turno */}
-        <div className="bg-white p-4.5 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between gap-3 min-h-[340px]">
-          <div>
-            <h3 className="font-sans font-black text-[11px] uppercase text-[#032b5e] tracking-wider">
-              QUEBRAS POR TURNO
-            </h3>
-            <span className="text-[9px] text-gray-400 font-bold mt-0.5 block">
-              Comparação Manhã x Noite
-            </span>
-          </div>
-
-          <div className="h-32 w-full">
-            {turnoChartData.every(t => t.value === 0) ? (
-              <div className="w-full h-full flex items-center justify-center text-xs text-gray-400">
-                Sem dados
-              </div>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={turnoChartData} margin={{ top: 5, right: 5, left: -30, bottom: 5 }} accessibilityLayer={false}>
-                  <CartesianGrid stroke="#f1f5f9" vertical={false} />
-                  <XAxis dataKey="name" stroke="#94a3b8" fontSize={8} tickLine={false} axisLine={false} />
-                  <YAxis stroke="#94a3b8" fontSize={8} tickLine={false} axisLine={false} />
-                  <Tooltip cursor={{ fill: 'transparent' }} contentStyle={{ fontSize: 9 }} />
-                  <Bar dataKey="value" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={25}>
-                    <Cell fill="#f5a623" />
-                    <Cell fill="#032b5e" />
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-
-          {/* Quick stats on Shift */}
-          <div className="flex justify-around items-center bg-slate-50 p-2 rounded-lg border border-gray-100">
-            <div className="text-center">
-              <span className="text-[8px] font-black text-[#f5a623] block">MANHÃ</span>
-              <span className="text-[10px] font-extrabold text-[#334155]">{turnoMap['MANHÃ']} u</span>
-            </div>
-            <div className="w-[1px] h-5 bg-gray-200" />
-            <div className="text-center">
-              <span className="text-[8px] font-black text-[#032b5e] block">NOITE</span>
-              <span className="text-[10px] font-extrabold text-[#334155]">{turnoMap['NOITE / MADRUGADA']} u</span>
-            </div>
-          </div>
-        </div>
-
-      </div>
-
-      {false && activeSubTab === 'planos' && (
-        <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
-        <div className="flex items-center justify-between border-b border-gray-100 pb-4 mb-4">
-          <div>
-            <h3 className="font-sans font-black text-xs uppercase text-[#032b5e] tracking-wider flex items-center gap-2">
-              <ShieldAlert className="w-4 h-4 text-emerald-500" /> PLANOS DE AÇÃO 5W2H (PADRÃO DE EXCELÊNCIA)
-            </h3>
-            <p className="text-[10px] text-gray-400 font-bold mt-0.5">
-              Planos corretivos estruturados para mitigação das causas de quebra e avaria
-            </p>
-          </div>
-          <button 
-            onClick={() => setShowAddPlan(!showAddPlan)}
-            className="flex items-center gap-1 bg-emerald-500 hover:bg-emerald-600 text-white font-sans font-bold text-[10px] uppercase tracking-wider px-3 py-2 rounded-lg transition-all border-none cursor-pointer"
-          >
-            <Plus className="w-3.5 h-3.5" /> Novo Plano
-          </button>
-        </div>
-
-        {/* Expandable Form to add Action Plan */}
-        {showAddPlan && (
-          <form onSubmit={handleAddPlan} className="bg-slate-50/60 p-4 border border-gray-200 rounded-xl mb-4 text-xs flex flex-col gap-3">
-            <h4 className="font-bold text-[#032b5e] uppercase text-[10px] tracking-wider mb-1">Cadastrar Plano de Ação</h4>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-[9px] font-bold text-gray-500 uppercase mb-1">O quê (What) * - Ação de bloqueio</label>
-                <input 
-                  type="text" 
-                  value={newPlan.what} 
-                  onChange={e => setNewPlan({ ...newPlan, what: e.target.value })}
-                  placeholder="Ex: Treinamento de reciclagem de empilhador..."
-                  className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-xs outline-none focus:border-[#3b82f6]"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-[9px] font-bold text-gray-500 uppercase mb-1">Por quê (Why) - Motivo / Código</label>
-                <input 
-                  type="text" 
-                  value={newPlan.why} 
-                  onChange={e => setNewPlan({ ...newPlan, why: e.target.value })}
-                  placeholder="Ex: Desvios frequentes no picking de garrafas..."
-                  className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-xs outline-none"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-              <div>
-                <label className="block text-[9px] font-bold text-gray-500 uppercase mb-1">Quem (Who) *</label>
-                <input 
-                  type="text" 
-                  value={newPlan.who} 
-                  onChange={e => setNewPlan({ ...newPlan, who: e.target.value })}
-                  placeholder="Responsável..."
-                  className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-xs outline-none"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-[9px] font-bold text-gray-500 uppercase mb-1">Onde (Where)</label>
-                <input 
-                  type="text" 
-                  value={newPlan.where} 
-                  onChange={e => setNewPlan({ ...newPlan, where: e.target.value })}
-                  placeholder="Setor/Local..."
-                  className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-xs outline-none"
-                />
-              </div>
-              <div>
-                <label className="block text-[9px] font-bold text-gray-500 uppercase mb-1">Quando (When) *</label>
-                <input 
-                  type="text" 
-                  value={newPlan.when} 
-                  onChange={e => setNewPlan({ ...newPlan, when: e.target.value })}
-                  placeholder="Prazo (Ex: DD/MM/AAAA)"
-                  className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-xs outline-none"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-[9px] font-bold text-gray-500 uppercase mb-1">Cód Padrão Alvo</label>
-                <input 
-                  type="text" 
-                  value={newPlan.codeDPO} 
-                  onChange={e => setNewPlan({ ...newPlan, codeDPO: e.target.value })}
-                  placeholder="Ex: 539, 533..."
-                  className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-xs outline-none"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
-              <div className="md:col-span-8">
-                <label className="block text-[9px] font-bold text-gray-500 uppercase mb-1">Como (How)</label>
-                <input 
-                  type="text" 
-                  value={newPlan.how} 
-                  onChange={e => setNewPlan({ ...newPlan, how: e.target.value })}
-                  placeholder="Método/Etapas de execução..."
-                  className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-xs outline-none"
-                />
-              </div>
-              <div className="md:col-span-4">
-                <label className="block text-[9px] font-bold text-gray-500 uppercase mb-1">Quanto Custa (How Much) R$</label>
-                <input 
-                  type="number" 
-                  value={newPlan.howMuch} 
-                  onChange={e => setNewPlan({ ...newPlan, howMuch: parseFloat(e.target.value) || 0 })}
-                  placeholder="Custo estimado..."
-                  className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-xs outline-none"
-                />
-              </div>
-            </div>
-
-            <button 
-              type="submit"
-              className="mt-1 self-end py-2 px-6 bg-[#032b5e] hover:bg-[#021f44] text-white font-sans font-bold text-[10px] uppercase tracking-wider rounded-lg transition-all border-none cursor-pointer"
-            >
-              Gravar Plano de Ação
-            </button>
-          </form>
-        )}
-
-        {/* 5W2H List Table */}
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse font-sans text-xs min-w-[800px]">
-            <thead>
-              <tr className="bg-slate-50 border-b border-gray-200">
-                <th className="p-3 text-gray-500 text-left uppercase tracking-wider text-[9px]">Código</th>
-                <th className="p-3 text-gray-500 text-left uppercase tracking-wider text-[9px]">Ação (What) / Justificativa (Why)</th>
-                <th className="p-3 text-gray-500 text-left uppercase tracking-wider text-[9px]">Quem / Onde</th>
-                <th className="p-3 text-gray-500 text-center uppercase tracking-wider text-[9px]">Quando (Prazo)</th>
-                <th className="p-3 text-gray-500 text-left uppercase tracking-wider text-[9px]">Método (How)</th>
-                <th className="p-3 text-gray-500 text-right uppercase tracking-wider text-[9px]">Custo</th>
-                <th className="p-3 text-gray-500 text-center uppercase tracking-wider text-[9px]">Status</th>
-                <th className="p-3 text-gray-500 text-right uppercase tracking-wider text-[9px]">Ação</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {planos.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="p-6 text-center text-gray-400">Nenhum plano de ação de melhoria registrado.</td>
-                </tr>
-              ) : (
-                planos.map((p) => (
-                  <tr key={p.id} className="hover:bg-slate-50/50">
-                    <td className="p-3 font-mono font-bold text-[#ef4444]">
-                      {p.codeDPO ? `Cód ${p.codeDPO}` : 'GERAL'}
-                    </td>
-                    <td className="p-3">
-                      <div className="font-bold text-slate-800">{p.what}</div>
-                      <div className="text-[10px] text-gray-500 italic mt-0.5">{p.why}</div>
-                    </td>
-                    <td className="p-3">
-                      <div className="font-semibold text-slate-700">{p.who}</div>
-                      <div className="text-[10px] text-gray-400">{p.where || 'Geral'}</div>
-                    </td>
-                    <td className="p-3 text-center text-slate-700 font-bold whitespace-nowrap">
-                      {p.when}
-                    </td>
-                    <td className="p-3 text-gray-500 leading-normal max-w-[200px] truncate" title={p.how}>
-                      {p.how || '--'}
-                    </td>
-                    <td className="p-3 text-right font-semibold text-slate-700">
-                      {p.howMuch > 0 ? p.howMuch.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : 'R$ 0,00 (KAIZEN)'}
-                    </td>
-                    <td className="p-3 text-center">
-                      <button
-                        type="button"
-                        onClick={() => handleTogglePlanStatus(p.id)}
-                        className={`px-2.5 py-1 rounded-full text-[9px] font-bold uppercase tracking-wider cursor-pointer border-none shadow-sm transition-all ${
-                          p.status === 'Concluído' ? 'bg-emerald-100 text-emerald-800' :
-                          p.status === 'Em Andamento' ? 'bg-blue-100 text-blue-800' :
-                          p.status === 'Atrasado' ? 'bg-red-100 text-red-800' :
-                          'bg-amber-100 text-amber-800'
-                        }`}
-                        title="Clique para alternar o status do plano"
-                      >
-                        {p.status}
-                      </button>
-                    </td>
-                    <td className="p-3 text-right">
-                      <button 
-                        onClick={() => handleDeletePlan(p.id)}
-                        className="p-1 hover:bg-red-50 text-red-500 rounded border-none cursor-pointer"
-                        title="Excluir Plano"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-      )}
-
-      {/* DETAILED SKU AND RECENT REGISTRIES TABS */}
-      {activeSubTab === 'indicadores' && (
-        <>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        
-        {/* Top SKU Ofensores Table */}
-        <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
-          <h3 className="font-sans font-black text-xs uppercase text-[#032b5e] tracking-wider mb-3">
-            RANKING DE PRODUTOS OFENSORES (SKUs)
-          </h3>
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse font-sans text-xs">
-              <thead>
-                <tr className="bg-slate-50 border-b border-gray-200">
-                  <th className="p-2 text-gray-500 text-left uppercase tracking-wider text-[9px]">Posição</th>
-                  <th className="p-2 text-gray-500 text-left uppercase tracking-wider text-[9px]">Código</th>
-                  <th className="p-2 text-gray-500 text-left uppercase tracking-wider text-[9px]">SKU Descrição</th>
-                  <th className="p-2 text-gray-500 text-center uppercase tracking-wider text-[9px]">Unidades</th>
-                  <th className="p-2 text-gray-500 text-right uppercase tracking-wider text-[9px]">Proporção</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {sortedSkus.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="p-4 text-center text-gray-400">Sem produtos no ranking</td>
-                  </tr>
+              <div className="h-48 w-full cursor-pointer">
+                {motivosChartData.length === 0 ? (
+                  <div className="w-full h-full flex items-center justify-center text-xs text-gray-400">
+                    Sem registros para gerar o Pareto.
+                  </div>
                 ) : (
-                  sortedSkus.slice(0, 7).map((item, index) => {
-                    const pct = totalQuant > 0 ? ((item.quant / totalQuant) * 100).toFixed(1) : '0';
-                    return (
-                      <tr key={item.cod} className="hover:bg-slate-50/50">
-                        <td className="p-2.5 font-bold text-slate-800">#{index + 1}</td>
-                        <td className="p-2.5 font-mono font-bold text-slate-700">{item.cod}</td>
-                        <td className="p-2.5 text-slate-700 font-semibold uppercase">{item.desc}</td>
-                        <td className="p-2.5 text-center text-[#ef4444] font-black">{item.quant}</td>
-                        <td className="p-2.5 text-right font-mono font-bold text-gray-500">
-                          {pct}%
-                        </td>
-                      </tr>
-                    );
-                  })
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={motivosChartData} layout="vertical" margin={{ top: 5, right: 10, left: 15, bottom: 5 }} accessibilityLayer={false}>
+                      <CartesianGrid stroke={theme === 'dark' ? '#1e293b' : '#f1f5f9'} horizontal={false} />
+                      <XAxis type="number" stroke={theme === 'dark' ? '#64748b' : '#94a3b8'} fontSize={8} tickLine={false} axisLine={false} />
+                      <YAxis 
+                        type="category" 
+                        dataKey="name" 
+                        stroke={theme === 'dark' ? '#94a3b8' : '#475569'} 
+                        fontSize={8} 
+                        tickLine={false} 
+                        axisLine={false} 
+                        width={45}
+                        tickFormatter={(val) => val.split(' — ')[0] || val}
+                      />
+                      <Tooltip 
+                        cursor={{ fill: 'transparent' }}
+                        contentStyle={{ 
+                          backgroundColor: theme === 'dark' ? '#0f172a' : '#fff', 
+                          border: theme === 'dark' ? '1px solid #334155' : '1px solid #e2e8f0', 
+                          borderRadius: '8px', 
+                          fontSize: 9,
+                          color: theme === 'dark' ? '#f8fafc' : '#0f172a'
+                        }}
+                        labelStyle={{ color: theme === 'dark' ? '#93c5fd' : '#032b5e', fontWeight: 'bold' }}
+                        itemStyle={{ color: '#ef4444' }}
+                      />
+                      <Bar 
+                        dataKey="value" 
+                        radius={[0, 4, 4, 0]} 
+                        barSize={12}
+                        onClick={(entry) => {
+                          if (entry && entry.name) {
+                            toggleFilter('motivo', entry.name, 'Motivo');
+                          }
+                        }}
+                      >
+                        {motivosChartData.map((entry, index) => {
+                          const isSelected = isFiltered('motivo', entry.name);
+                          const opacity = isMotivoFiltered ? (isSelected ? 1.0 : 0.3) : 1.0;
+                          return (
+                            <Cell 
+                              key={`cell-${index}`} 
+                              fill={COLORS[index % COLORS.length]} 
+                              fillOpacity={opacity}
+                              stroke={isSelected ? '#032b5e' : undefined}
+                              strokeWidth={isSelected ? 2 : 0}
+                            />
+                          );
+                        })}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
                 )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+              </div>
+              <div className={`text-[9px] font-semibold border-t pt-1 flex items-center justify-between ${
+                theme === 'dark' ? 'border-slate-800 text-slate-400' : 'border-gray-100 text-gray-400'
+              }`}>
+                <span>Códigos conforme manual DPO</span>
+                {isMotivoFiltered && (
+                  <span className="text-amber-600 font-bold uppercase text-[8px]">Filtro Ativo</span>
+                )}
+              </div>
+            </div>
 
-        {/* Recent Registries List */}
-        <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between">
-          <div>
-            <h3 className="font-sans font-black text-xs uppercase text-[#032b5e] tracking-wider mb-3">
-              ÚLTIMOS LANÇAMENTOS DO PERÍODO
-            </h3>
-            <div className="overflow-x-auto max-h-[250px] overflow-y-auto">
-              <table className="w-full border-collapse font-sans text-[11px]">
-                <thead>
-                  <tr className="bg-slate-50 border-b border-gray-200 sticky top-0">
-                    <th className="p-2 text-gray-500 text-left uppercase tracking-wider text-[9px]">Data</th>
-                    <th className="p-2 text-gray-500 text-left uppercase tracking-wider text-[9px]">SKU</th>
-                    <th className="p-2 text-gray-500 text-center uppercase tracking-wider text-[9px]">Quantidade</th>
-                    <th className="p-2 text-gray-500 text-left uppercase tracking-wider text-[9px]">Área / Turno</th>
-                    <th className="p-2 text-gray-500 text-left uppercase tracking-wider text-[9px]">Código</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {filteredData.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="p-4 text-center text-gray-400">Nenhum registro encontrado</td>
-                    </tr>
-                  ) : (
-                    filteredData.slice(0, 10).map((q, idx) => (
-                      <tr key={idx} className="hover:bg-slate-50/50">
-                        <td className="p-2 text-slate-600 font-medium">{q.data}</td>
-                        <td className="p-2 text-slate-800">
-                          <div className="font-bold">{q.codProduto}</div>
-                          <div className="text-[9px] text-gray-400 uppercase truncate max-w-[130px]">{q.descricao}</div>
-                        </td>
-                        <td className="p-2 text-center text-red-600 font-extrabold">{q.quantidade}</td>
-                        <td className="p-2 text-slate-700">
-                          <div className="font-semibold text-[10px] uppercase">{q.area}</div>
-                          <div className="text-[9px] text-gray-400 font-medium uppercase">{q.turno}</div>
-                        </td>
-                        <td className="p-2 font-mono font-bold text-[#f5a623]" title={q.motivo}>
-                          {q.codQuebra}
-                          {q.colaboradorQuebrou && (
-                            <div className="text-[9px] text-red-500 font-extrabold uppercase mt-1" title={`Quebrado por: ${q.colaboradorQuebrou}`}>
-                              👤 {q.colaboradorQuebrou}
-                            </div>
-                          )}
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+            {/* CHART 2: Perdas por Grupo / Embalagem */}
+            <div className={`p-4.5 rounded-xl border shadow-sm flex flex-col justify-between gap-3 min-h-[340px] transition-colors ${
+              theme === 'dark' ? 'bg-[#131d38] border-slate-700/80 text-slate-100' : 'bg-white border-gray-200'
+            }`}>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className={`font-sans font-black text-[11px] uppercase tracking-wider flex items-center gap-1.5 ${
+                      theme === 'dark' ? 'text-blue-300' : 'text-[#032b5e]'
+                    }`}>
+                      <Package className="w-3.5 h-3.5 text-[#3b82f6]" /> {secondChartMode === 'grupo' ? 'PERDAS POR GRUPO' : 'PERDAS POR EMBALAGEM'}
+                    </h3>
+                  </div>
+                  <span className="text-[9px] text-gray-400 font-bold mt-0.5 block">
+                    Clique na barra para cruzar os filtros
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <div className={`flex items-center p-0.5 rounded-lg border text-[9px] font-bold ${
+                    theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-gray-100 border-gray-200'
+                  }`}>
+                    <button
+                      type="button"
+                      onClick={() => setSecondChartMode('grupo')}
+                      className={`px-2 py-0.5 rounded-md transition-all border-none cursor-pointer ${
+                        secondChartMode === 'grupo'
+                          ? (theme === 'dark' ? 'bg-blue-600 text-white shadow-sm' : 'bg-[#032b5e] text-white shadow-sm')
+                          : 'text-slate-400 hover:text-white bg-transparent'
+                      }`}
+                    >
+                      GRUPO
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSecondChartMode('embalagem')}
+                      className={`px-2 py-0.5 rounded-md transition-all border-none cursor-pointer ${
+                        secondChartMode === 'embalagem'
+                          ? (theme === 'dark' ? 'bg-blue-600 text-white shadow-sm' : 'bg-[#032b5e] text-white shadow-sm')
+                          : 'text-slate-400 hover:text-white bg-transparent'
+                      }`}
+                    >
+                      EMBALAGEM
+                    </button>
+                  </div>
+
+                  <span className={`text-[10px] font-mono font-black border px-2 py-0.5 rounded-md ${
+                    theme === 'dark' ? 'text-blue-300 bg-slate-800 border-slate-700' : 'text-[#032b5e] bg-slate-100 border-slate-200/80'
+                  }`}>
+                    {(secondChartMode === 'grupo' ? totalGrupoVolume : totalEmbalagemVolume).toLocaleString('pt-BR')} {viewUnit === 'cx' ? 'UN' : 'HL'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="h-48 w-full cursor-pointer">
+                {(secondChartMode === 'grupo' ? grupoChartData : embalagemChartData).length === 0 ? (
+                  <div className="w-full h-full flex items-center justify-center text-xs text-gray-400">
+                    Sem registros para exibição.
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart 
+                      data={secondChartMode === 'grupo' ? grupoChartData : embalagemChartData} 
+                      layout="vertical" 
+                      margin={{ top: 5, right: 45, left: -5, bottom: 5 }} 
+                      accessibilityLayer={false}
+                    >
+                      <CartesianGrid stroke="#f1f5f9" horizontal={false} />
+                      <XAxis type="number" stroke="#94a3b8" fontSize={8} tickLine={false} axisLine={false} />
+                      <YAxis 
+                        type="category" 
+                        dataKey="name" 
+                        stroke="#334155" 
+                        fontSize={9}
+                        fontWeight={700}
+                        tickLine={false} 
+                        axisLine={false} 
+                        width={105}
+                      />
+                      <Tooltip 
+                        cursor={{ fill: 'transparent' }}
+                        contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', fontSize: 10, color: '#fff' }}
+                        labelStyle={{ color: '#38bdf8', fontWeight: 'bold' }}
+                        itemStyle={{ color: '#cbd5e1' }}
+                        formatter={(val: any) => [`${val.toLocaleString('pt-BR')} ${viewUnit === 'cx' ? 'UN' : 'HL'}`, 'Volume']}
+                      />
+                      <Bar 
+                        dataKey="value" 
+                        radius={[0, 6, 6, 0]} 
+                        barSize={16}
+                        onClick={(entry) => {
+                          if (entry && entry.name) {
+                            toggleFilter(secondChartMode, entry.name, secondChartMode === 'grupo' ? 'Grupo' : 'Embalagem');
+                          }
+                        }}
+                      >
+                        <LabelList 
+                          dataKey="value" 
+                          position="right" 
+                          fontSize={9} 
+                          fontWeight={800} 
+                          fill="#032b5e" 
+                          formatter={(val: number) => `${val.toLocaleString('pt-BR')}`} 
+                        />
+                        {(secondChartMode === 'grupo' ? grupoChartData : embalagemChartData).map((entry, index) => {
+                          const isSelected = isFiltered(secondChartMode, entry.name);
+                          const opacity = isSecondChartFiltered ? (isSelected ? 1.0 : 0.3) : 1.0;
+                          return (
+                            <Cell 
+                              key={`cell-emb-${index}`} 
+                              fill={COLORS[(index + 2) % COLORS.length]} 
+                              fillOpacity={opacity}
+                              stroke={isSelected ? '#032b5e' : undefined}
+                              strokeWidth={isSelected ? 2 : 0}
+                            />
+                          );
+                        })}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+              <div className="text-[9px] text-gray-500 font-semibold border-t border-gray-100 pt-1.5 flex items-center justify-between">
+                <span>{secondChartMode === 'grupo' ? 'Classificação por grupo de produto' : 'Classificação por vasilhame'}</span>
+                {(secondChartMode === 'grupo' ? topGrupoPct : topEmbalagensPct) && (
+                  <span className="font-bold text-[#032b5e] font-mono">
+                    Maior: {secondChartMode === 'grupo' ? topGrupoPct : topEmbalagensPct}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* CHART 3: Distribuição por Área */}
+            <div className="bg-white p-4.5 rounded-xl border border-gray-200/80 shadow-sm flex flex-col justify-between gap-3 min-h-[340px]">
+              <div>
+                <h3 className="font-sans font-black text-[11px] uppercase text-[#032b5e] tracking-wider">
+                  DISTRIBUIÇÃO POR ÁREA
+                </h3>
+                <span className="text-[9px] text-gray-400 font-bold mt-0.5 block">
+                  Clique na fatia para filtrar por setor físico
+                </span>
+              </div>
+
+              <div className="h-32 w-full relative flex items-center justify-center cursor-pointer">
+                {areaChartData.length === 0 ? (
+                  <div className="text-xs text-gray-400">Sem dados</div>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={areaChartData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={35}
+                        outerRadius={48}
+                        paddingAngle={3}
+                        dataKey="value"
+                        onClick={(entry: any) => {
+                          if (entry && (entry.rawArea || entry.name)) {
+                            toggleFilter('area', entry.rawArea || entry.name, 'Área');
+                          }
+                        }}
+                      >
+                        {areaChartData.map((entry, index) => {
+                          const isSelected = isFiltered('area', entry.rawArea) || isFiltered('area', entry.name);
+                          const opacity = isAreaFiltered ? (isSelected ? 1.0 : 0.3) : 1.0;
+                          return (
+                            <Cell 
+                              key={`cell-${index}`} 
+                              fill={COLORS[index % COLORS.length]} 
+                              fillOpacity={opacity}
+                              stroke={isSelected ? '#032b5e' : '#fff'}
+                              strokeWidth={isSelected ? 2.5 : 1}
+                            />
+                          );
+                        })}
+                      </Pie>
+                      <Tooltip contentStyle={{ fontSize: 9 }} itemStyle={{ fontSize: 9 }} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+
+              {/* Legend Area indicators */}
+              <div className="grid grid-cols-2 gap-1.5 border-t border-gray-100 pt-2.5">
+                {areaChartData.map((entry, idx) => {
+                  const isSelected = isFiltered('area', entry.rawArea) || isFiltered('area', entry.name);
+                  return (
+                    <div 
+                      key={entry.name} 
+                      onClick={() => toggleFilter('area', entry.rawArea || entry.name, 'Área')}
+                      className={`flex items-center gap-1 cursor-pointer p-1 rounded-md transition-colors ${
+                        isSelected ? 'bg-amber-100 border border-amber-300' : 'hover:bg-slate-100'
+                      }`}
+                    >
+                      <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: COLORS[idx % COLORS.length] }} />
+                      <span className="text-[8.5px] font-bold text-gray-600 uppercase tracking-tight truncate">
+                        {entry.name}: <strong>{entry.value} u</strong>
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+          </div>
+
+          {/* CHARTS CONTAINER - BOTTOM ROW (2 CHARTS) */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-1">
+
+            {/* CHART 4: Tendência Diária */}
+            <div className={`p-4.5 rounded-xl border shadow-sm flex flex-col justify-between gap-3 min-h-[340px] transition-colors ${
+              theme === 'dark' ? 'bg-[#131d38] border-slate-700/80 text-slate-100' : 'bg-white border-gray-200'
+            }`}>
+              <div>
+                <h3 className={`font-sans font-black text-[11px] uppercase tracking-wider ${
+                  theme === 'dark' ? 'text-blue-300' : 'text-[#032b5e]'
+                }`}>
+                  TENDÊNCIA TEMPORAL (DIÁRIO)
+                </h3>
+                <span className="text-[9px] text-gray-400 font-bold mt-0.5 block">
+                  Acompanhamento de evolução volumétrica
+                </span>
+              </div>
+
+              <div className="h-48 w-full cursor-pointer">
+                {sortedDays.length === 0 ? (
+                  <div className="w-full h-full flex items-center justify-center text-xs text-gray-400">
+                    Sem dados temporais.
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={sortedDays} margin={{ top: 5, right: 5, left: -30, bottom: 5 }}>
+                      <CartesianGrid stroke={theme === 'dark' ? '#1e293b' : '#f1f5f9'} vertical={false} />
+                      <XAxis dataKey="date" stroke={theme === 'dark' ? '#64748b' : '#94a3b8'} fontSize={8} tickLine={false} axisLine={false} />
+                      <YAxis stroke={theme === 'dark' ? '#64748b' : '#94a3b8'} fontSize={8} tickLine={false} axisLine={false} />
+                      <Tooltip 
+                        contentStyle={{ 
+                          backgroundColor: theme === 'dark' ? '#0f172a' : '#fff', 
+                          border: theme === 'dark' ? '1px solid #334155' : '1px solid #e2e8f0', 
+                          borderRadius: '8px', 
+                          fontSize: 9,
+                          color: theme === 'dark' ? '#f8fafc' : '#0f172a'
+                        }}
+                        labelStyle={{ color: theme === 'dark' ? '#93c5fd' : '#032b5e', fontWeight: 'bold' }}
+                        itemStyle={{ color: '#ef4444' }}
+                      />
+                      <Line 
+                        type="monotone" 
+                        dataKey="quebras" 
+                        stroke="#ef4444" 
+                        strokeWidth={2} 
+                        activeDot={{ 
+                          r: 6, 
+                          onClick: (e, payload: any) => {
+                            if (payload && payload.payload && payload.payload.date) {
+                              toggleFilter('data', payload.payload.date, 'Data');
+                            }
+                          }
+                        }} 
+                        dot={{ r: 3 }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+              <div className={`text-[9px] text-gray-400 font-semibold border-t pt-1 text-center ${
+                theme === 'dark' ? 'border-slate-800' : 'border-gray-100'
+              }`}>
+                Últimos 10 dias com lançamentos
+              </div>
+            </div>
+
+            {/* CHART 5: Perdas por Turno */}
+            <div className={`p-4.5 rounded-xl border shadow-sm flex flex-col justify-between gap-3 min-h-[340px] transition-colors ${
+              theme === 'dark' ? 'bg-[#131d38] border-slate-700/80 text-slate-100' : 'bg-white border-gray-200'
+            }`}>
+              <div>
+                <h3 className={`font-sans font-black text-[11px] uppercase tracking-wider ${
+                  theme === 'dark' ? 'text-blue-300' : 'text-[#032b5e]'
+                }`}>
+                  QUEBRAS POR TURNO
+                </h3>
+                <span className="text-[9px] text-gray-400 font-bold mt-0.5 block">
+                  Clique na barra para filtrar por turno
+                </span>
+              </div>
+
+              <div className="h-32 w-full cursor-pointer">
+                {turnoChartData.every(t => t.value === 0) ? (
+                  <div className="w-full h-full flex items-center justify-center text-xs text-gray-400">
+                    Sem dados
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={turnoChartData} margin={{ top: 5, right: 5, left: -30, bottom: 5 }} accessibilityLayer={false}>
+                      <CartesianGrid stroke={theme === 'dark' ? '#1e293b' : '#f1f5f9'} vertical={false} />
+                      <XAxis dataKey="name" stroke={theme === 'dark' ? '#64748b' : '#94a3b8'} fontSize={8} tickLine={false} axisLine={false} />
+                      <YAxis stroke={theme === 'dark' ? '#64748b' : '#94a3b8'} fontSize={8} tickLine={false} axisLine={false} />
+                      <Tooltip 
+                        cursor={{ fill: 'transparent' }} 
+                        contentStyle={{ 
+                          backgroundColor: theme === 'dark' ? '#0f172a' : '#fff', 
+                          border: theme === 'dark' ? '1px solid #334155' : '1px solid #e2e8f0', 
+                          borderRadius: '8px', 
+                          fontSize: 9,
+                          color: theme === 'dark' ? '#f8fafc' : '#0f172a'
+                        }} 
+                      />
+                      <Bar 
+                        dataKey="value" 
+                        radius={[4, 4, 0, 0]} 
+                        barSize={25}
+                        onClick={(entry) => {
+                          if (entry && entry.name) {
+                            toggleFilter('turno', entry.name, 'Turno');
+                          }
+                        }}
+                      >
+                        {turnoChartData.map((entry, index) => {
+                          const isSelected = isFiltered('turno', entry.name);
+                          const opacity = isTurnoFiltered ? (isSelected ? 1.0 : 0.3) : 1.0;
+                          return (
+                            <Cell 
+                              key={`cell-turno-${index}`} 
+                              fill={index === 0 ? '#f5a623' : (theme === 'dark' ? '#3b82f6' : '#032b5e')} 
+                              fillOpacity={opacity}
+                              stroke={isSelected ? '#ef4444' : undefined}
+                              strokeWidth={isSelected ? 2 : 0}
+                            />
+                          );
+                        })}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+
+              {/* Quick stats on Shift */}
+              <div className={`flex justify-around items-center p-2 rounded-lg border ${
+                theme === 'dark' ? 'bg-slate-800/60 border-slate-700/60' : 'bg-slate-50 border-gray-100'
+              }`}>
+                <div 
+                  onClick={() => toggleFilter('turno', 'MANHÃ', 'Turno')}
+                  className={`text-center cursor-pointer p-1 rounded-md transition-colors ${
+                    isFiltered('turno', 'MANHÃ') ? 'bg-amber-100/30 border border-amber-300' : (theme === 'dark' ? 'hover:bg-slate-700' : 'hover:bg-slate-100')
+                  }`}
+                >
+                  <span className="text-[8px] font-black text-[#f5a623] block">MANHÃ</span>
+                  <span className={`text-[10px] font-extrabold ${theme === 'dark' ? 'text-slate-200' : 'text-[#334155]'}`}>{turnoMap['MANHÃ']} u</span>
+                </div>
+                <div className={`w-[1px] h-5 ${theme === 'dark' ? 'bg-slate-700' : 'bg-gray-200'}`} />
+                <div 
+                  onClick={() => toggleFilter('turno', 'NOITE / MADRUGADA', 'Turno')}
+                  className={`text-center cursor-pointer p-1 rounded-md transition-colors ${
+                    isFiltered('turno', 'NOITE / MADRUGADA') ? 'bg-amber-100/30 border border-amber-300' : (theme === 'dark' ? 'hover:bg-slate-700' : 'hover:bg-slate-100')
+                  }`}
+                >
+                  <span className={`text-[8px] font-black block ${theme === 'dark' ? 'text-blue-300' : 'text-[#032b5e]'}`}>NOITE</span>
+                  <span className={`text-[10px] font-extrabold ${theme === 'dark' ? 'text-slate-200' : 'text-[#334155]'}`}>{turnoMap['NOITE / MADRUGADA']} u</span>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          {/* CROSSTAB / MATRIX TABLES SECTION */}
+          <div className="mt-4">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="p-1.5 bg-[#032b5e] text-white rounded-lg shadow-xs">
+                <Layers className="w-4 h-4" />
+              </div>
+              <div>
+                <h2 className="font-sans font-black text-sm uppercase text-[#032b5e] tracking-wider">
+                  MATRIZ DE CRUZAMENTO DE DADOS (CROSSTAB / MATRIX)
+                </h2>
+                <p className="text-[11px] text-slate-500 font-medium">
+                  Cruzamento bidimensional com suporte a filtros dinâmicos de linha, coluna e células
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* CROSSTAB 1: Motorista / Responsável x Produto */}
+              <CrosstabMatrix
+                data={baseFilteredData}
+                rowField={(item) => item.colaboradorQuebrou || item.responsavel || 'Não Informado'}
+                rowLabel="Motorista / Responsável"
+                colField="descricao"
+                colLabel="Produto / SKU"
+                valueField={(item) => viewUnit === 'cx' ? item.quantidade : convertCxToHE(item.quantidade, item.descricao, item.codProduto)}
+                valueLabel={viewUnit === 'cx' ? 'Unidades' : 'Volume (HE)'}
+                title="Motorista / Responsável x Produto (SKU)"
+                subtitle="Matriz de relacionamento entre o colaborador que causou a quebra e os SKUs afetados"
+                maxRows={8}
+                maxCols={5}
+                theme={theme}
+              />
+
+              {/* CROSSTAB 2: Área / CD x Motivo de Quebra */}
+              <CrosstabMatrix
+                data={baseFilteredData}
+                rowField="area"
+                rowLabel="Área Operacional"
+                colField={(item) => item.motivo || item.codQuebra || 'Outros'}
+                colLabel="Motivo de Quebra"
+                valueField={(item) => viewUnit === 'cx' ? item.quantidade : convertCxToHE(item.quantidade, item.descricao, item.codProduto)}
+                valueLabel={viewUnit === 'cx' ? 'Unidades' : 'Volume (HE)'}
+                title="Área Operacional x Motivo de Quebra"
+                subtitle="Matriz de origem física dos descartes versus motivo e código DPO"
+                maxRows={6}
+                maxCols={5}
+                theme={theme}
+              />
             </div>
           </div>
-          
-          <div className="flex items-center justify-between border-t border-gray-100 pt-3 mt-3">
-            <span className="text-[10px] font-bold text-[#032b5e] uppercase">
-              Total de registros exibidos: {Math.min(10, filteredData.length)} de {filteredData.length}
-            </span>
+
+          {/* DETAILED SKU AND RECENT REGISTRIES TABS */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-4">
+            
+            {/* Top SKU Ofensores Table */}
+            <div className={`p-5 rounded-xl border shadow-sm transition-colors ${
+              theme === 'dark' ? 'bg-[#131d38] border-slate-700/80 text-slate-100' : 'bg-white border-gray-200'
+            }`}>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className={`font-sans font-black text-xs uppercase tracking-wider ${
+                  theme === 'dark' ? 'text-blue-300' : 'text-[#032b5e]'
+                }`}>
+                  RANKING DE PRODUTOS OFENSORES (SKUs)
+                </h3>
+                <span className="text-[10px] text-slate-400 font-medium">Clique na linha para filtrar</span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse font-sans text-xs">
+                  <thead>
+                    <tr className={`border-b ${theme === 'dark' ? 'bg-slate-800/80 border-slate-700 text-slate-300' : 'bg-slate-50 border-gray-200 text-gray-500'}`}>
+                      <th className="p-2 text-left uppercase tracking-wider text-[9px]">Posição</th>
+                      <th className="p-2 text-left uppercase tracking-wider text-[9px]">Código</th>
+                      <th className="p-2 text-left uppercase tracking-wider text-[9px]">SKU Descrição</th>
+                      <th className="p-2 text-center uppercase tracking-wider text-[9px]">Unidades</th>
+                      <th className="p-2 text-right uppercase tracking-wider text-[9px]">Proporção</th>
+                    </tr>
+                  </thead>
+                  <tbody className={`divide-y ${theme === 'dark' ? 'divide-slate-800' : 'divide-gray-100'}`}>
+                    {sortedSkus.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="p-4 text-center text-gray-400">Sem produtos no ranking</td>
+                      </tr>
+                    ) : (
+                      sortedSkus.slice(0, 7).map((item, index) => {
+                        const pct = totalQuant > 0 ? ((item.quant / totalQuant) * 100).toFixed(1) : '0';
+                        const isSelected = isFiltered('produto', item.desc);
+                        return (
+                          <tr 
+                            key={item.cod} 
+                            onClick={() => toggleFilter('produto', item.desc, 'Produto')}
+                            className={`cursor-pointer transition-colors ${
+                              isSelected 
+                                ? (theme === 'dark' ? 'bg-amber-500/20 text-amber-200 font-bold border-l-4 border-amber-400' : 'bg-amber-100/80 font-bold border-l-4 border-amber-500') 
+                                : (theme === 'dark' ? 'hover:bg-slate-800/60' : 'hover:bg-amber-50/60')
+                            }`}
+                          >
+                            <td className={`p-2.5 font-bold ${theme === 'dark' ? 'text-slate-200' : 'text-slate-800'}`}>#{index + 1}</td>
+                            <td className={`p-2.5 font-mono font-bold ${theme === 'dark' ? 'text-blue-300' : 'text-slate-700'}`}>{item.cod}</td>
+                            <td className={`p-2.5 font-semibold uppercase ${theme === 'dark' ? 'text-slate-200' : 'text-slate-700'}`}>{item.desc}</td>
+                            <td className="p-2.5 text-center text-[#ef4444] font-black">{item.quant}</td>
+                            <td className="p-2.5 text-right font-mono font-bold text-gray-400">
+                              {pct}%
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Recent Registries List */}
+            <div className={`p-5 rounded-xl border shadow-sm flex flex-col justify-between transition-colors ${
+              theme === 'dark' ? 'bg-[#131d38] border-slate-700/80 text-slate-100' : 'bg-white border-gray-200'
+            }`}>
+              <div>
+                <h3 className={`font-sans font-black text-xs uppercase tracking-wider mb-3 ${
+                  theme === 'dark' ? 'text-blue-300' : 'text-[#032b5e]'
+                }`}>
+                  ÚLTIMOS LANÇAMENTOS DO PERÍODO
+                </h3>
+                <div className="overflow-x-auto max-h-[250px] overflow-y-auto">
+                  <table className="w-full border-collapse font-sans text-[11px]">
+                    <thead>
+                      <tr className={`border-b sticky top-0 ${
+                        theme === 'dark' ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-slate-50 border-gray-200 text-gray-500'
+                      }`}>
+                        <th className="p-2 text-left uppercase tracking-wider text-[9px]">Data</th>
+                        <th className="p-2 text-left uppercase tracking-wider text-[9px]">SKU</th>
+                        <th className="p-2 text-center uppercase tracking-wider text-[9px]">Quantidade</th>
+                        <th className="p-2 text-left uppercase tracking-wider text-[9px]">Área / Turno</th>
+                        <th className="p-2 text-left uppercase tracking-wider text-[9px]">Código</th>
+                      </tr>
+                    </thead>
+                    <tbody className={`divide-y ${theme === 'dark' ? 'divide-slate-800' : 'divide-gray-100'}`}>
+                      {crossFilteredData.length === 0 ? (
+                        <tr>
+                          <td colSpan={5} className="p-4 text-center text-gray-400">Nenhum registro encontrado</td>
+                        </tr>
+                      ) : (
+                        crossFilteredData.slice(0, 10).map((q, idx) => (
+                          <tr key={idx} className={theme === 'dark' ? 'hover:bg-slate-800/50' : 'hover:bg-slate-50/50'}>
+                            <td className={`p-2 font-medium ${theme === 'dark' ? 'text-slate-300' : 'text-slate-600'}`}>{q.data}</td>
+                            <td 
+                              className="p-2 cursor-pointer hover:text-amber-500"
+                              onClick={() => toggleFilter('produto', q.descricao, 'Produto')}
+                            >
+                              <div className={`font-bold ${theme === 'dark' ? 'text-slate-100' : 'text-slate-800'}`}>{q.codProduto}</div>
+                              <div className="text-[9px] text-gray-400 uppercase truncate max-w-[130px]">{q.descricao}</div>
+                            </td>
+                            <td className="p-2 text-center text-red-500 font-extrabold">{q.quantidade}</td>
+                            <td 
+                              className="p-2 cursor-pointer hover:text-amber-500"
+                              onClick={() => toggleFilter('area', q.area, 'Área')}
+                            >
+                              <div className={`font-semibold text-[10px] uppercase ${theme === 'dark' ? 'text-slate-200' : 'text-slate-700'}`}>{q.area}</div>
+                              <div className="text-[9px] text-gray-400 font-medium uppercase">{q.turno}</div>
+                            </td>
+                            <td 
+                              className="p-2 font-mono font-bold text-[#f5a623] cursor-pointer" 
+                              title={q.motivo}
+                              onClick={() => toggleFilter('motivo', q.motivo || q.codQuebra, 'Motivo')}
+                            >
+                              {q.codQuebra}
+                              {q.colaboradorQuebrou && (
+                                <div 
+                                  className="text-[9px] text-red-400 font-extrabold uppercase mt-1 hover:underline" 
+                                  title={`Quebrado por: ${q.colaboradorQuebrou}`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleFilter('motorista', q.colaboradorQuebrou || '', 'Motorista');
+                                  }}
+                                >
+                                  👤 {q.colaboradorQuebrou}
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              
+              <div className={`flex items-center justify-between border-t pt-3 mt-3 ${
+                theme === 'dark' ? 'border-slate-800' : 'border-gray-100'
+              }`}>
+                <span className={`text-[10px] font-bold uppercase ${
+                  theme === 'dark' ? 'text-blue-300' : 'text-[#032b5e]'
+                }`}>
+                  Total de registros exibidos: {Math.min(10, crossFilteredData.length)} de {crossFilteredData.length}
+                </span>
+              </div>
+            </div>
+
           </div>
-        </div>
-
-      </div>
         </>
-      )}
-
-      </>
       )}
 
       {activeSubTab === 'wqi' && (
@@ -1514,10 +1499,18 @@ export default function QuebrasDashboard({ user, empresa, onBack }: QuebrasDashb
           PADRÃO DE EXCELÊNCIA DE DEPÓSITO &amp; TRANSPORTE
         </span>
         <span className="text-[10px] text-gray-400 font-medium uppercase">
-          Atualizado em tempo real • Versão 3.5.0
+          Atualizado em tempo real • Versão 3.6.0
         </span>
       </div>
 
     </div>
+  );
+}
+
+export default function QuebrasDashboard(props: QuebrasDashboardProps) {
+  return (
+    <CrossFilterProvider>
+      <QuebrasDashboardInner {...props} />
+    </CrossFilterProvider>
   );
 }
