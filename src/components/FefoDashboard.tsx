@@ -301,9 +301,8 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
     if (actualValidades && actualValidades.length > 0) {
       return actualValidades;
     }
-    const companyId = empresa?.id || 'demo';
-    return generateMockValidades(companyId);
-  }, [actualValidades, empresa?.id]);
+    return [];
+  }, [actualValidades]);
 
   // Advanced Filters State
   const [periodFilter, setPeriodFilter] = useState<string>('30');
@@ -368,7 +367,7 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
 
   // 1. Sync & Seed Data
   useEffect(() => {
-    // Sync validades (dynamic)
+    // Sync validades (dynamic) - merge Firestore and localStorage so all collected items are included
     const saved = localStorage.getItem(`validades_${companyId}`);
     let localRows: ValidadeRow[] = [];
     if (saved) {
@@ -379,10 +378,24 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
       }
     }
 
-    if (empresaData.validades && empresaData.validades.length > 0) {
-      setActualValidades(empresaData.validades);
-    } else if (localRows.length > 0) {
-      setActualValidades(localRows);
+    const firestoreRows = empresaData.validades || [];
+    const map = new Map<string, ValidadeRow>();
+    
+    firestoreRows.forEach(v => {
+      const key = v._docId || `${v.codProduto}_${v.validade}_${v.bloco}_${v.localizacao}`;
+      map.set(key, v);
+    });
+
+    localRows.forEach(v => {
+      const key = v._docId || `${v.codProduto}_${v.validade}_${v.bloco}_${v.localizacao}`;
+      if (!map.has(key)) {
+        map.set(key, v);
+      }
+    });
+
+    const combinedValidades = Array.from(map.values());
+    if (combinedValidades.length > 0) {
+      setActualValidades(combinedValidades);
     } else {
       setActualValidades([]);
     }
@@ -401,16 +414,16 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
     const savedPicking = localStorage.getItem(pickingKey);
 
     if (savedMeets) setRlpMeetings(JSON.parse(savedMeets));
-    else { setRlpMeetings(SEED_RLP_MEETINGS); localStorage.setItem(meetKey, JSON.stringify(SEED_RLP_MEETINGS)); }
+    else setRlpMeetings([]);
 
     if (savedActs) setActionPoints(JSON.parse(savedActs));
-    else { setActionPoints(SEED_ACTION_POINTS); localStorage.setItem(actKey, JSON.stringify(SEED_ACTION_POINTS)); }
+    else setActionPoints([]);
 
     if (savedTransfers) setStockTransfers(JSON.parse(savedTransfers));
-    else { setStockTransfers(SEED_STOCK_TRANSFERS); localStorage.setItem(transferKey, JSON.stringify(SEED_STOCK_TRANSFERS)); }
+    else setStockTransfers([]);
 
     if (savedPicking) setPickingComp(JSON.parse(savedPicking));
-    else { setPickingComp(SEED_PICKING_COMP); localStorage.setItem(pickingKey, JSON.stringify(SEED_PICKING_COMP)); }
+    else setPickingComp([]);
 
   }, [companyId]);
 
@@ -439,10 +452,16 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
   const getDaysRemaining = (expDate: string) => {
     if (!expDate) return 999;
     try {
-      let normDate = expDate;
-      if (expDate.includes('/')) {
-        const [d, m, y] = expDate.split('/');
-        normDate = `${y}-${m}-${d}`;
+      let normDate = expDate.trim();
+      if (normDate.includes('/')) {
+        const parts = normDate.split('/');
+        if (parts.length === 3) {
+          const d = parts[0].padStart(2, '0');
+          const m = parts[1].padStart(2, '0');
+          let y = parts[2];
+          if (y.length === 2) y = '20' + y;
+          normDate = `${y}-${m}-${d}`;
+        }
       }
       const today = new Date();
       today.setHours(0, 0, 0, 0);
@@ -458,12 +477,14 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
     const p = Number(v.palhete) || 0;
     const l = Number(v.lastro) || 0;
     const c = Number(v.caixa) || 0;
+    const q = Number((v as any).quantidade) || 0;
 
     if (p > 0 && l > 0 && c > 0) return p * l * c;
     if (p > 0 && l > 0) return p * l;
     if (p > 0 && c > 0) return p * c;
     if (p > 0) return p;
     if (c > 0) return c;
+    if (q > 0) return q;
     return 1;
   };
 
@@ -660,15 +681,15 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
     return result;
   }, [compiledValidades]);
 
-  // Calculate high quality KPIs
-  const totalRiscoUnities = compiledValidades.reduce((acc, curr) => curr.days <= 90 ? acc + curr.totalUnities : acc, 0);
-  const totalValorRisco = compiledValidades.reduce((acc, curr) => curr.days <= 90 ? acc + curr.estimatedCost : acc, 0);
+  // Calculate high quality KPIs (Critical risk <= 30 days)
+  const totalRiscoUnities = compiledValidades.reduce((acc, curr) => curr.days <= 30 ? acc + curr.totalUnities : acc, 0);
+  const totalValorRisco = compiledValidades.reduce((acc, curr) => curr.days <= 30 ? acc + curr.estimatedCost : acc, 0);
   const totalVencidosUnidades = compiledValidades.reduce((acc, curr) => curr.days < 0 ? acc + curr.totalUnities : acc, 0);
 
   // Desvios FEFO calculation using effectivePickingComp
   const totalDesviosFEFO = effectivePickingComp.filter(p => p.status === 'Desvio Crítico').length;
   const totalConformeFEFO = effectivePickingComp.filter(p => p.status === 'Conforme').length;
-  const aderenciaFEFO = effectivePickingComp.length > 0 ? Math.round((totalConformeFEFO / effectivePickingComp.length) * 100) : 92;
+  const aderenciaFEFO = effectivePickingComp.length > 0 ? Math.round((totalConformeFEFO / effectivePickingComp.length) * 100) : 100;
 
   // 10 Primeiros Produtos a Vencer (ordenados do menor para o maior número de dias restantes)
   const top10Expiring = useMemo(() => {
@@ -1227,12 +1248,12 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
             <span className="text-[8.5px] uppercase font-black tracking-widest text-gray-400 block">PRODUTOS PRÓXIMOS AO VENCIMENTO</span>
             <div className="flex items-baseline mt-2">
               <span className="text-3xl font-extrabold text-[#ef4444]">{totalRiscoUnities}</span>
-              <span className="text-[10px] font-bold text-gray-500 ml-1">{viewUnit === 'u' ? 'CX' : 'HE'} (≤90 dias)</span>
+              <span className="text-[10px] font-bold text-gray-500 ml-1">{viewUnit === 'u' ? 'CX' : 'HE'} (≤30 dias)</span>
             </div>
           </div>
           <div className="border-t border-gray-100 pt-2 mt-2 text-[9px] text-gray-400 font-bold uppercase flex justify-between">
             <span>Risco Financeiro:</span>
-            <span className="text-[#ef4444]">{totalValorRisco.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+            <span className="text-[#ef4444] font-bold">{totalValorRisco.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
           </div>
         </div>
 
@@ -1240,12 +1261,12 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
           <div>
             <span className="text-[8.5px] uppercase font-black tracking-widest text-gray-400 block">ADERÊNCIA GLOBAL AO FEFO</span>
             <div className="flex items-baseline mt-2">
-              <span className="text-3xl font-extrabold text-emerald-500">{aderenciaFEFO}%</span>
+              <span className={`text-3xl font-extrabold ${aderenciaFEFO >= 95 ? 'text-emerald-500' : aderenciaFEFO >= 85 ? 'text-amber-500' : 'text-red-500'}`}>{aderenciaFEFO}%</span>
             </div>
           </div>
           <div className="border-t border-gray-100 pt-2 mt-2 text-[9px] text-gray-400 font-bold uppercase flex justify-between">
             <span>Meta de Fábrica:</span>
-            <span className="text-emerald-500">≥ 95%</span>
+            <span className="text-emerald-500 font-bold">≥ 95%</span>
           </div>
         </div>
 
@@ -1253,13 +1274,13 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
           <div>
             <span className="text-[8.5px] uppercase font-black tracking-widest text-gray-400 block">DESVIOS ESTOQUE x PICKING</span>
             <div className="flex items-baseline mt-2">
-              <span className="text-3xl font-extrabold text-amber-500">{totalDesviosFEFO}</span>
+              <span className={`text-3xl font-extrabold ${totalDesviosFEFO > 0 ? 'text-amber-500' : 'text-emerald-500'}`}>{totalDesviosFEFO}</span>
               <span className="text-[10px] font-bold text-gray-500 ml-1">lotes fora</span>
             </div>
           </div>
           <div className="border-t border-gray-100 pt-2 mt-2 text-[9px] text-gray-400 font-bold uppercase flex justify-between">
             <span>Ações de Bloqueio:</span>
-            <span className="text-amber-500">Urgente</span>
+            <span className={totalDesviosFEFO > 0 ? "text-amber-500 font-bold" : "text-emerald-500 font-bold"}>{totalDesviosFEFO > 0 ? 'Urgente' : 'Normal'}</span>
           </div>
         </div>
 
@@ -1273,7 +1294,7 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
           </div>
           <div className="border-t border-gray-100 pt-2 mt-2 text-[9px] text-gray-400 font-bold uppercase flex justify-between">
             <span>Últimas 48 Horas</span>
-            <span className="text-[#032b5e]">Ativo</span>
+            <span className={stockTransfers.length > 0 ? "text-[#032b5e] font-bold" : "text-gray-400 font-bold"}>{stockTransfers.length > 0 ? 'Ativo' : 'Sem registros'}</span>
           </div>
         </div>
 
@@ -1287,7 +1308,7 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
           </div>
           <div className="border-t border-gray-100 pt-2 mt-2 text-[9px] text-gray-400 font-bold uppercase flex justify-between">
             <span>Ações Pendentes:</span>
-            <span className="text-sky-600">{actionPoints.filter(a => a.status !== 'Concluído').length}</span>
+            <span className="text-sky-600 font-bold">{actionPoints.filter(a => a.status !== 'Concluído').length}</span>
           </div>
         </div>
       </div>
@@ -1306,11 +1327,23 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
             
             {/* Chart: Vencimento por faixa */}
             <div className="lg:col-span-8 bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex flex-col gap-4">
-              <div>
-                <h3 className="font-sans font-black text-xs uppercase text-[#032b5e] tracking-wider flex items-center gap-1">
-                  <Layers className="w-4 h-4 text-sky-500" /> Risco por Volume &amp; Faixa de Exclusão FEFO
-                </h3>
-                <p className="text-[10px] text-gray-400 font-bold mt-0.5">Representação das faixas críticas em dias restantes</p>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <h3 className="font-sans font-black text-xs uppercase text-[#032b5e] tracking-wider flex items-center gap-1.5">
+                    <Layers className="w-4 h-4 text-sky-500" /> RISCO POR VOLUME &amp; FAIXA DE EXCLUSÃO FEFO
+                  </h3>
+                  <p className="text-[10px] text-gray-500 font-bold mt-0.5">
+                    Representação das faixas críticas em dias restantes com base nas coletas de validade efetuadas
+                  </p>
+                </div>
+                {actualValidades.length > 0 && (
+                  <div className="flex items-center gap-2 self-start sm:self-auto">
+                    <span className="text-[10px] font-black uppercase text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-md flex items-center gap-1.5 shadow-xs">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                      {actualValidades.length} Coletas Coletadas
+                    </span>
+                  </div>
+                )}
               </div>
 
               <div className="h-64 w-full">
@@ -1392,55 +1425,7 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
 
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Left box: Category Risk Stacked */}
-            <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex flex-col gap-4">
-              <div>
-                <h3 className="font-sans font-black text-xs uppercase text-[#032b5e] tracking-wider">
-                  Risco de Validade por Categoria de Produto
-                </h3>
-                <p className="text-[10px] text-gray-400 font-bold mt-0.5">Visualização de aderência em gola x fardo</p>
-              </div>
 
-              <div className="h-52 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={categoryRiskChartData} margin={{ top: 10, right: 10, left: -10, bottom: 5 }}>
-                    <CartesianGrid stroke="#f1f5f9" vertical={false} />
-                    <XAxis dataKey="name" stroke="#94a3b8" fontSize={9} />
-                    <YAxis stroke="#94a3b8" fontSize={9} />
-                    <Tooltip contentStyle={{ fontSize: 9 }} />
-                    <Legend wrapperStyle={{ fontSize: 9 }} />
-                    <Bar dataKey="Crítico / Alerta" stackId="a" fill="#ef4444" />
-                    <Bar dataKey="Estoque Regular" stackId="a" fill="#10b981" />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-
-            {/* Right box: Trend History */}
-            <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex flex-col gap-4">
-              <div>
-                <h3 className="font-sans font-black text-xs uppercase text-[#032b5e] tracking-wider">
-                  Tendência Mensal e Aderência de Inventário FEFO
-                </h3>
-                <p className="text-[10px] text-gray-400 font-bold mt-0.5">Evolução do volume em risco vs. índice de aderência</p>
-              </div>
-
-              <div className="h-52 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={trendData} margin={{ top: 10, right: 10, left: -10, bottom: 5 }}>
-                    <CartesianGrid stroke="#f1f5f9" />
-                    <XAxis dataKey="week" stroke="#94a3b8" fontSize={9} />
-                    <YAxis stroke="#94a3b8" fontSize={9} />
-                    <Tooltip contentStyle={{ fontSize: 9 }} />
-                    <Legend wrapperStyle={{ fontSize: 9 }} />
-                    <Line type="monotone" dataKey="risco" name={`Volume Crítico (${viewUnit === 'u' ? 'CX' : 'HE'})`} stroke="#ef4444" strokeWidth={2} />
-                    <Line type="monotone" dataKey="aderencia" name="Aderência FEFO (%)" stroke="#10b981" strokeWidth={2} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-          </div>
 
           {/* Top 10 Produtos com Vencimento Mais Próximo */}
           <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex flex-col gap-4">
@@ -1719,75 +1704,7 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
               </div>
             </div>
 
-            {/* 2. Gap de Validade (Diferença entre Estoque e Picking) */}
-            <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between">
-              <div>
-                <span className="text-[9px] bg-red-50 text-red-600 border border-red-200 px-2 py-0.5 rounded font-black tracking-wider uppercase">Indicador de Desvio</span>
-                <h3 className="font-sans font-black text-xs uppercase text-[#032b5e] tracking-wider mt-2">
-                  2. Gap de Validade - Estoque x Picking
-                </h3>
-                <p className="text-[10px] text-gray-400 font-bold mt-0.5">
-                  Gap = Validade Picking − Validade Estoque. Valores positivos indicam inversão (erro).
-                </p>
-              </div>
 
-              <div className="h-56 w-full mt-4">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={gapSortedData} layout="vertical" margin={{ top: 5, right: 15, left: -15, bottom: 5 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                    <XAxis type="number" stroke="#94a3b8" fontSize={9} />
-                    <YAxis type="category" dataKey="sku" stroke="#94a3b8" fontSize={9} width={65} />
-                    <Tooltip 
-                      content={({ active, payload }) => {
-                        if (active && payload && payload.length) {
-                          const data = payload[0].payload;
-                          return (
-                            <div className="bg-white p-3 border border-slate-200 rounded-lg shadow-md text-xs font-sans max-w-xs">
-                              <p className="font-black text-[#032b5e] uppercase mb-1.5 border-b border-slate-100 pb-1">{data.fullName}</p>
-                              <div className="space-y-1 text-[10px]">
-                                <p className="text-slate-600 font-medium flex justify-between gap-3">
-                                  <span>Data Estoque:</span>
-                                  <span className="font-bold text-slate-800 font-mono">{data.validadeEstoque} ({data.estoque}d)</span>
-                                </p>
-                                <p className="text-slate-600 font-medium flex justify-between gap-3">
-                                  <span>Data Picking:</span>
-                                  <span className="font-bold text-blue-700 font-mono">{data.validadePicking} ({data.picking}d)</span>
-                                </p>
-                                <p className="text-slate-600 font-bold border-t border-slate-100 pt-1 flex justify-between gap-3">
-                                  <span>Gap (Picking - Estoque):</span>
-                                  <span className={`font-black font-mono ${data.gap > 0 ? 'text-red-600' : data.gap === 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
-                                    {data.gap > 0 ? `+${data.gap}` : data.gap} dias
-                                  </span>
-                                </p>
-                              </div>
-                            </div>
-                          );
-                        }
-                        return null;
-                      }}
-                    />
-                    <Bar dataKey="gap" name="Gap de Validade (dias)" radius={[0, 4, 4, 0]}>
-                      {gapSortedData.map((entry, index) => {
-                        const barColor = entry.gap > 0 ? '#032b5e' : entry.gap === 0 ? '#3b82f6' : '#93c5fd';
-                        return <Cell key={`cell-${index}`} fill={barColor} />;
-                      })}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-
-              <div className="grid grid-cols-3 gap-1.5 text-[8px] font-black uppercase text-slate-500 mt-3">
-                <div className="bg-blue-50 border border-blue-100 p-1.5 rounded text-blue-800 text-center flex items-center justify-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-[#93c5fd]" /> Gap &lt; 0 (FEFO OK)
-                </div>
-                <div className="bg-blue-50 border border-blue-100 p-1.5 rounded text-blue-800 text-center flex items-center justify-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-[#3b82f6]" /> Gap = 0 (Correto)
-                </div>
-                <div className="bg-blue-50 border border-blue-100 p-1.5 rounded text-blue-800 text-center flex items-center justify-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-[#032b5e]" /> Gap &gt; 0 (Erro / Inversão)
-                </div>
-              </div>
-            </div>
 
             {/* 3. Dispersão Estoque × Picking */}
             <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between">
@@ -1828,153 +1745,11 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
               </div>
             </div>
 
-            {/* 4. Índice de Conformidade FEFO */}
-            <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between">
-              <div>
-                <span className="text-[9px] bg-purple-50 text-purple-600 border border-purple-200 px-2 py-0.5 rounded font-black tracking-wider uppercase">Evolução Histórica</span>
-                <h3 className="font-sans font-black text-xs uppercase text-[#032b5e] tracking-wider mt-2">
-                  4. Conformidade FEFO Histórica - Estoque x Picking
-                </h3>
-                <p className="text-[10px] text-gray-400 font-bold mt-0.5">
-                  Percentual de conformidade de giro nos últimos meses vs. Meta Operacional (98%)
-                </p>
-              </div>
 
-              <div className="h-56 w-full mt-4">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={conformidadeData} margin={{ top: 15, right: 10, left: -25, bottom: 5 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                    <XAxis dataKey="mes" stroke="#94a3b8" fontSize={8.5} fontStyle="bold" />
-                    <YAxis stroke="#94a3b8" fontSize={9} domain={[0, 100]} unit="%" />
-                    <Tooltip 
-                      content={({ active, payload }) => {
-                        if (active && payload && payload.length) {
-                          const data = payload[0].payload;
-                          return (
-                            <div className="bg-white p-2.5 border border-slate-200 rounded-lg shadow-md text-xs font-sans">
-                              <p className="font-black text-[#032b5e] uppercase mb-1">{data.mes}</p>
-                              <p className="text-emerald-600 font-bold text-[10px]">SKUs Conformes: <span className="font-bold">{data.conformes}</span></p>
-                              <p className="text-red-500 font-bold text-[10px]">Desvios de FEFO: <span className="font-bold">{data.naoConformes}</span></p>
-                              <p className="text-slate-800 font-extrabold text-[11px] mt-1 pt-1 border-t border-slate-100">
-                                Índice de Conformidade: <span className="font-mono">{data.percentual}%</span>
-                              </p>
-                            </div>
-                          );
-                        }
-                        return null;
-                      }}
-                    />
-                    
-                    {/* Linha de Meta Operacional 98% */}
-                    <ReferenceLine y={98} stroke="#ef4444" strokeWidth={1.5} strokeDasharray="3 3" label={{ value: 'Meta CD: 98%', fill: '#ef4444', fontSize: 8.5, position: 'top', fontWeight: 'bold' }} />
-                    
-                    <Bar dataKey="percentual" name="Índice FEFO (%)" radius={[4, 4, 0, 0]}>
-                      {conformidadeData.map((entry, index) => {
-                        const barColor = entry.percentual >= 98 ? '#032b5e' : entry.percentual >= 85 ? '#3b82f6' : '#93c5fd';
-                        return <Cell key={`cell-${index}`} fill={barColor} />;
-                      })}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-
-              <div className="bg-[#eff6ff] p-2 rounded-lg mt-3 text-[9px] text-[#1e40af] font-bold leading-normal text-center">
-                📊 <strong>Análise de Coleta de Dados:</strong> No mês atual, registramos <strong>{aderenciaFEFO}%</strong> de conformidade com base nas auditorias de validade no CD. A evolução histórica mostra uma melhora consistente desde Março (70%) até Junho (91%), sofrendo impacto de novos lotes pendentes no picking em Julho.
-              </div>
-            </div>
 
           </div>
 
-          {/* Main Reconciliation Table */}
-          <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-gray-100 pb-4 mb-4">
-              <div>
-                <h3 className="font-sans font-black text-xs uppercase text-[#032b5e] tracking-wider">
-                  CONCILIAÇÃO FÍSICA E AJUSTES: ESTOQUE x PICKING
-                </h3>
-                <p className="text-[10px] text-gray-400 font-bold mt-0.5">Visão detalhada de diferenças volumétricas entre o depósito central e as ruas de picking</p>
-              </div>
-              
-              <div className="flex items-center gap-2">
-                <span className="flex items-center gap-1 text-[9.5px] font-bold text-gray-500 uppercase">
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" /> Conforme
-                </span>
-                <span className="flex items-center gap-1 text-[9.5px] font-bold text-gray-500 uppercase">
-                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500" /> Atenção
-                </span>
-                <span className="flex items-center gap-1 text-[9.5px] font-bold text-gray-500 uppercase">
-                  <span className="w-2.5 h-2.5 rounded-full bg-red-500" /> Desvio Crítico
-                </span>
-              </div>
-            </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse font-sans text-xs min-w-[700px]">
-                <thead>
-                  <tr className="bg-slate-50 border-b border-gray-200">
-                    <th className="p-3 text-gray-500 text-left uppercase tracking-wider text-[9px]">Produto</th>
-                    <th className="p-3 text-gray-500 text-left uppercase tracking-wider text-[9px]">Lote</th>
-                    <th className="p-3 text-gray-500 text-center uppercase tracking-wider text-[9px]">Validade</th>
-                    <th className="p-3 text-gray-500 text-right uppercase tracking-wider text-[9px]">Quantidade no Estoque</th>
-                    <th className="p-3 text-gray-500 text-right uppercase tracking-wider text-[9px]">Quantidade no Picking</th>
-                    <th className="p-3 text-gray-500 text-right uppercase tracking-wider text-[9px]">Diferença Física</th>
-                    <th className="p-3 text-gray-500 text-center uppercase tracking-wider text-[9px]">Status de Alinhamento</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {filteredPickingComp.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="p-8 text-center text-gray-400 font-bold uppercase text-[10px]">
-                        Nenhum produto corresponde aos filtros operacionais aplicados.
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredPickingComp.map((p, idx) => {
-                      const badgeColor = p.status === 'Conforme' ? 'bg-emerald-100 text-emerald-800' :
-                                         p.status === 'Atenção' ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-800';
-                      
-                      return (
-                        <tr key={idx} className="hover:bg-slate-50/55">
-                          <td className="p-3 font-semibold text-slate-800 uppercase">{p.produto}</td>
-                          <td className="p-3 font-mono font-bold text-gray-600">{p.lote}</td>
-                          <td className="p-3 text-center text-slate-700 font-medium">{p.validade}</td>
-                          <td className="p-3 text-right font-semibold text-slate-700">{p.qtdEstoque} {viewUnit === 'cx' ? 'cx' : 'HE'}</td>
-                          <td className="p-3 text-right font-semibold text-slate-700">{p.qtdPicking} {viewUnit === 'cx' ? 'cx' : 'HE'}</td>
-                          <td className="p-3 text-right font-black text-slate-900">{p.diferenca} {viewUnit === 'cx' ? 'cx' : 'HE'}</td>
-                          <td className="p-3 text-center">
-                            <span className={`px-3 py-1 rounded-full text-[9px] font-bold uppercase tracking-wider ${badgeColor}`}>
-                              {p.status}
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="bg-slate-50 rounded-xl p-4 mt-5 border border-gray-200 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
-              <p className="text-gray-500 leading-relaxed max-w-2xl">
-                💡 <strong>Regra Operacional do Armazém:</strong> Diferenças acima de 200 SKUs entre o estoque central e a rua de picking exigem tarefa de reposição urgente gerada automaticamente no painel do empilhador para evitar rupturas de carga de frota.
-              </p>
-              <button 
-                onClick={() => {
-                  const refreshed = pickingComp.map(p => ({
-                    ...p,
-                    qtdPicking: p.status === 'Desvio Crítico' ? p.qtdPicking + 300 : p.qtdPicking,
-                    diferenca: p.status === 'Desvio Crítico' ? p.qtdEstoque - (p.qtdPicking + 300) : p.diferenca,
-                    status: p.status === 'Desvio Crítico' ? 'Conforme' : p.status as any
-                  }));
-                  savePicking(refreshed);
-                  alert('Reposições enviadas ao coletor do Empilhador! Picking atualizado.');
-                }}
-                className="bg-[#032b5e] hover:bg-[#021f44] text-white font-sans font-bold text-[10px] uppercase tracking-wider py-2.5 px-4 rounded-lg transition-all border-none cursor-pointer shadow-sm shrink-0"
-              >
-                Forçar Reposição de Picking
-              </button>
-            </div>
-          </div>
         </div>
       )}
 

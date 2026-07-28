@@ -7,6 +7,7 @@ import DespejoDashboard from './DespejoDashboard';
 import { TrendingUp, CheckCircle, Clock, Award, BarChart2 } from 'lucide-react';
 import SugerirMelhoriaCard from './SugerirMelhoriaCard';
 import { filterHistoryForUser, HistoryRestrictionNotice } from '../utils/historyFilter';
+import { elaborarTemposIlustrativosOperacao } from '../utils/quebrasDespejoUtils';
 
 interface DespejoPanelProps {
   user: Usuario;
@@ -487,8 +488,49 @@ export default function DespejoPanel({ user, empresa }: DespejoPanelProps) {
       )}
 
       {activeTab === 'hist' && (
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-4">
           <HistoryRestrictionNotice user={user} />
+
+          {/* Banner de Tempos Ilustrativos de Referência da Operação Despejo */}
+          <div className="bg-gradient-to-r from-[#11151c] via-[#151b23] to-[#1a222d] border border-[#ef4444]/30 rounded-xl p-4 text-snow flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shadow-lg">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-[#ef4444]/15 border border-[#ef4444]/30 rounded-xl text-[#ef4444]">
+                <Clock className="w-6 h-6 animate-pulse" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-[#ef4444] bg-[#ef4444]/10 border border-[#ef4444]/20 px-2 py-0.5 rounded">
+                    TEMPOS ILUSTRATIVOS DE OPERAÇÃO
+                  </span>
+                  <span className="text-[10px] font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                    SOP Despejo DPO
+                  </span>
+                </div>
+                <h4 className="font-sans font-black text-sm uppercase text-snow tracking-wide mt-1">
+                  Cronograma &amp; Ritmo por Fases da Operação Despejo
+                </h4>
+                <p className="text-[11px] text-[#6a7d92]">
+                  Exibindo o desdobramento ilustrativo dos tempos por etapa (Triagem &bull; Drenagem &bull; Segregação) para cada lote do histórico.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="bg-[#0b0e14] border border-[#222d3a] px-3 py-2 rounded-lg text-center">
+                <span className="text-[9px] uppercase font-bold text-[#6a7d92] block">🔍 Fase 1: Triagem</span>
+                <span className="text-xs font-mono font-bold text-amber-400">15% do Tempo</span>
+              </div>
+              <div className="bg-[#0b0e14] border border-[#222d3a] px-3 py-2 rounded-lg text-center">
+                <span className="text-[9px] uppercase font-bold text-[#6a7d92] block">💧 Fase 2: Drenagem</span>
+                <span className="text-xs font-mono font-bold text-sky-400">65% do Tempo</span>
+              </div>
+              <div className="bg-[#0b0e14] border border-[#222d3a] px-3 py-2 rounded-lg text-center">
+                <span className="text-[9px] uppercase font-bold text-[#6a7d92] block">♻️ Fase 3: Segregação</span>
+                <span className="text-xs font-mono font-bold text-emerald-400">20% do Tempo</span>
+              </div>
+            </div>
+          </div>
+
           {(() => {
             const filteredDespejoRows = filterHistoryForUser<DespejoRow>(despejoRows, user);
             const grouped = filteredDespejoRows.reduce((acc, r) => {
@@ -544,37 +586,72 @@ export default function DespejoPanel({ user, empresa }: DespejoPanelProps) {
 
                   {isOpen && (
                     <div className="overflow-x-auto">
-                      <table className="w-full text-left border-collapse text-xs min-w-[640px]">
+                      <table className="w-full text-left border-collapse text-xs min-w-[780px]">
                         <thead>
                           <tr className="bg-[#07090d] border-b border-[#222d3a]">
                             <th className="p-3 text-[#6a7d92] uppercase font-bold tracking-wider">Embalagem</th>
                             <th className="p-3 text-[#6a7d92] uppercase font-bold tracking-wider text-center">SKUs</th>
-                            <th className="p-3 text-[#6a7d92] uppercase font-bold tracking-wider">Início</th>
-                            <th className="p-3 text-[#6a7d92] uppercase font-bold tracking-wider">Fim</th>
-                            <th className="p-3 text-[#6a7d92] uppercase font-bold tracking-wider">Duração</th>
+                            <th className="p-3 text-[#6a7d92] uppercase font-bold tracking-wider">Início / Fim</th>
+                            <th className="p-3 text-[#6a7d92] uppercase font-bold tracking-wider">Duração Total</th>
+                            <th className="p-3 text-[#6a7d92] uppercase font-bold tracking-wider">
+                              <span className="text-amber-400">⏱️ Tempos Ilustrativos por Fase</span>
+                            </th>
                             <th className="p-3 text-[#6a7d92] uppercase font-bold tracking-wider">Resultado</th>
                             <th className="p-3 text-[#6a7d92] uppercase font-bold tracking-wider text-right">Ação</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-[#222d3a]">
-                          {rows.map((r, i) => (
-                            <tr key={r._docId || i} className="hover:bg-[#151b23]/30">
-                              <td className="p-3 font-semibold text-[#ef4444]">{r.embalagem}</td>
-                              <td className="p-3 text-center font-bold">{r.quantidade}</td>
-                              <td className="p-3 font-mono">{r.inicio}</td>
-                              <td className="p-3 font-mono">{r.fim}</td>
-                              <td className="p-3 font-mono text-snow font-bold">{r.tempo}</td>
-                              <td className={`p-3 font-sans font-black ${r.resultado.includes('BATIDA') ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>{r.resultado}</td>
-                              <td className="p-3 text-right">
-                                <button 
-                                  onClick={() => handleDelete(r._docId)}
-                                  className="py-1 px-2.5 bg-[#ef4444]/10 border border-[#ef4444]/20 hover:bg-[#ef4444] text-[#fca5a5] hover:text-white rounded-md text-[10px] font-bold cursor-pointer"
-                                >
-                                  ✕
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
+                          {rows.map((r, i) => {
+                            const tempos = elaborarTemposIlustrativosOperacao(r.quantidade, r.embalagem, r.tempo);
+                            return (
+                              <React.Fragment key={r._docId || i}>
+                                <tr className="hover:bg-[#151b23]/30 transition-colors">
+                                  <td className="p-3 font-semibold text-[#ef4444]">
+                                    {r.embalagem}
+                                    {r.operador && <span className="block text-[10px] text-[#6a7d92] font-mono">Op: {r.operador}</span>}
+                                  </td>
+                                  <td className="p-3 text-center font-bold font-mono">{r.quantidade} cx</td>
+                                  <td className="p-3 font-mono text-[#6a7d92]">{r.inicio} - {r.fim}</td>
+                                  <td className="p-3 font-mono text-snow font-bold">{r.tempo}</td>
+                                  <td className="p-3 font-mono">
+                                    <div className="flex flex-col gap-1">
+                                      <div className="flex items-center gap-1.5 text-[10px]">
+                                        <span className="text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded font-bold" title="Fase 1: Triagem & Checagem">
+                                          🔍 {tempos.tempoTriagemStr}
+                                        </span>
+                                        <span className="text-sky-400 bg-sky-400/10 px-1.5 py-0.5 rounded font-bold" title="Fase 2: Drenagem & Esvaziamento">
+                                          💧 {tempos.tempoDrenagemStr}
+                                        </span>
+                                        <span className="text-emerald-400 bg-emerald-400/10 px-1.5 py-0.5 rounded font-bold" title="Fase 3: Segregação & Compactação">
+                                          ♻️ {tempos.tempoSegregacaoStr}
+                                        </span>
+                                      </div>
+                                      <div className="flex items-center gap-2 text-[9px] text-[#6a7d92]">
+                                        <span>⚡ {tempos.ritmoSkusPorHora} SKUs/h</span>
+                                        <span>•</span>
+                                        <span>💧 {tempos.vazaoHlPorMinuto} HL/min</span>
+                                        <span>•</span>
+                                        <span className={tempos.desvioPositivo ? 'text-emerald-400' : 'text-rose-400'}>
+                                          {tempos.desvioPadraoStr} vs meta
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </td>
+                                  <td className={`p-3 font-sans font-black ${r.resultado.includes('BATIDA') ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>
+                                    {r.resultado}
+                                  </td>
+                                  <td className="p-3 text-right">
+                                    <button 
+                                      onClick={() => handleDelete(r._docId)}
+                                      className="py-1 px-2.5 bg-[#ef4444]/10 border border-[#ef4444]/20 hover:bg-[#ef4444] text-[#fca5a5] hover:text-white rounded-md text-[10px] font-bold cursor-pointer"
+                                    >
+                                      ✕
+                                    </button>
+                                  </td>
+                                </tr>
+                              </React.Fragment>
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>
