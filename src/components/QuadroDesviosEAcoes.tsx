@@ -40,7 +40,8 @@ import {
   Play,
   Calendar,
   RotateCcw,
-  Users
+  Users,
+  EyeOff
 } from 'lucide-react';
 import { LISTA_COLABORADORES_OFICIAIS } from './RankingModule';
 import { ManualInstrucaoCard } from './ManualInstrucaoCard';
@@ -213,6 +214,10 @@ export const QuadroDesviosEAcoes: React.FC<QuadroDesviosEAcoesProps> = ({
   const [filterStatus, setFilterStatus] = useState<string>('todos');
   const [processFilter, setProcessFilter] = useState<string>('todos');
 
+  // Collaborator Workstation Filter & Hide states
+  const [colabStatusFilter, setColabStatusFilter] = useState<'pendente' | 'andamento' | 'concluido' | 'todos'>('pendente');
+  const [isActionsCollapsed, setIsActionsCollapsed] = useState<boolean>(false);
+
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Operator comment input state for Personal Actions
@@ -266,39 +271,6 @@ export const QuadroDesviosEAcoes: React.FC<QuadroDesviosEAcoesProps> = ({
         tipoAcao: 'Corretiva',
         prioridade: 'Alta',
         contramedida: 'Realizar kitting com dupla checagem visual dos vasilhames retornáveis antes da expedição.',
-        aprovacaoGestor: 'Aprovado',
-        aceiteColaborador: false
-      },
-      {
-        id: `AC_OVERDUE_${Date.now()}_2`,
-        data: new Date(Date.now() - 5 * 86400000).toLocaleDateString('pt-BR'),
-        dataISO: yesterdayStr,
-        hora: '10:30',
-        processo: 'EFC',
-        setor: 'Expedição / Carregamento',
-        colaboradorResponsavel: userName,
-        indicador: 'Eficiência de Carga (EFC %)',
-        meta: '≥ 96.0%',
-        resultadoObtido: '94.2%',
-        desvioEncontrado: 'Atraso na montagem e conferencia do palete de Brahma 350ml',
-        causaRaiz: 'Mão de Obra',
-        status: 'Pendente',
-        responsavelTratativa: 'Coordenador de Operações',
-        prazo: yesterdayStr, // OVERDUE!
-        prazoOriginal: yesterdayStr,
-        comentarioOperador: '',
-        abertoPor: `Coordenador de Operações`,
-        dataAbertura: `${yesterdayStr} 10:30`,
-        historicoAlteracoes: [{
-          dataHora: new Date(Date.now() - 5 * 86400000).toLocaleString('pt-BR'),
-          usuario: 'Coordenador de Operações',
-          alteracao: `Ação com prazo expirado em ${yesterdayStr}.`
-        }],
-        simulado: false,
-        criadoEm: new Date(Date.now() - 5 * 86400000).toISOString(),
-        tipoAcao: 'Corretiva',
-        prioridade: 'Alta',
-        contramedida: 'Adequação imediata do mapa de picking e reabastecimento aéreo.',
         aprovacaoGestor: 'Aprovado',
         aceiteColaborador: false
       },
@@ -456,12 +428,19 @@ export const QuadroDesviosEAcoes: React.FC<QuadroDesviosEAcoesProps> = ({
     return PLATFORM_DEVIATIONS.length + demands.length;
   }, [demands]);
 
-  // Actions assigned specifically to the current logged-in user & sector
+  // Actions assigned specifically to the current logged-in user & sector (Só de hoje pra frente - sem ações retroativas passadas)
   const minhasAcoes = useMemo(() => {
     const uNameLower = userName.toLowerCase();
     const uSectorLower = (user.cargo || user.papel || '').toLowerCase();
+    const todayISO = new Date().toISOString().split('T')[0];
 
     return acoes.filter(a => {
+      // Exclude past retroactive actions prior to today for colaboradores
+      const actionDate = a.prazo || a.dataISO || a.dataAbertura || '';
+      if (actionDate && actionDate < todayISO && a.status === 'Pendente') {
+        return false;
+      }
+
       const matchColab = a.colaboradorResponsavel.toLowerCase().includes(uNameLower) ||
         uNameLower.includes(a.colaboradorResponsavel.toLowerCase()) ||
         (a.responsavelTratativa && a.responsavelTratativa.toLowerCase().includes(uNameLower)) ||
@@ -475,9 +454,51 @@ export const QuadroDesviosEAcoes: React.FC<QuadroDesviosEAcoesProps> = ({
         uSectorLower.includes(a.processo.toLowerCase())
       );
 
-      return matchColab || matchSetor || a.id.startsWith('AC_USER_') || a.id.startsWith('AC_ALERT_') || a.id.startsWith('AC_OVERDUE_');
+      return matchColab || matchSetor || a.id.startsWith('AC_USER_') || a.id.startsWith('AC_ALERT_');
     });
   }, [acoes, userName, user.cargo, user.papel]);
+
+  // Status counts for collaborator actions
+  const colabCounts = useMemo(() => {
+    let pendentes = 0;
+    let andamento = 0;
+    let concluidas = 0;
+
+    minhasAcoes.forEach(a => {
+      const isOverdue = checkIsOverdue(a.prazo, a.status);
+      if (a.status === 'Concluído') {
+        concluidas++;
+      } else if (a.status === 'Em Andamento' && !isOverdue) {
+        andamento++;
+      } else {
+        pendentes++;
+      }
+    });
+
+    return {
+      pendentes,
+      andamento,
+      concluidas,
+      total: minhasAcoes.length
+    };
+  }, [minhasAcoes]);
+
+  // Filtered collaborator actions according to colabStatusFilter (Default: 'pendente' -> showing ONLY PENDENTES)
+  const minhasAcoesExibicao = useMemo(() => {
+    return minhasAcoes.filter(a => {
+      const isOverdue = checkIsOverdue(a.prazo, a.status);
+      if (colabStatusFilter === 'pendente') {
+        return a.status === 'Pendente' || isOverdue;
+      }
+      if (colabStatusFilter === 'andamento') {
+        return a.status === 'Em Andamento' && !isOverdue;
+      }
+      if (colabStatusFilter === 'concluido') {
+        return a.status === 'Concluído';
+      }
+      return true;
+    });
+  }, [minhasAcoes, colabStatusFilter]);
 
   // Detect pending action assigned to current user for the instant Alert Banner/Modal
   const pendingUserAlertAction = useMemo(() => {
@@ -1119,68 +1140,184 @@ export const QuadroDesviosEAcoes: React.FC<QuadroDesviosEAcoesProps> = ({
       {/* ==================================================================== */}
       {activeTab === 'minhas_acoes' && (
         <div className="space-y-4">
-          <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
+          {/* HEADER DA SEÇÃO DE AÇÕES DO COLABORADOR */}
+          <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 max-w-full overflow-hidden">
+            <div className="flex items-center gap-3 min-w-0">
               <User className="w-6 h-6 text-amber-400 shrink-0" />
-              <div>
-                <strong className="text-xs text-white block uppercase tracking-wider">
+              <div className="min-w-0">
+                <strong className="text-xs text-white block uppercase tracking-wider truncate">
                   Ações Corretivas Direcionadas a Você ({userName})
                 </strong>
-                <p className="text-[11px] text-slate-300">
+                <p className="text-[11px] text-slate-300 line-clamp-2">
                   Pegue suas ações para dar andamento, inicie o atendimento, justifique atrasos e reagende se necessário.
                 </p>
               </div>
             </div>
 
-            <span className="text-xs font-mono font-bold text-amber-300 bg-amber-500/20 px-3 py-1 rounded-xl border border-amber-500/30 shrink-0">
-              {minhasAcoes.length} Ação(ões) Atribuída(s)
-            </span>
+            <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto flex-wrap">
+              <span className="text-xs font-mono font-bold text-amber-300 bg-amber-500/20 px-3 py-1 rounded-xl border border-amber-500/30">
+                {colabCounts.pendentes} Pendente(s) / {colabCounts.total} Total
+              </span>
+
+              {/* BOTÃO PARA OCULTAR / EXIBIR AÇÕES */}
+              <button
+                type="button"
+                onClick={() => setIsActionsCollapsed(prev => !prev)}
+                className="px-3 py-1 rounded-xl border bg-slate-900/80 hover:bg-slate-800 text-slate-300 hover:text-white text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer border-slate-700 shadow-xs"
+                title={isActionsCollapsed ? "Mostrar Seção de Ações" : "Ocultar Seção de Ações"}
+              >
+                {isActionsCollapsed ? (
+                  <>
+                    <Eye className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Mostrar Ações</span>
+                  </>
+                ) : (
+                  <>
+                    <EyeOff className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Ocultar</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
 
-          {minhasAcoes.length === 0 ? (
-            <div className="p-8 text-center bg-[#111a30] rounded-2xl border border-slate-800 space-y-2">
-              <CheckCircle2 className="w-10 h-10 text-emerald-400 mx-auto" />
-              <strong className="text-sm text-white block font-black">Nenhuma Ação Atribuída no Momento</strong>
-              <p className="text-xs text-slate-400 max-w-md mx-auto">
-                Você não possui ações pendentes atribuídas ao seu usuário no momento.
-              </p>
+          {/* SE ESTIVER OCULTADO PELO USUÁRIO */}
+          {isActionsCollapsed ? (
+            <div className="p-3.5 bg-[#111a30] border border-slate-800 rounded-2xl flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-xs text-slate-300">
+                <EyeOff className="w-4 h-4 text-slate-400 shrink-0" />
+                <span>Seção de Ações Corretivas Ocultada ({colabCounts.pendentes} pendente(s))</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsActionsCollapsed(false)}
+                className="px-3 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs rounded-xl transition-all cursor-pointer shadow-sm uppercase tracking-wider"
+              >
+                Expandir
+              </button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {minhasAcoes.map(acao => {
-                const isOverdue = checkIsOverdue(acao.prazo, acao.status);
+            <>
+              {/* FILTROS RÁPIDOS DE STATUS COM ÍCONES ESPECÍFICOS */}
+              <div className="flex flex-wrap items-center gap-2 bg-[#0d1627] p-1.5 rounded-2xl border border-slate-800/80 max-w-full">
+                <span className="text-[10px] font-black uppercase text-slate-400 px-2 hidden sm:inline">Visualizar:</span>
+                
+                {/* 1. PENDENTES (DEFAULT) */}
+                <button
+                  type="button"
+                  onClick={() => setColabStatusFilter('pendente')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-extrabold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5 border ${
+                    colabStatusFilter === 'pendente'
+                      ? 'bg-amber-500/25 text-amber-300 border-amber-500/60 shadow-xs'
+                      : 'text-slate-400 border-transparent hover:text-white hover:bg-slate-800/50'
+                  }`}
+                  title="Exibir apenas ações pendentes"
+                >
+                  <Clock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                  <span>Pendentes ({colabCounts.pendentes})</span>
+                </button>
 
-                return (
-                  <div 
-                    key={acao.id}
-                    className={`p-5 bg-[#111a30] border rounded-2xl space-y-4 flex flex-col justify-between transition-all shadow-md ${
-                      isOverdue 
-                        ? 'border-rose-500/60 bg-[#161224]' 
-                        : acao.status === 'Concluído' 
-                        ? 'border-emerald-500/40 bg-[#0d1726]' 
-                        : 'border-amber-500/40'
-                    }`}
-                  >
-                    <div className="space-y-3">
-                      
-                      {/* HEADER CARD */}
-                      <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                        <span className="text-[10px] font-mono font-bold text-amber-300 px-2 py-0.5 rounded bg-amber-500/20 border border-amber-500/30">
-                          {acao.processo}
-                        </span>
+                {/* 2. EM ANDAMENTO */}
+                <button
+                  type="button"
+                  onClick={() => setColabStatusFilter('andamento')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-extrabold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5 border ${
+                    colabStatusFilter === 'andamento'
+                      ? 'bg-sky-500/25 text-sky-300 border-sky-500/60 shadow-xs'
+                      : 'text-slate-400 border-transparent hover:text-white hover:bg-slate-800/50'
+                  }`}
+                  title="Exibir apenas ações em andamento"
+                >
+                  <Zap className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                  <span>Em Andamento ({colabCounts.andamento})</span>
+                </button>
 
-                        <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full ${
-                          acao.status === 'Concluído'
-                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                            : isOverdue
-                            ? 'bg-rose-600 text-white animate-pulse'
+                {/* 3. CONCLUÍDAS */}
+                <button
+                  type="button"
+                  onClick={() => setColabStatusFilter('concluido')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-extrabold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5 border ${
+                    colabStatusFilter === 'concluido'
+                      ? 'bg-emerald-500/25 text-emerald-300 border-emerald-500/60 shadow-xs'
+                      : 'text-slate-400 border-transparent hover:text-white hover:bg-slate-800/50'
+                  }`}
+                  title="Exibir apenas ações concluídas"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <span>Concluídas ({colabCounts.concluidas})</span>
+                </button>
+
+                {/* 4. TODAS */}
+                <button
+                  type="button"
+                  onClick={() => setColabStatusFilter('todos')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-extrabold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5 border ${
+                    colabStatusFilter === 'todos'
+                      ? 'bg-slate-800 text-white border-slate-600 shadow-xs'
+                      : 'text-slate-400 border-transparent hover:text-white hover:bg-slate-800/50'
+                  }`}
+                  title="Exibir todas as ações"
+                >
+                  <ListCheck className="w-3.5 h-3.5 text-slate-300 shrink-0" />
+                  <span>Todas ({colabCounts.total})</span>
+                </button>
+              </div>
+
+              {minhasAcoesExibicao.length === 0 ? (
+                <div className="p-8 text-center bg-[#111a30] rounded-2xl border border-slate-800 space-y-2">
+                  <CheckCircle2 className="w-10 h-10 text-emerald-400 mx-auto" />
+                  <strong className="text-sm text-white block font-black">Nenhuma Ação nesta Categoria</strong>
+                  <p className="text-xs text-slate-400 max-w-md mx-auto">
+                    Não há ações salvas no status "{colabStatusFilter.toUpperCase()}" para o seu perfil.
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {minhasAcoesExibicao.map(acao => {
+                    const isOverdue = checkIsOverdue(acao.prazo, acao.status);
+
+                    return (
+                      <div 
+                        key={acao.id}
+                        className={`p-4 sm:p-5 bg-[#111a30] border rounded-2xl space-y-4 flex flex-col justify-between transition-all shadow-md max-w-full overflow-hidden ${
+                          isOverdue 
+                            ? 'border-rose-500/60 bg-[#161224]' 
+                            : acao.status === 'Concluído' 
+                            ? 'border-emerald-500/40 bg-[#0d1726]' 
                             : acao.status === 'Em Andamento'
-                            ? 'bg-sky-500/20 text-sky-300 border border-sky-500/30'
-                            : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                        }`}>
-                          {isOverdue ? 'ATRASADO / VENCIDO' : acao.status}
-                        </span>
-                      </div>
+                            ? 'border-sky-500/40'
+                            : 'border-amber-500/40'
+                        }`}
+                      >
+                        <div className="space-y-3 min-w-0">
+                          
+                          {/* HEADER CARD */}
+                          <div className="flex items-center justify-between gap-2 border-b border-slate-800 pb-2 flex-wrap sm:flex-nowrap">
+                            <span className="text-[10px] font-mono font-bold text-amber-300 px-2 py-0.5 rounded bg-amber-500/20 border border-amber-500/30 truncate">
+                              {acao.processo}
+                            </span>
+
+                            <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full flex items-center gap-1.5 shrink-0 ${
+                              acao.status === 'Concluído'
+                                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                                : isOverdue
+                                ? 'bg-rose-600 text-white animate-pulse'
+                                : acao.status === 'Em Andamento'
+                                ? 'bg-sky-500/20 text-sky-300 border border-sky-500/30'
+                                : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                            }`}>
+                              {acao.status === 'Concluído' ? (
+                                <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0" />
+                              ) : isOverdue ? (
+                                <AlertTriangle className="w-3 h-3 text-white shrink-0" />
+                              ) : acao.status === 'Em Andamento' ? (
+                                <Zap className="w-3 h-3 text-sky-400 shrink-0" />
+                              ) : (
+                                <Clock className="w-3 h-3 text-amber-400 shrink-0" />
+                              )}
+                              <span>{isOverdue ? 'ATRASADO / VENCIDO' : acao.status}</span>
+                            </span>
+                          </div>
 
                       {/* DETALHES DA AÇÃO */}
                       <div>
@@ -1298,6 +1435,8 @@ export const QuadroDesviosEAcoes: React.FC<QuadroDesviosEAcoesProps> = ({
                 );
               })}
             </div>
+          )}
+            </>
           )}
         </div>
       )}

@@ -81,7 +81,7 @@ interface RankingModuleProps {
 
 export default function RankingModule({ user, initialSetor = 'Visão Geral (Metas vs Reais)', onNavigate }: RankingModuleProps) {
   const [activeSetor, setActiveSetor] = useState<string>(initialSetor || 'Visão Geral (Metas vs Reais)');
-  const [activeFuncao, setActiveFuncao] = useState<'Todos' | 'Operador' | 'Ajudante' | 'Empilhador'>('Todos');
+  const [activeFuncao, setActiveFuncao] = useState<'Todos' | 'Conferente' | 'Ajudante' | 'Empilhador'>('Todos');
   const [searchTerm, setSearchTerm] = useState('');
 
   const empresaData = useEmpresaData();
@@ -1209,7 +1209,7 @@ export default function RankingModule({ user, initialSetor = 'Visão Geral (Meta
               <span className="text-xs text-slate-400 font-bold uppercase tracking-wider flex items-center gap-1">
                 <Filter className="w-3.5 h-3.5 text-indigo-400" /> Grupo de Função:
               </span>
-              {(['Todos', 'Operador', 'Ajudante', 'Empilhador'] as const).map(f => (
+              {(['Todos', 'Conferente', 'Ajudante', 'Empilhador'] as const).map(f => (
                 <button
                   key={f}
                   onClick={() => setActiveFuncao(f)}

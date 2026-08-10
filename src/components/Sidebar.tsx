@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Usuario, Empresa } from '../types';
 import { BrandLogo } from './BrandLogo';
-import { isPanelAllowedForUser } from '../utils/permissions';
+import { isPanelAllowedForUser, getUserRoleType, getUserOperationPanel } from '../utils/permissions';
 import { CATEGORY_DEFINITIONS } from './CategoryIndexPanel';
 import { 
   Zap, 
@@ -157,14 +157,14 @@ export default function Sidebar({
         />
       )}
 
-      {/* Hamburger button for small screens */}
-      {!mobileOpen && (
+      {/* Hamburger button for small screens - rendered for admin users */}
+      {!mobileOpen && getUserRoleType(user) === 'admin' && (
         <button 
           onClick={() => setMobileOpen(true)}
           className={`fixed top-2 left-3 z-40 w-9 h-9 rounded-xl backdrop-blur-md text-sm flex items-center justify-center md:hidden cursor-pointer shadow-md transition-all border ${
             theme === 'dark'
               ? 'bg-[#11151c]/90 border-[#222d3a] text-sky-400'
-              : 'bg-white/90 border-slate-200 text-[#1e56f0] hover:bg-slate-50'
+              : 'bg-white/90 border-slate-200 text-sky-600 hover:bg-slate-50'
           }`}
           title="Abrir Menu Lateral"
         >
@@ -357,7 +357,7 @@ export default function Sidebar({
               {/* ROOT NAVIGATION TAB: WORKSTATION */}
               <button
                 onClick={() => handleCategoryClick('visao-geral')}
-                className={`w-full text-left p-3 rounded-xl border transition-all duration-200 cursor-pointer flex items-center gap-3 relative overflow-hidden group mb-2.5 ${
+                className={`w-full text-left p-3 rounded-xl border transition-all duration-200 cursor-pointer flex items-center gap-3 relative overflow-hidden group mb-2 ${
                   activeTab === 'visao-geral' || activeTab === 'dashboard'
                     ? theme === 'dark'
                       ? 'bg-gradient-to-r from-[#1e56f0]/30 to-[#1e56f0]/10 border-[#1e56f0] text-white shadow-lg'
@@ -399,8 +399,8 @@ export default function Sidebar({
 
               <div className="w-full h-[1px] bg-slate-200 dark:bg-[#1c2530] my-2" />
 
-              {/* The 5 Categories List */}
-              {mainCategories.map((cat) => {
+              {/* The Categories List - Displayed for ADMIN / SUPERVISOR profiles */}
+              {(getUserRoleType(user) === 'admin') && mainCategories.map((cat) => {
               const active = isCategoryActive(cat);
               return (
                 <button

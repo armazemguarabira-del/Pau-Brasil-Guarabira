@@ -956,83 +956,88 @@ export default function DashboardOverview({
           Desvios e Ações
         </button>
 
-        <button
-          type="button"
-          onClick={() => setWorkstationTab('matriz')}
-          className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap shadow-sm ${
-            workstationTab === 'matriz'
-              ? 'bg-[#032b5e] text-white border-2 border-sky-500 shadow-md ring-2 ring-sky-500/20'
-              : 'bg-[#0b1222] text-slate-400 hover:text-white border border-slate-800 hover:border-slate-700'
-          }`}
-        >
-          <Target className="w-4 h-4 text-sky-400" />
-          Matriz SDPO
-        </button>
+        {/* GUIAS EXECUTIVAS — EXIBIDAS EXCLUSIVAMENTE NA VISÃO EXECUTIVA */}
+        {viewMode === 'executiva' && (
+          <>
+            <button
+              type="button"
+              onClick={() => setWorkstationTab('matriz')}
+              className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap shadow-sm ${
+                workstationTab === 'matriz'
+                  ? 'bg-[#032b5e] text-white border-2 border-sky-500 shadow-md ring-2 ring-sky-500/20'
+                  : 'bg-[#0b1222] text-slate-400 hover:text-white border border-slate-800 hover:border-slate-700'
+              }`}
+            >
+              <Target className="w-4 h-4 text-sky-400" />
+              Matriz SDPO
+            </button>
 
-        <button
-          type="button"
-          onClick={() => setWorkstationTab('agenda')}
-          className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap shadow-sm ${
-            workstationTab === 'agenda'
-              ? 'bg-[#032b5e] text-white border-2 border-blue-500 shadow-md ring-2 ring-blue-500/20'
-              : 'bg-[#0b1222] text-slate-400 hover:text-white border border-slate-800 hover:border-slate-700'
-          }`}
-        >
-          <Calendar className="w-4 h-4 text-blue-400" />
-          Agenda Executiva
-        </button>
+            <button
+              type="button"
+              onClick={() => setWorkstationTab('agenda')}
+              className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap shadow-sm ${
+                workstationTab === 'agenda'
+                  ? 'bg-[#032b5e] text-white border-2 border-blue-500 shadow-md ring-2 ring-blue-500/20'
+                  : 'bg-[#0b1222] text-slate-400 hover:text-white border border-slate-800 hover:border-slate-700'
+              }`}
+            >
+              <Calendar className="w-4 h-4 text-blue-400" />
+              Agenda Executiva
+            </button>
 
-        <button
-          type="button"
-          onClick={() => setWorkstationTab('diario_bordo')}
-          className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap shadow-sm ${
-            workstationTab === 'diario_bordo'
-              ? 'bg-[#032b5e] text-white border-2 border-amber-500 shadow-md ring-2 ring-amber-500/20'
-              : 'bg-[#0b1222] text-slate-400 hover:text-white border border-slate-800 hover:border-slate-700'
-          }`}
-        >
-          <BookOpen className="w-4 h-4 text-amber-400" />
-          Diário de Bordo
-        </button>
+            <button
+              type="button"
+              onClick={() => setWorkstationTab('diario_bordo')}
+              className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap shadow-sm ${
+                workstationTab === 'diario_bordo'
+                  ? 'bg-[#032b5e] text-white border-2 border-amber-500 shadow-md ring-2 ring-amber-500/20'
+                  : 'bg-[#0b1222] text-slate-400 hover:text-white border border-slate-800 hover:border-slate-700'
+              }`}
+            >
+              <BookOpen className="w-4 h-4 text-amber-400" />
+              Diário de Bordo
+            </button>
 
-        <button
-          type="button"
-          onClick={() => setWorkstationTab('reunioes')}
-          className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap shadow-sm ${
-            workstationTab === 'reunioes'
-              ? 'bg-[#032b5e] text-white border-2 border-indigo-500 shadow-md ring-2 ring-indigo-500/20'
-              : 'bg-[#0b1222] text-slate-400 hover:text-white border border-slate-800 hover:border-slate-700'
-          }`}
-        >
-          <Users className="w-4 h-4 text-indigo-400" />
-          Reuniões e Treinamentos
-        </button>
+            <button
+              type="button"
+              onClick={() => setWorkstationTab('reunioes')}
+              className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap shadow-sm ${
+                workstationTab === 'reunioes'
+                  ? 'bg-[#032b5e] text-white border-2 border-indigo-500 shadow-md ring-2 ring-indigo-500/20'
+                  : 'bg-[#0b1222] text-slate-400 hover:text-white border border-slate-800 hover:border-slate-700'
+              }`}
+            >
+              <Users className="w-4 h-4 text-indigo-400" />
+              Reuniões e Treinamentos
+            </button>
 
-        <button
-          type="button"
-          onClick={() => setWorkstationTab('fluxograma')}
-          className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap shadow-sm ${
-            workstationTab === 'fluxograma'
-              ? 'bg-[#032b5e] text-white border-2 border-teal-500 shadow-md ring-2 ring-teal-500/20'
-              : 'bg-[#0b1222] text-slate-400 hover:text-white border border-slate-800 hover:border-slate-700'
-          }`}
-        >
-          <GitFork className="w-4 h-4 text-teal-400" />
-          Fluxograma de Demandas
-        </button>
+            <button
+              type="button"
+              onClick={() => setWorkstationTab('fluxograma')}
+              className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap shadow-sm ${
+                workstationTab === 'fluxograma'
+                  ? 'bg-[#032b5e] text-white border-2 border-teal-500 shadow-md ring-2 ring-teal-500/20'
+                  : 'bg-[#0b1222] text-slate-400 hover:text-white border border-slate-800 hover:border-slate-700'
+              }`}
+            >
+              <GitFork className="w-4 h-4 text-teal-400" />
+              Fluxograma de Demandas
+            </button>
 
-        <button
-          type="button"
-          onClick={() => setWorkstationTab('wlp')}
-          className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap shadow-sm ${
-            workstationTab === 'wlp'
-              ? 'bg-[#032b5e] text-white border-2 border-amber-500 shadow-md ring-2 ring-amber-500/20'
-              : 'bg-[#0b1222] text-slate-400 hover:text-white border border-slate-800 hover:border-slate-700'
-          }`}
-        >
-          <BarChart3 className="w-4 h-4 text-amber-400" />
-          Dashboard WLP
-        </button>
+            <button
+              type="button"
+              onClick={() => setWorkstationTab('wlp')}
+              className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap shadow-sm ${
+                workstationTab === 'wlp'
+                  ? 'bg-[#032b5e] text-white border-2 border-amber-500 shadow-md ring-2 ring-amber-500/20'
+                  : 'bg-[#0b1222] text-slate-400 hover:text-white border border-slate-800 hover:border-slate-700'
+              }`}
+            >
+              <BarChart3 className="w-4 h-4 text-amber-400" />
+              Dashboard WLP
+            </button>
+          </>
+        )}
       </div>
 
       {/* TELA DA GUIA WLP */}
@@ -1466,14 +1471,14 @@ export default function DashboardOverview({
                     ))}
                 </div>
 
-                {/* TOP 5 OPERADORES & CONFERENTES */}
+                {/* TOP 5 CONFERENTES */}
                 <div className="p-3 bg-[#0b1222] rounded-xl border border-slate-800 space-y-2">
                   <span className="text-[10px] text-emerald-400 font-black uppercase tracking-wider block border-b border-slate-800 pb-1 flex items-center justify-between">
-                    <span>Top 5 Operadores</span>
-                    <span className="text-[9px] text-slate-500 font-normal">Operador & Conferente</span>
+                    <span>Top 5 Conferentes</span>
+                    <span className="text-[9px] text-slate-500 font-normal">Conferente de Armazém</span>
                   </span>
                   {CADASTRO_MESTRE_COLABORADORES
-                    .filter(c => c.funcaoGroup === 'Operador')
+                    .filter(c => c.funcaoGroup === 'Operador' || c.cargo.toUpperCase().includes('CONFERENTE') || c.cargo.toUpperCase().includes('OPERADOR'))
                     .sort((a, b) => b.percentualMeta - a.percentualMeta)
                     .slice(0, 5)
                     .map((item, idx) => (

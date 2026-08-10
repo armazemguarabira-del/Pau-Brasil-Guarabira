@@ -231,6 +231,27 @@ export function isPanelAllowedForUser(
     return true;
   }
 
+  // ALWAYS ALLOW the user's primary operation panel from getUserOperationPanel
+  const primaryOpPanel = getUserOperationPanel(user);
+  if (panelId === primaryOpPanel) {
+    return true;
+  }
+
+  // ALL OPERATIONAL WORKSTATION PANELS ARE ALLOWED FOR LOGGED-IN OPERATORS
+  const isWorkstationPanel = [
+    'empilhador',
+    'ajudante',
+    'conferente',
+    'repack',
+    'despejo',
+    'quebras',
+    'refugo'
+  ].includes(panelId);
+
+  if (isWorkstationPanel) {
+    return true;
+  }
+
   // EMPILHADORES: Access to Operação Empilhador + Dashboards
   if (roleType === 'empilhador') {
     const allowedForEmpilhador = ['empilhador', 'picking-dashboard', 'armazem', 'logistica-dashboard', 'tmr-dashboard', 'simulador-ressuprimento'];

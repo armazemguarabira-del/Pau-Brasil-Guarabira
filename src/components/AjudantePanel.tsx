@@ -23,10 +23,11 @@ import {
   TrendingUp,
   ShieldCheck,
   ExternalLink,
-  Truck
+  Truck,
+  Coffee,
+  Pencil
 } from 'lucide-react';
 import { add5PorquesDemand } from '../utils/fiveWhysManager';
-import { OperationalNotificationBell } from './OperationalNotificationBell';
 
 interface AjudantePanelProps {
   user: Usuario;
@@ -38,6 +39,8 @@ interface ShiftHistoryRecord {
   id: string;
   dataStr: string;
   horaInicio: string;
+  horaInicioIntervalo?: string;
+  horaFimIntervalo?: string;
   horaFim: string;
   duracaoTotal: string;
   fiveSSubmitted: boolean;
@@ -76,6 +79,40 @@ export default function AjudantePanel({ user, empresa, theme = 'dark' }: Ajudant
       }
     } catch (e) {}
     return '';
+  });
+
+  // Interval / Lunch State
+  const [onBreak, setOnBreak] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem(`${shiftStorageKey}_break`);
+      if (saved) return JSON.parse(saved).onBreak || false;
+    } catch (e) {}
+    return false;
+  });
+
+  const [breakStartTime, setBreakStartTime] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem(`${shiftStorageKey}_break`);
+      if (saved) return JSON.parse(saved).breakStartTime || '';
+    } catch (e) {}
+    return '';
+  });
+
+  const [breakEndTime, setBreakEndTime] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem(`${shiftStorageKey}_break`);
+      if (saved) return JSON.parse(saved).breakEndTime || '';
+    } catch (e) {}
+    return '';
+  });
+
+  // Point Correction Modal State
+  const [editingRecord, setEditingRecord] = useState<ShiftHistoryRecord | null>(null);
+  const [editForm, setEditForm] = useState({
+    horaInicio: '',
+    horaInicioIntervalo: '',
+    horaFimIntervalo: '',
+    horaFim: ''
   });
 
   // 5S Modal & State
@@ -126,13 +163,21 @@ export default function AjudantePanel({ user, empresa, theme = 'dark' }: Ajudant
     return [];
   });
 
-  // Sync Shift State to LocalStorage
+  // Sync Shift & Break State to LocalStorage
   useEffect(() => {
     localStorage.setItem(shiftStorageKey, JSON.stringify({
       shiftStarted,
       shiftStartTime
     }));
   }, [shiftStarted, shiftStartTime, shiftStorageKey]);
+
+  useEffect(() => {
+    localStorage.setItem(`${shiftStorageKey}_break`, JSON.stringify({
+      onBreak,
+      breakStartTime,
+      breakEndTime
+    }));
+  }, [onBreak, breakStartTime, breakEndTime, shiftStorageKey]);
 
   useEffect(() => {
     localStorage.setItem(`${shiftStorageKey}_5s`, String(fiveSSubmitted));
@@ -165,12 +210,31 @@ export default function AjudantePanel({ user, empresa, theme = 'dark' }: Ajudant
 
   // Handle Shift Start
   const handleStartShift = () => {
-    const nowStr = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const nowStr = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     setShiftStarted(true);
     setShiftStartTime(nowStr);
+    setOnBreak(false);
+    setBreakStartTime('');
+    setBreakEndTime('');
     setFiveSSubmitted(false);
     setFiveSItems(prev => prev.map(i => ({ ...i, checked: false })));
     triggerToast(`🚀 Jornada da Operação Ajudante iniciada às ${nowStr}!`);
+  };
+
+  // Handle Break Start
+  const handleStartBreak = () => {
+    const nowStr = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    setOnBreak(true);
+    setBreakStartTime(nowStr);
+    triggerToast(`☕ Intervalo de Almoço/Pausa iniciado às ${nowStr}! Bom descanso.`);
+  };
+
+  // Handle Break End
+  const handleEndBreak = () => {
+    const nowStr = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    setOnBreak(false);
+    setBreakEndTime(nowStr);
+    triggerToast(`⚡ Retorno do intervalo às ${nowStr}! Bom trabalho.`);
   };
 
   // Handle Shift Finish Click
@@ -189,19 +253,29 @@ export default function AjudantePanel({ user, empresa, theme = 'dark' }: Ajudant
 
   // Complete Shift Finalization
   const finalizeShiftProcess = (fiveWhysFilled: boolean) => {
-    const nowStr = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const nowStr = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     const today = new Date().toLocaleDateString('pt-BR');
 
-    // Calculate duration
+    // Calculate duration (subtracting break if present)
     let durStr = '00:00:00';
+    let diffHrs = 7.33;
     if (shiftStartTime) {
       try {
         const [h1, m1] = shiftStartTime.split(':').map(Number);
         const [h2, m2] = nowStr.split(':').map(Number);
-        const diffMinutes = Math.max(0, (h2 * 60 + m2) - (h1 * 60 + m1));
-        const hrs = Math.floor(diffMinutes / 60);
-        const mins = diffMinutes % 60;
+        let totalMins = (h2 * 60 + m2) - (h1 * 60 + m1);
+
+        if (breakStartTime && breakEndTime) {
+          const [bh1, bm1] = breakStartTime.split(':').map(Number);
+          const [bh2, bm2] = breakEndTime.split(':').map(Number);
+          const breakMins = (bh2 * 60 + bm2) - (bh1 * 60 + bm1);
+          totalMins = Math.max(0, totalMins - Math.max(0, breakMins));
+        }
+
+        const hrs = Math.floor(totalMins / 60);
+        const mins = totalMins % 60;
         durStr = `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:00`;
+        diffHrs = parseFloat((totalMins / 60).toFixed(2)) || 7.33;
       } catch (e) {}
     }
 
@@ -209,6 +283,8 @@ export default function AjudantePanel({ user, empresa, theme = 'dark' }: Ajudant
       id: String(Date.now()),
       dataStr: today,
       horaInicio: shiftStartTime || '08:00',
+      horaInicioIntervalo: breakStartTime || undefined,
+      horaFimIntervalo: breakEndTime || undefined,
       horaFim: nowStr,
       duracaoTotal: durStr,
       fiveSSubmitted,
@@ -225,14 +301,90 @@ export default function AjudantePanel({ user, empresa, theme = 'dark' }: Ajudant
     const todayISO = new Date().toISOString().split('T')[0];
     const parts = todayISO.split('-');
     const mesAno = `${parts[1]}/${parts[0]}`;
-    let diffHrs = 7.33;
-    if (shiftStartTime) {
-      try {
-        const [h1, m1] = shiftStartTime.split(':').map(Number);
-        const [h2, m2] = nowStr.split(':').map(Number);
-        diffHrs = parseFloat(((Math.max(0, (h2 * 60 + m2) - (h1 * 60 + m1))) / 60).toFixed(2)) || 7.33;
-      } catch (e) {}
-    }
+
+    const jrn: JornadaRecord = {
+      id: `jrn-ajud-${Date.now()}`,
+      colaboradorNome: user.nome || 'Ajudante',
+      cargo: 'Ajudante',
+      dataStr: today,
+      dataISO: todayISO,
+      mesAno,
+      horaInicio: shiftStartTime || '07:00',
+      horaInicioIntervalo: breakStartTime || undefined,
+      horaFimIntervalo: breakEndTime || undefined,
+      horaFim: nowStr,
+      duracaoHoras: diffHrs,
+      empresaId: empresa?.id || 'demo',
+      observacoes: 'Jornada Operação Ajudante',
+      criadoEm: new Date().toISOString()
+    };
+    saveJornadaRecord(jrn);
+
+    setShiftStarted(false);
+    setShiftStartTime('');
+    setOnBreak(false);
+    setBreakStartTime('');
+    setBreakEndTime('');
+    setFiveSSubmitted(false);
+    setShowFiveWhysModal(false);
+    setShowSuccessModal(false);
+
+    triggerToast(`🏁 Jornada da Operação Ajudante finalizada às ${nowStr}!`);
+  };
+
+  // Open edit modal for point correction
+  const handleOpenEditModal = (rec: ShiftHistoryRecord) => {
+    setEditingRecord(rec);
+    setEditForm({
+      horaInicio: rec.horaInicio || '07:00',
+      horaInicioIntervalo: rec.horaInicioIntervalo || '12:00',
+      horaFimIntervalo: rec.horaFimIntervalo || '13:00',
+      horaFim: rec.horaFim || '16:20'
+    });
+  };
+
+  // Save edited record
+  const handleSaveEditedRecord = () => {
+    if (!editingRecord) return;
+
+    let netMinutes = 0;
+    try {
+      const [h1, m1] = editForm.horaInicio.split(':').map(Number);
+      const [h2, m2] = editForm.horaFim.split(':').map(Number);
+      let totalMins = (h2 * 60 + m2) - (h1 * 60 + m1);
+
+      if (editForm.horaInicioIntervalo && editForm.horaFimIntervalo) {
+        const [bh1, bm1] = editForm.horaInicioIntervalo.split(':').map(Number);
+        const [bh2, bm2] = editForm.horaFimIntervalo.split(':').map(Number);
+        const breakMins = (bh2 * 60 + bm2) - (bh1 * 60 + bm1);
+        totalMins = Math.max(0, totalMins - Math.max(0, breakMins));
+      }
+      netMinutes = Math.max(0, totalMins);
+    } catch (e) {}
+
+    const hrs = Math.floor(netMinutes / 60);
+    const mins = netMinutes % 60;
+    const durStr = `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:00`;
+
+    const updatedHistory = shiftHistory.map(rec => {
+      if (rec.id === editingRecord.id) {
+        return {
+          ...rec,
+          horaInicio: editForm.horaInicio,
+          horaInicioIntervalo: editForm.horaInicioIntervalo || undefined,
+          horaFimIntervalo: editForm.horaFimIntervalo || undefined,
+          horaFim: editForm.horaFim,
+          duracaoTotal: durStr
+        };
+      }
+      return rec;
+    });
+
+    setShiftHistory(updatedHistory);
+    localStorage.setItem(historyStorageKey, JSON.stringify(updatedHistory));
+    setEditingRecord(null);
+    triggerToast('✅ Ponto corrigido no histórico com sucesso!');
+  };
 
     const jrn: JornadaRecord = {
       id: `jrn-ajud-${Date.now()}`,

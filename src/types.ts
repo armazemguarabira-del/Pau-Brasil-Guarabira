@@ -308,7 +308,8 @@ export interface TmrDemand {
   empresaId: string;
   carreta: string; // Placa da carreta/caminhão
   revendaNome: string; // Revenda de destino
-  tipoCarga: 'TMR Revenda' | 'Carreta Transbordo' | 'Recarga' | 'Terceiros';
+  tipoCarga: 'TMR Revenda' | 'Carreta Transbordo' | 'Recarga' | 'Terceiros' | string;
+  tipoDemanda?: string;
   tipoPlaca?: 'casa' | 'terceiros';
   isTerceiros?: boolean;
   instrucoes?: string;

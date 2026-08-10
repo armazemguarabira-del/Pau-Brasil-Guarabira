@@ -65,7 +65,7 @@ import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { doc, getDoc, collection, query, where, onSnapshot } from 'firebase/firestore';
 import { Usuario, Empresa } from './types';
 import { motion, AnimatePresence } from 'motion/react';
-import { Sun, Moon, Zap, PanelLeftOpen, PanelLeftClose, ArrowLeft, ArrowRight } from 'lucide-react';
+import { Sun, Moon, Zap, PanelLeftOpen, PanelLeftClose, ArrowLeft, ArrowRight, LayoutGrid } from 'lucide-react';
 
 function HeaderClock({ theme }: { theme: 'light' | 'dark' }) {
   const [timeStr, setTimeStr] = useState('');
@@ -1179,19 +1179,21 @@ export default function App() {
         theme === 'dark' ? 'bg-[#07090d] text-[#e8eef5]' : 'bg-white text-slate-800'
       }`}>
         
-        {/* Sidebar navigation */}
-        <Sidebar 
-          user={user} 
-          empresa={empresa} 
-          activeTab={activePanel} 
-          onSelectTab={navigateToPanel} 
-          onLogout={handleLogout}
-          isFbOnline={isCustomFirebaseConnected()}
-          theme={theme}
-          onToggleTheme={() => setTheme(prev => prev === 'dark' ? 'light' : 'dark')}
-          isCollapsed={isSidebarCollapsed}
-          onToggleCollapse={() => setIsSidebarCollapsed(prev => !prev)}
-        />
+        {/* Sidebar navigation - ONLY for Admin users */}
+        {getUserRoleType(user) === 'admin' && (
+          <Sidebar 
+            user={user} 
+            empresa={empresa} 
+            activeTab={activePanel} 
+            onSelectTab={navigateToPanel} 
+            onLogout={handleLogout}
+            isFbOnline={isCustomFirebaseConnected()}
+            theme={theme}
+            onToggleTheme={() => setTheme(prev => prev === 'dark' ? 'light' : 'dark')}
+            isCollapsed={isSidebarCollapsed}
+            onToggleCollapse={() => setIsSidebarCollapsed(prev => !prev)}
+          />
+        )}
 
         {/* Main workspace arena with smooth tab switching */}
         <div className={`flex-1 flex flex-col min-h-screen max-h-screen overflow-y-auto overflow-x-hidden w-full max-w-full ${
@@ -1199,96 +1201,108 @@ export default function App() {
         }`}>
           
           {/* Workspace Top Header (Glassmorphic & Premium) */}
-          <header className={`sticky top-0 z-30 backdrop-blur-md pl-14 pr-4 md:px-5 py-1 h-11 md:h-12 flex items-center justify-between gap-4 border-b ${
+          <header className={`sticky top-0 z-30 backdrop-blur-md px-3 md:px-5 py-2 h-12 md:h-14 flex items-center justify-between gap-2.5 md:gap-4 border-b ${
             theme === 'dark' 
-              ? 'bg-[#07090d]/85 border-[#1c2530]' 
-              : 'bg-white/95 border-slate-200 shadow-sm'
+              ? 'bg-[#07090d]/90 border-[#1c2530]' 
+              : 'bg-white/95 border-slate-200 shadow-xs'
           }`}>
-            <div className="flex items-center gap-2.5 min-w-0">
-              {/* Back & Forward History Navigation Buttons */}
-              <div className="flex items-center gap-1 flex-shrink-0">
-                <button
-                  type="button"
-                  onClick={handleGoBack}
-                  disabled={!canGoBack}
-                  className={`p-1.5 rounded-lg border transition-all flex items-center justify-center ${
-                    canGoBack
-                      ? theme === 'dark'
-                        ? 'bg-[#151b23] border-[#222d3a] text-amber-400 hover:text-amber-300 hover:bg-slate-800 hover:border-amber-500/40 cursor-pointer shadow-xs'
-                        : 'bg-slate-100 border-slate-300 text-slate-800 hover:bg-slate-200 shadow-xs cursor-pointer'
-                      : 'opacity-30 cursor-not-allowed bg-transparent border-slate-700/30 text-slate-500'
-                  }`}
-                  title={canGoBack ? "Retornar para a tela anterior (Voltar)" : "Sem histórico anterior"}
-                >
-                  <ArrowLeft className="w-4 h-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={handleGoForward}
-                  disabled={!canGoForward}
-                  className={`p-1.5 rounded-lg border transition-all flex items-center justify-center ${
-                    canGoForward
-                      ? theme === 'dark'
-                        ? 'bg-[#151b23] border-[#222d3a] text-amber-400 hover:text-amber-300 hover:bg-slate-800 hover:border-amber-500/40 cursor-pointer shadow-xs'
-                        : 'bg-slate-100 border-slate-300 text-slate-800 hover:bg-slate-200 shadow-xs cursor-pointer'
-                      : 'opacity-30 cursor-not-allowed bg-transparent border-slate-700/30 text-slate-500'
-                  }`}
-                  title={canGoForward ? "Avançar para a próxima tela" : "Sem histórico posterior"}
-                >
-                  <ArrowRight className="w-4 h-4" />
-                </button>
-              </div>
-
-              {/* Sidebar toggle button (visible when collapsed or for quick toggle) */}
+            <div className="flex items-center gap-2 md:gap-3 min-w-0">
+              {/* Workstation Icon Button for Mobile & Quick Access */}
               <button
                 type="button"
-                onClick={() => setIsSidebarCollapsed(prev => !prev)}
-                className={`hidden md:flex items-center justify-center p-1.5 rounded-lg border transition-all cursor-pointer ${
+                onClick={() => {
+                  const targetOp = getUserOperationPanel(user);
+                  navigateToPanel(targetOp);
+                }}
+                className={`p-1.5 px-2.5 rounded-xl border flex items-center gap-1.5 font-black text-xs uppercase tracking-wider transition-all cursor-pointer shadow-xs flex-shrink-0 hover:scale-[1.02] ${
                   theme === 'dark'
-                    ? 'bg-[#151b23] border-[#222d3a] text-slate-300 hover:text-white hover:border-slate-600'
-                    : 'bg-slate-100 border-slate-200 text-slate-700 hover:text-slate-900 hover:bg-slate-200'
+                    ? 'bg-[#11151c] border-[#222d3a] text-amber-400 hover:border-amber-500/50 hover:bg-[#18202d]'
+                    : 'bg-amber-50/80 border-amber-200 text-amber-900 hover:bg-amber-100'
                 }`}
-                title={isSidebarCollapsed ? "Mostrar Menu Lateral" : "Ocultar Menu Lateral (Maximizar Tela)"}
+                title="Workstation / Painel Principal da Operação"
               >
-                {isSidebarCollapsed ? <PanelLeftOpen className="w-4 h-4 text-amber-400" /> : <PanelLeftClose className="w-4 h-4 text-slate-400" />}
+                <LayoutGrid className="w-4 h-4 text-amber-400 flex-shrink-0" />
+                <span className="font-extrabold font-mono text-[11px] uppercase">Workstation</span>
               </button>
 
-              {/* Brand Logo icon on mobile */}
-              <div className="md:hidden flex items-center flex-shrink-0">
-                <BrandLogo variant="icon-only" size="sm" iconSize="sm" />
-              </div>
-              {/* Page title */}
-              <h1 className={`font-sans font-black text-xs md:text-[13px] tracking-tight uppercase truncate flex-shrink-0 ${
-                theme === 'dark' ? 'text-white' : 'text-slate-800'
-              }`}>
-                {headerInfo.title}
-              </h1>
-              <span className={`hidden xl:inline text-[8px] px-1.5 py-0.5 rounded uppercase font-bold tracking-wider border ${
-                theme === 'dark' 
-                  ? 'bg-[#11151c] border-[#1c2530] text-[#6a7d92]' 
-                  : 'bg-slate-100 border-slate-200 text-slate-500'
-              }`}>
-                {activePanel}
-              </span>
-              <div className={`hidden sm:block w-[1px] h-3 ${theme === 'dark' ? 'bg-[#1c2530]' : 'bg-slate-200'}`} />
-              {/* Breadcrumbs */}
-              <div className="hidden sm:flex items-center gap-1.5 text-[8.5px] uppercase font-black tracking-widest text-[#6a7d92] truncate">
-                <span>{headerInfo.breadcrumbs[0]}</span>
-                {headerInfo.breadcrumbs[1] && (
-                  <>
-                    <span className={`font-bold ${theme === 'dark' ? 'text-[#1c2530]' : 'text-slate-300'}`}>/</span>
-                    <span className="text-[#1e56f0]">{headerInfo.breadcrumbs[1]}</span>
-                  </>
-                )}
+              {/* Back & Forward History Navigation Buttons - Visible for Admin guide switching */}
+              {getUserRoleType(user) === 'admin' && (
+                <div className="hidden sm:flex items-center gap-1 flex-shrink-0">
+                  <button
+                    type="button"
+                    onClick={handleGoBack}
+                    disabled={!canGoBack}
+                    className={`p-1.5 rounded-lg border transition-all flex items-center justify-center ${
+                      canGoBack
+                        ? theme === 'dark'
+                          ? 'bg-[#151b23] border-[#222d3a] text-amber-400 hover:text-amber-300 hover:bg-slate-800 hover:border-amber-500/40 cursor-pointer shadow-xs'
+                          : 'bg-slate-100 border-slate-300 text-slate-800 hover:bg-slate-200 shadow-xs cursor-pointer'
+                        : 'opacity-30 cursor-not-allowed bg-transparent border-slate-700/30 text-slate-500'
+                    }`}
+                    title={canGoBack ? "Mudar de guia / Retornar tela anterior" : "Sem histórico anterior"}
+                  >
+                    <ArrowLeft className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleGoForward}
+                    disabled={!canGoForward}
+                    className={`p-1.5 rounded-lg border transition-all flex items-center justify-center ${
+                      canGoForward
+                        ? theme === 'dark'
+                          ? 'bg-[#151b23] border-[#222d3a] text-amber-400 hover:text-amber-300 hover:bg-slate-800 hover:border-amber-500/40 cursor-pointer shadow-xs'
+                          : 'bg-slate-100 border-slate-300 text-slate-800 hover:bg-slate-200 shadow-xs cursor-pointer'
+                        : 'opacity-30 cursor-not-allowed bg-transparent border-slate-700/30 text-slate-500'
+                    }`}
+                    title={canGoForward ? "Avançar guia / Próxima tela" : "Sem histórico posterior"}
+                  >
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+
+              {/* Sidebar toggle button for Admin */}
+              {getUserRoleType(user) === 'admin' && (
+                <button
+                  type="button"
+                  onClick={() => setIsSidebarCollapsed(prev => !prev)}
+                  className={`hidden md:flex items-center justify-center p-1.5 rounded-lg border transition-all cursor-pointer ${
+                    theme === 'dark'
+                      ? 'bg-[#151b23] border-[#222d3a] text-slate-300 hover:text-white hover:border-slate-600'
+                      : 'bg-slate-100 border-slate-200 text-slate-700 hover:text-slate-900 hover:bg-slate-200'
+                  }`}
+                  title={isSidebarCollapsed ? "Mostrar Menu Lateral" : "Ocultar Menu Lateral"}
+                >
+                  {isSidebarCollapsed ? <PanelLeftOpen className="w-4 h-4 text-amber-400" /> : <PanelLeftClose className="w-4 h-4 text-slate-400" />}
+                </button>
+              )}
+
+              {/* Workstation Location / Page Title & Breadcrumbs */}
+              <div className="flex items-center gap-2 min-w-0 flex-shrink truncate">
+                <h1 className={`font-sans font-black text-xs md:text-[13px] tracking-tight uppercase truncate ${
+                  theme === 'dark' ? 'text-white' : 'text-slate-800'
+                }`}>
+                  {headerInfo.title}
+                </h1>
+                <div className={`hidden lg:block w-[1px] h-3 ${theme === 'dark' ? 'bg-[#1c2530]' : 'bg-slate-200'}`} />
+                <div className="hidden lg:flex items-center gap-1.5 text-[8.5px] uppercase font-black tracking-widest text-[#6a7d92] truncate">
+                  <span>{headerInfo.breadcrumbs[0]}</span>
+                  {headerInfo.breadcrumbs[1] && (
+                    <>
+                      <span className={`font-bold ${theme === 'dark' ? 'text-[#1c2530]' : 'text-slate-300'}`}>/</span>
+                      <span className="text-[#1e56f0]">{headerInfo.breadcrumbs[1]}</span>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
 
-            {/* Quick Stats / System Health widget aligned horizontally */}
-            <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
-              {/* OPERATIONAL NOTIFICATION BELL */}
+            {/* Right Side Header Controls: 1. Sino, 2. Ir Para Operação & 3. Escolher o Tema */}
+            <div className="flex items-center gap-1.5 sm:gap-2.5 flex-shrink-0">
+              {/* 1. OPERATIONAL NOTIFICATION BELL (SINO) */}
               <OperationalNotificationBell user={user} onNavigate={navigateToPanel} />
 
-              {/* YELLOW "IR PARA OPERAÇÃO" BUTTON - Visible for all logged users */}
+              {/* 2. YELLOW "IR PARA OPERAÇÃO" BUTTON */}
               {user && (
                 <button
                   type="button"
@@ -1296,47 +1310,30 @@ export default function App() {
                     const targetOp = getUserOperationPanel(user);
                     navigateToPanel(targetOp);
                   }}
-                  className="bg-amber-400 hover:bg-amber-300 text-slate-950 px-2.5 py-1 md:px-3 md:py-1 rounded-lg font-black text-[10px] md:text-[11px] uppercase tracking-wider shadow-md hover:scale-105 transition-all cursor-pointer flex items-center gap-1 border border-amber-300"
+                  className="bg-amber-400 hover:bg-amber-300 text-slate-950 px-2.5 py-1.5 md:px-3.5 md:py-1.5 rounded-xl font-black text-[10px] md:text-[11px] uppercase tracking-wider shadow-md hover:scale-[1.03] active:scale-95 transition-all cursor-pointer flex items-center gap-1.5 border border-amber-300 flex-shrink-0"
                   title="Ir diretamente para a tela da operação vinculada ao seu perfil"
                 >
-                  <Zap className="w-3.5 h-3.5 fill-slate-950 text-slate-950" />
-                  <span className="whitespace-nowrap font-black">Ir para Operação</span>
+                  <Zap className="w-3.5 h-3.5 fill-slate-950 text-slate-950 flex-shrink-0" />
+                  <span className="hidden sm:inline whitespace-nowrap font-black">Ir para Operação</span>
                 </button>
               )}
 
-              {/* Theme Toggle Button */}
+              {/* 3. THEME TOGGLE BUTTON (ESCOLHER O TEMA) */}
               <button
                 type="button"
                 onClick={() => setTheme(prev => prev === 'dark' ? 'light' : 'dark')}
-                className={`px-2 py-1 rounded-lg border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                className={`px-2.5 py-1.5 rounded-xl border transition-all cursor-pointer flex items-center justify-center gap-1.5 flex-shrink-0 ${
                   theme === 'dark'
                     ? 'bg-[#151b23] border-[#222d3a] text-amber-400 hover:text-amber-300 hover:border-amber-400/40 shadow-xs'
                     : 'bg-slate-100 border-slate-200 text-slate-700 hover:text-[#1e56f0] hover:bg-slate-200/80 shadow-xs'
                 }`}
                 title={theme === 'dark' ? 'Mudar para Tema Claro' : 'Mudar para Tema Escuro'}
               >
-                {theme === 'dark' ? <Sun className="w-3.5 h-3.5 text-amber-400" /> : <Moon className="w-3.5 h-3.5 text-slate-700" />}
-                <span className="text-[9px] font-extrabold uppercase tracking-wider hidden sm:inline">
+                {theme === 'dark' ? <Sun className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" /> : <Moon className="w-3.5 h-3.5 text-slate-700 flex-shrink-0" />}
+                <span className="text-[9.5px] font-extrabold uppercase tracking-wider hidden sm:inline">
                   {theme === 'dark' ? 'Claro' : 'Escuro'}
                 </span>
               </button>
-
-              <div className={`text-[9px] md:text-[10px] font-bold uppercase tracking-wider hidden md:block ${
-                theme === 'dark' ? 'text-white' : 'text-slate-700'
-              }`}>
-                Operador: <span className="text-[#1e56f0]">{user.nome?.split(' ')[0]}</span>
-              </div>
-              <HeaderClock theme={theme} />
-              <div className={`w-[1px] h-3.5 hidden sm:block ${theme === 'dark' ? 'bg-[#1c2530]' : 'bg-slate-200'}`} />
-              {/* Live Indicator Widget */}
-              <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[8.5px] font-sans font-black tracking-widest border ${
-                theme === 'dark' 
-                  ? 'bg-[#11151c] border-[#1c2530] text-[#6a7d92]' 
-                  : 'bg-slate-100 border-slate-200 text-slate-600'
-              }`}>
-                <span className="w-1.5 h-1.5 rounded-full bg-[#1e56f0]" />
-                <span className={`uppercase ${theme === 'dark' ? 'text-gray-300' : 'text-slate-700'}`}>SISTEMA ATIVO</span>
-              </div>
             </div>
           </header>
 
@@ -1368,12 +1365,12 @@ export default function App() {
         {/* FLOATING BUTTON FOR DPO AI AGENT */}
         <button
           onClick={() => setIsDpoAgentOpen(true)}
-          className="fixed bottom-5 right-5 z-40 bg-gradient-to-r from-emerald-600 to-blue-600 hover:from-emerald-500 hover:to-blue-500 text-white p-3.5 rounded-full shadow-2xl flex items-center gap-2 font-black text-xs cursor-pointer border-2 border-white/20 hover:scale-105 transition-all group"
+          className="fixed bottom-3 right-3 sm:bottom-5 sm:right-5 z-40 bg-gradient-to-r from-emerald-600 to-blue-600 hover:from-emerald-500 hover:to-blue-500 text-white p-2.5 sm:p-3.5 rounded-full shadow-2xl flex items-center gap-2 font-black text-xs cursor-pointer border-2 border-white/20 hover:scale-105 transition-all group"
           title="Consultar Agente de IA DPO"
         >
-          <span className="w-3 h-3 rounded-full bg-emerald-400 animate-ping absolute -top-0.5 -right-0.5" />
-          <span className="w-3 h-3 rounded-full bg-emerald-400 absolute -top-0.5 -right-0.5" />
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <span className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-emerald-400 animate-ping absolute -top-0.5 -right-0.5" />
+          <span className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-emerald-400 absolute -top-0.5 -right-0.5" />
+          <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
           </svg>
           <span className="hidden sm:inline font-mono tracking-wider uppercase text-[11px]">Agente DPO IA</span>

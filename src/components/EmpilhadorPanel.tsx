@@ -725,10 +725,46 @@ export default function EmpilhadorPanel({ user, empresa }: EmpilhadorPanelProps)
   });
 
   const myAssignedTmr = tmrDemands.filter(t => {
-    if (!t.operadorDesignado || t.operadorDesignado === 'TODOS') return true;
-    const matchDesignado = (t.operadorDesignado || '').toUpperCase().includes(activeOperatorClean);
-    const matchAtribuidos = (t.operadoresAtribuidos || []).some(o => o.toUpperCase().includes(activeOperatorClean));
-    return matchDesignado || matchAtribuidos;
+    // Admin, supervisor, manager or conferente profile can see all delegated TMR demands
+    const userRole = (user.papel || '').toLowerCase();
+    const userCargo = (user.cargo || '').toLowerCase();
+    const isAdminOrSupervisor = 
+      user.isControle || 
+      userRole === 'admin' || 
+      userRole === 'controle' || 
+      userRole.includes('supervisor') || 
+      userRole.includes('coordenador') || 
+      userCargo.includes('admin') || 
+      userCargo.includes('supervisor') || 
+      userCargo.includes('gerente') ||
+      userCargo.includes('coordenador') ||
+      userCargo.includes('conferente') ||
+      userRole.includes('conferente');
+
+    if (isAdminOrSupervisor) return true;
+
+    // If designated to TODOS or unassigned, available to all
+    if (!t.operadorDesignado || t.operadorDesignado === 'TODOS' || t.operadorDesignado.toUpperCase().includes('TODOS')) return true;
+
+    // Operator name comparison (full name, substring, or first name match)
+    const activeOp = activeOperatorClean;
+    const firstName = activeOp.split(' ')[0];
+
+    const desigUpper = (t.operadorDesignado || '').toUpperCase();
+    if (desigUpper.includes(activeOp) || (firstName.length >= 3 && desigUpper.includes(firstName))) return true;
+
+    if (t.operadoresAtribuidos && Array.isArray(t.operadoresAtribuidos) && t.operadoresAtribuidos.length > 0) {
+      return t.operadoresAtribuidos.some(o => {
+        const oUpper = o.toUpperCase().trim();
+        const oFirstName = oUpper.split(' ')[0];
+        return activeOp.includes(oUpper) || 
+               oUpper.includes(activeOp) || 
+               (oFirstName.length >= 3 && activeOp.includes(oFirstName)) ||
+               (firstName.length >= 3 && oUpper.includes(firstName));
+      });
+    }
+
+    return false;
   });
 
   const myAssignedFefo = fefoDemands.filter(t => {
@@ -1363,7 +1399,153 @@ export default function EmpilhadorPanel({ user, empresa }: EmpilhadorPanelProps)
               </div>
             )}
 
-            {/* ABA 3: RESSUPRIMENTO INTELIGENTE DO PICKING */}
+            {/* ABA 2: TMR REVENDAS / DELEGADAS PELO CONFERENTE */}
+            {demandTab === 'tmr' && (
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 bg-[#0d1218] p-2.5 rounded-xl border border-purple-500/30">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button
+                      onClick={() => setTmrHistoryView(false)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase transition-all cursor-pointer flex items-center gap-1.5 ${
+                        !tmrHistoryView ? 'bg-purple-600 text-white font-black' : 'text-slate-400 hover:text-white bg-slate-900/60'
+                      }`}
+                    >
+                      <Layers className="w-3.5 h-3.5" />
+                      <span>Demandas TMR Ativas ({myAssignedTmr.filter(t => t.status !== 'done').length})</span>
+                    </button>
+
+                    <button
+                      onClick={() => setTmrHistoryView(true)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase transition-all cursor-pointer flex items-center gap-1.5 ${
+                        tmrHistoryView ? 'bg-cyan-600 text-white font-black' : 'text-slate-400 hover:text-white bg-slate-900/60'
+                      }`}
+                    >
+                      <History className="w-3.5 h-3.5" />
+                      <span>Histórico TMR Concluído ({myCompletedTmr.length})</span>
+                    </button>
+                  </div>
+
+                  <span className="text-[10px] text-purple-300 font-mono font-bold bg-purple-950/60 px-2.5 py-1 rounded-lg border border-purple-800/40">
+                    SLA Meta TMR: ≤ 150 min Carretas · ≤ 50 min Recarga
+                  </span>
+                </div>
+
+                {!tmrHistoryView ? (
+                  <div className="grid grid-cols-1 gap-3 max-h-[550px] overflow-y-auto">
+                    {myAssignedTmr.filter(t => t.status !== 'done').length === 0 ? (
+                      <div className="text-center p-8 bg-[#11151c] rounded-xl border border-[#1c2530] flex flex-col items-center justify-center gap-2">
+                        <Layers className="w-8 h-8 text-purple-400/40" />
+                        <p className="text-xs text-slate-400 font-bold">Nenhuma demanda de TMR / Revenda pendente para você no momento.</p>
+                        <span className="text-[10px] text-slate-500">Todas as movimentações delegadas pelo Conferente foram concluídas ou você não tem atribuições pendentes.</span>
+                      </div>
+                    ) : (
+                      myAssignedTmr.filter(t => t.status !== 'done').map(t => (
+                        <div 
+                          key={`tmr_item_${t.id}`}
+                          className={`p-4 bg-[#11151c] border rounded-xl flex flex-col gap-3 transition-all ${
+                            t.status === 'in_progress'
+                              ? 'border-blue-500/60 bg-blue-950/20 shadow-lg'
+                              : 'border-purple-500/40 bg-purple-950/10 hover:border-purple-500/60'
+                          }`}
+                        >
+                          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                            <div className="flex flex-col gap-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-sm font-mono font-black text-amber-300 bg-amber-500/10 px-2.5 py-0.5 rounded border border-amber-500/20">
+                                  Carreta: {t.carreta}
+                                </span>
+                                <span className="text-xs font-bold text-white">
+                                  {t.revendaNome || 'Revenda / Unidade'}
+                                </span>
+                                <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase ${
+                                  t.isTerceiros || t.tipoPlaca === 'terceiros'
+                                    ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                                    : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                                }`}>
+                                  {t.isTerceiros || t.tipoPlaca === 'terceiros' ? 'Terceiros' : 'Casa'}
+                                </span>
+                                <span className={`text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full ${
+                                  t.status === 'in_progress'
+                                    ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30 animate-pulse'
+                                    : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                                }`}>
+                                  {t.status === 'in_progress' ? '⚡ Em Execução' : '⏳ Aguardando Início'}
+                                </span>
+                              </div>
+
+                              <span className="text-[10px] text-slate-400 block mt-0.5">
+                                Operação: <strong className="text-slate-200">{t.tipoCarga || 'Carregamento TMR'}</strong> · Delegado por Conferente: <strong className="text-amber-300">{t.conferente || 'ADM'}</strong>
+                              </span>
+                              {t.instrucoes && (
+                                <p className="text-[11px] text-slate-300 bg-[#0d1218] p-2 rounded border border-[#222d3a] mt-1 font-mono">
+                                  📌 Instrução: {t.instrucoes}
+                                </p>
+                              )}
+                            </div>
+
+                            <div className="flex items-center gap-2 w-full sm:w-auto justify-end border-t sm:border-t-0 border-[#222d3a] pt-2 sm:pt-0">
+                              {t.status === 'pending' && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleStartTmr(t.id)}
+                                  className="py-2 px-4 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs uppercase tracking-wider rounded-lg cursor-pointer shadow flex items-center gap-1.5"
+                                >
+                                  <Play className="w-3.5 h-3.5 fill-slate-950" /> Iniciar TMR
+                                </button>
+                              )}
+
+                              {t.status === 'in_progress' && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleFinishTmr(t.id)}
+                                  className="py-2 px-4 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs uppercase tracking-wider rounded-lg cursor-pointer shadow flex items-center gap-1.5"
+                                >
+                                  <CheckCircle2 className="w-3.5 h-3.5" /> Concluir TMR
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Grid de Ativos / Vasilhames */}
+                          <div className="grid grid-cols-4 sm:grid-cols-7 gap-1.5 p-2 bg-[#0d1218] rounded-lg text-center text-[10px] border border-[#1c2530]">
+                            <div><span className="text-[8px] text-slate-500 block uppercase font-bold">Litrinho</span><span className="font-mono font-bold text-amber-300">{t.palletsLitrinho || 0}</span></div>
+                            <div><span className="text-[8px] text-slate-500 block uppercase font-bold">Litrão</span><span className="font-mono font-bold text-amber-300">{t.palletsLitrao || 0}</span></div>
+                            <div><span className="text-[8px] text-slate-500 block uppercase font-bold">600 Verde</span><span className="font-mono font-bold text-emerald-400">{t.pallets600Verde || 0}</span></div>
+                            <div><span className="text-[8px] text-slate-500 block uppercase font-bold">600 Âmbar</span><span className="font-mono font-bold text-amber-500">{t.pallets600Ambar || 0}</span></div>
+                            <div><span className="text-[8px] text-slate-500 block uppercase font-bold">Chopp</span><span className="font-mono font-bold text-yellow-400">{t.palletsBarrilChopp || 0}</span></div>
+                            <div><span className="text-[8px] text-slate-500 block uppercase font-bold">PBR1</span><span className="font-mono font-bold text-blue-400">{t.palletsPbr1 || t.palletsPbr || 0}</span></div>
+                            <div><span className="text-[8px] text-slate-500 block uppercase font-bold">PBR2</span><span className="font-mono font-bold text-indigo-400">{t.palletsPbr2 || 0}</span></div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-3 max-h-[500px] overflow-y-auto">
+                    {myCompletedTmr.length === 0 ? (
+                      <p className="text-xs text-slate-500 text-center p-8 bg-[#11151c] rounded-xl border border-[#1c2530]">
+                        Nenhuma demanda TMR concluída registrada ainda.
+                      </p>
+                    ) : (
+                      myCompletedTmr.map(t => (
+                        <div key={`tmr_hist_${t.id}`} className="p-3 bg-[#11151c] border border-purple-500/30 rounded-xl flex items-center justify-between text-xs">
+                          <div>
+                            <span className="font-mono text-purple-300 font-bold text-[10px] block">
+                              Carreta: {(t as any).carreta || (t as any).id} — {(t as any).revendaNome || 'TMR Revenda'}
+                            </span>
+                            <span className="text-[10px] text-slate-400 block">Concluído por: {activeOperatorClean}</span>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-emerald-400 font-bold block">✓ Concluído</span>
+                            <span className="text-[10px] font-mono text-slate-400">Duração: {t.duracaoMin || 15} min</span>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
             {demandTab === 'rr' && (
               <div className="flex flex-col gap-4">
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 bg-[#0d1218] p-2.5 rounded-xl border border-emerald-500/30">

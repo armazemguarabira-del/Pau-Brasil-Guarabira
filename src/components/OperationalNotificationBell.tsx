@@ -20,6 +20,7 @@ import {
 import { getStoredTempLogs } from '../utils/tempStorage';
 import { getStoredJornadas, getStoredMontagens } from '../utils/jornadaUtils';
 import { getStoredReminders, OperationalReminderConfig } from '../utils/remindersUtils';
+import { getStoredTmrDemands } from '../utils/tmrManager';
 
 export interface OperationalNotification {
   id: string;
@@ -175,6 +176,26 @@ export const OperationalNotificationBell: React.FC<OperationalNotificationBellPr
       }
     }
 
+    // 3. TMR DELEGATED DEMANDS (CARRETAS / MOVIMENTAÇÃO TMR)
+    const activeTmrDemands = getStoredTmrDemands();
+    activeTmrDemands.filter(t => t.status !== 'done').forEach(t => {
+      const notifId = `notif_tmr_demand_${t.id}`;
+      list.push({
+        id: notifId,
+        type: 'demanda_delegada',
+        title: `⚡ Demanda TMR Delegada: ${t.carreta}`,
+        message: `Carreta/Placa ${t.carreta} (${t.revendaNome || 'Revenda'}). Operação: ${t.tipoCarga || 'Carregamento TMR'}. Delegado por Conferente: ${t.conferente || 'ADM'}.`,
+        timeStr: t.status === 'in_progress' ? 'Em Andamento' : 'Aguardando',
+        priority: 'alta',
+        read: readIds.includes(notifId),
+        actionPanel: 'empilhador',
+        actionTab: 'tmr',
+        actionLabel: 'Ver no Painel TMR',
+        createdAt: t.iniciadoEm || t.criadoEm || `${todayISO}T08:00:00`,
+        popupOverlay: role === 'empilhador' || role === 'admin'
+      });
+    });
+
     return list;
   };
 
@@ -251,7 +272,7 @@ export const OperationalNotificationBell: React.FC<OperationalNotificationBellPr
 
       {/* DROPDOWN POPOVER */}
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-80 sm:w-96 rounded-2xl bg-[#0e1626] border border-amber-500/40 shadow-2xl z-50 text-white overflow-hidden animate-fadeIn">
+        <div className="fixed sm:absolute top-14 left-2 right-2 sm:left-auto sm:right-0 sm:top-auto mt-2 w-[calc(100vw-16px)] sm:w-96 rounded-2xl bg-[#0e1626] border border-amber-500/40 shadow-2xl z-[999] text-white overflow-hidden animate-fadeIn max-h-[85vh] flex flex-col">
           {/* HEADER */}
           <div className="bg-gradient-to-r from-[#032b5e] to-[#0d1e3d] p-3.5 border-b border-slate-800 flex items-center justify-between">
             <div className="flex items-center gap-2">
