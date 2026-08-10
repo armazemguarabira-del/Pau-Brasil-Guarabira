@@ -143,15 +143,16 @@ export default function GestaoEscoamentoTab({ validadesList, user, empresa, onRe
       const diasRestantes = calcResult.diasRestantes;
       const stockAgeIndex = calcResult.stockAgeIndex;
 
-      // Filter: Keep Crítico, Atenção, or items with missing registered idade
-      let statusStockAge: 'Crítico' | 'Atenção' | null = null;
-      if (calcResult.status === 'Crítico' || calcResult.idadeMissing) {
+      // RULE: Strictly ONLY items with 45 days or less remaining (diasRestantes <= 45)
+      if (diasRestantes > 45) return;
+
+      // Classify as Crítico (<=30 days) or Atenção (31 to 45 days)
+      let statusStockAge: 'Crítico' | 'Atenção' = 'Atenção';
+      if (diasRestantes <= 30 || calcResult.status === 'Crítico' || calcResult.idadeMissing) {
         statusStockAge = 'Crítico';
-      } else if (calcResult.status === 'Atenção') {
+      } else {
         statusStockAge = 'Atenção';
       }
-
-      if (!statusStockAge) return; // Skip OK items
 
       if (map.has(key)) {
         const existing = map.get(key)!;
@@ -638,11 +639,11 @@ export default function GestaoEscoamentoTab({ validadesList, user, empresa, onRe
           <h2 className="text-xl font-extrabold text-white tracking-tight flex items-center gap-2">
             Gestão de Escoamento Diário
             <span className="text-xs font-normal text-rose-300 bg-rose-500/10 px-2.5 py-0.5 rounded-full border border-rose-500/20">
-              Itens Críticos & Atenção
+              Janela Crítica (≤ 45 Dias)
             </span>
           </h2>
           <p className="text-xs text-slate-400 mt-1">
-            Acompanhe dia a dia a baixa física dos lotes com risco de vencimento até a saída total do estoque.
+            Acompanhe dia a dia a baixa física dos lotes na janela de vencimento (≤ 45 dias) até a saída total do estoque.
           </p>
         </div>
 

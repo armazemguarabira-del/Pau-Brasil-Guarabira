@@ -130,8 +130,8 @@ export const WorkstationCriticosRecolhimento: React.FC<WorkstationCriticosProps>
 
       const diasParaVencer = calcResult.diasRestantes;
 
-      // Rule: ONLY ITEMS IN THE CRITICAL WINDOW (diasParaVencer <= 45 or stockAgeIndex < 60 or missing idade)
-      if (diasParaVencer > 45 && calcResult.stockAgeIndex >= 60 && !calcResult.idadeMissing) return;
+      // Rule: STRICTLY ONLY ITEMS IN THE CRITICAL WINDOW (diasParaVencer <= 45)
+      if (diasParaVencer > 45) return;
 
       if (map.has(key)) {
         const existing = map.get(key)!;
