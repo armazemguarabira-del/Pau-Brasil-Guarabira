@@ -13,6 +13,7 @@ interface SugerirMelhoriaCardProps {
 }
 
 export default function SugerirMelhoriaCard({ user, empresa, setor }: SugerirMelhoriaCardProps) {
+  const [categoriaAcao, setCategoriaAcao] = useState<'fefo_quebra' | 'fefo_comercial' | 'fefo_wms'>('fefo_quebra');
   const [titulo, setTitulo] = useState('');
   const [descricao, setDescricao] = useState('');
   const [sending, setSending] = useState(false);
@@ -25,6 +26,8 @@ export default function SugerirMelhoriaCard({ user, empresa, setor }: SugerirMel
 
   const empresaId = user.empresaId || 'demo';
   const empresaData = useEmpresaData();
+
+  const isFefoSetor = setor === 'Validade' || setor === 'Conferente' || setor === 'EFC / EFD';
 
   // Load supervisors and administrators of the company
   useEffect(() => {
@@ -39,14 +42,20 @@ export default function SugerirMelhoriaCard({ user, empresa, setor }: SugerirMel
   // Load proposed improvements for this sector and company
   useEffect(() => {
     if (!db) return;
-    const docs = empresaData.acoes.filter((a: any) => a.setor === setor && a.tipo === 'supervisor');
+    const docs = empresaData.acoes.filter((a: any) => (a.setor === setor || isFefoSetor) && a.tipo === 'supervisor');
     docs.sort((a, b) => {
       const dateA = a.criadoEm ? new Date(a.criadoEm).getTime() : 0;
       const dateB = b.criadoEm ? new Date(b.criadoEm).getTime() : 0;
       return dateB - dateA;
     });
     setRecentMelhorias(docs);
-  }, [empresaData.acoes, setor]);
+  }, [empresaData.acoes, setor, isFefoSetor]);
+
+  const applyPreset = (presetTitle: string, presetDesc: string, cat: 'fefo_quebra' | 'fefo_comercial' | 'fefo_wms') => {
+    setTitulo(presetTitle);
+    setDescricao(presetDesc);
+    setCategoriaAcao(cat);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -69,6 +78,7 @@ export default function SugerirMelhoriaCard({ user, empresa, setor }: SugerirMel
         empresaId,
         titulo: titulo.trim(),
         descricao: descricao.trim(),
+        categoriaAcao,
         tipo: 'supervisor',
         setor,
         status: 'pendente',
@@ -95,29 +105,90 @@ export default function SugerirMelhoriaCard({ user, empresa, setor }: SugerirMel
   };
 
   return (
-    <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-5 mt-6" id={`sugerir-melhoria-${setor.toLowerCase().replace(/\s+/g, '-')}`}>
-      <div className="flex items-center gap-2 mb-3">
-        <div className="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-600 flex items-center justify-center">
-          <Lightbulb className="w-5 h-5" />
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 mt-6" id={`sugerir-melhoria-${setor.toLowerCase().replace(/\s+/g, '-')}`}>
+      <div className="flex items-center justify-between gap-2 mb-3">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-600 flex items-center justify-center">
+            <Lightbulb className="w-5 h-5" />
+          </div>
+          <div>
+            <h4 className="font-sans font-bold text-slate-800 text-sm">
+              {isFefoSetor ? 'Gestão e Governança de Ações FEFO & Escoamento Comercial' : 'Propor Melhoria Diária / Plano de Ação'}
+            </h4>
+            <p className="text-[10px] text-slate-400">
+              {isFefoSetor 
+                ? 'Registre ações direcionadas ao item FEFO: prevenção de quebra de FEFO e ofertas comerciais para escoamento acelerado' 
+                : 'Sugira soluções ou melhorias de processos e indique o gestor responsável para agir'}
+            </p>
+          </div>
         </div>
-        <div>
-          <h4 className="font-sans font-bold text-slate-800 text-sm">Propor Melhoria Diária / Plano de Ação</h4>
-          <p className="text-[10px] text-slate-400">Sugira soluções ou melhorias de processos e indique o gestor responsável para agir</p>
-        </div>
+
+        {isFefoSetor && (
+          <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-1 bg-amber-500/10 text-amber-700 border border-amber-300 rounded-lg">
+            Ações Direcionadas FEFO
+          </span>
+        )}
       </div>
+
+      {/* QUICK PRESETS FOR FEFO */}
+      {isFefoSetor && (
+        <div className="mb-4 p-3 bg-slate-50 border border-slate-200 rounded-xl flex flex-col gap-2">
+          <span className="text-[10px] font-bold uppercase text-slate-500">
+            ⚡ Modelos Rápidos de Governança FEFO & Escoamento:
+          </span>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => applyPreset('Prevenção de Quebra FEFO: Remanejamento para Picking', 'Identificada diferença de validade entre estoque central e picking. Solicitado remanejamento imediato do lote mais antigo para a frente de expedição.', 'fefo_quebra')}
+              className="text-[10px] font-bold px-2.5 py-1 bg-rose-50 text-rose-700 border border-rose-200 rounded-lg hover:bg-rose-100 transition-colors cursor-pointer"
+            >
+              🚨 Prevenir Quebra FEFO (Remanejar p/ Picking)
+            </button>
+            <button
+              type="button"
+              onClick={() => applyPreset('Ação Comercial de Escoamento: Combo Promocional & Desconto', 'Lote com Stock Age elevado. Proposta comercial de combo com desconto progressivo para clientes de giro rápido da rota regional.', 'fefo_comercial')}
+              className="text-[10px] font-bold px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition-colors cursor-pointer"
+            >
+              📢 Escoamento Comercial (Combo Promocional)
+            </button>
+            <button
+              type="button"
+              onClick={() => applyPreset('Bloqueio no WMS: Lote Mais Novo Retido', 'Solicitação de trava temporária no WMS para impedir o faturamento do lote mais recente enquanto restarem caixas do lote FEFO anterior.', 'fefo_wms')}
+              className="text-[10px] font-bold px-2.5 py-1 bg-purple-50 text-purple-700 border border-purple-200 rounded-lg hover:bg-purple-100 transition-colors cursor-pointer"
+            >
+              🔒 Trava no WMS (Priorizar FEFO)
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
         {/* Form */}
         <form onSubmit={handleSubmit} className="lg:col-span-7 flex flex-col gap-3">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div>
               <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                O que pode ser melhorado? (Título)
+                Tipo de Ação
+              </label>
+              <select
+                value={categoriaAcao}
+                onChange={(e) => setCategoriaAcao(e.target.value as any)}
+                className="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-hidden focus:border-amber-500 text-slate-700 font-bold"
+              >
+                <option value="fefo_quebra">🚨 Quebra de FEFO (Ação Corretiva)</option>
+                <option value="fefo_comercial">📢 Ação Comercial (Escoamento)</option>
+                <option value="fefo_wms">⚙️ Trava / Operacional WMS</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                Título da Ação FEFO
               </label>
               <input
                 type="text"
                 required
-                placeholder="Ex: Refazer sinalização visual ou ajuste de paletização"
+                placeholder="Ex: Escoamento comercial de chopp / Trava WMS"
                 value={titulo}
                 onChange={(e) => setTitulo(e.target.value)}
                 className="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-hidden focus:border-amber-500 text-slate-700 font-medium"
@@ -126,7 +197,7 @@ export default function SugerirMelhoriaCard({ user, empresa, setor }: SugerirMel
 
             <div>
               <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                Destinar para (Supervisor ou Administrador)
+                Destinar para Gestor
               </label>
               <select
                 value={selectedGestorId}
@@ -145,12 +216,12 @@ export default function SugerirMelhoriaCard({ user, empresa, setor }: SugerirMel
 
           <div>
             <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-              Detalhes da sugestão ou problema diário
+              Detalhes do Plano de Ação FEFO
             </label>
             <textarea
               required
               rows={2}
-              placeholder="Descreva o problema observado e a proposta de melhoria para o supervisor agir..."
+              placeholder="Descreva o SKU, a quantidade envolvida, a ação comercial de escoamento ou procedimento para evitar quebra de FEFO..."
               value={descricao}
               onChange={(e) => setDescricao(e.target.value)}
               className="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-hidden focus:border-amber-500 text-slate-700 font-medium resize-none"

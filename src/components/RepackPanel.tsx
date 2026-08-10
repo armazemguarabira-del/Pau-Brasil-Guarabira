@@ -6,12 +6,16 @@ import { useEmpresaData } from '../context/EmpresaDataContext';
 import { PRODUCTS } from '../planosData';
 import { TrendingUp, CheckCircle, Clock, Award, BarChart2, BookOpen, Users, FileText, ChevronDown, ChevronUp, AlertCircle, ShieldAlert } from 'lucide-react';
 import SugerirMelhoriaCard from './SugerirMelhoriaCard';
+import { SopBannerViewer } from './SopBannerViewer';
 import { filterHistoryForUser, HistoryRestrictionNotice } from '../utils/historyFilter';
+import { triggerAutoAcaoCorretiva } from '../utils/simulacaoAcoesUtils';
 
 interface RepackPanelProps {
   user: Usuario;
   empresa: Empresa | null;
   theme?: 'light' | 'dark';
+  shiftStarted?: boolean;
+  onRequireShiftStart?: () => void;
 }
 
 const REPACK_EMBALAGENS = [
@@ -30,7 +34,7 @@ const REPACK_EMBALAGENS = [
   { nome: '300 OW', meta: '00:04:00' },
 ];
 
-export default function RepackPanel({ user, empresa }: RepackPanelProps) {
+export default function RepackPanel({ user, empresa, shiftStarted, onRequireShiftStart }: RepackPanelProps) {
   const empresaId = empresa?.id || 'demo';
   const draftKey = `repack_draft_${empresaId}_${user.nome || 'guest'}`;
 
@@ -228,6 +232,12 @@ export default function RepackPanel({ user, empresa }: RepackPanelProps) {
   };
 
   const handleRegister = async () => {
+    if (shiftStarted === false) {
+      alert('⚠️ Você precisa Iniciar a Jornada na Operação Ajudante antes de realizar lançamentos!');
+      if (onRequireShiftStart) onRequireShiftStart();
+      return;
+    }
+
     if (!inicio || !fim) return;
     
     const isAboveMeta = statusMeta.includes('ACIMA');
@@ -269,6 +279,18 @@ export default function RepackPanel({ user, empresa }: RepackPanelProps) {
         localStorage.setItem(`repack_rows_${empresa?.id || 'demo'}`, JSON.stringify(current));
       }
 
+      if (isAboveMeta) {
+        triggerAutoAcaoCorretiva({
+          processo: 'Repack',
+          colaboradorResponsavel: user.nome,
+          indicador: `Produtividade Repack (${embalagem})`,
+          meta: activeMeta,
+          resultadoObtido: duracao,
+          desvioEncontrado: `Não atingimento da meta no Repack de ${embalagem}. Tempo realizado (${duracao}) excedeu a meta (${activeMeta}). Motivo: ${motivoNaoBaterMeta.trim()}`,
+          comentarioOperador: motivoNaoBaterMeta.trim()
+        });
+      }
+
       // Reset fields
       setQuantidade('');
       setInicio('');
@@ -287,17 +309,17 @@ export default function RepackPanel({ user, empresa }: RepackPanelProps) {
   };
 
   const handleDelete = async (docId?: string) => {
-    if (!docId || !confirm('Excluir este registro?')) return;
+    if (!docId) return;
     try {
       if (db) {
         await deleteDoc(doc(db, 'repack', docId));
-      } else {
-        const remaining = repackRows.filter(r => r._docId !== docId);
-        setRepackRows(remaining);
-        localStorage.setItem(`repack_rows_${empresa?.id || 'demo'}`, JSON.stringify(remaining));
       }
     } catch (e) {
-      alert('Erro ao deletar: ' + e);
+      console.error(e);
+    } finally {
+      const remaining = repackRows.filter(r => r._docId !== docId && (r as any).id !== docId);
+      setRepackRows(remaining);
+      localStorage.setItem(`repack_rows_${empresa?.id || 'demo'}`, JSON.stringify(remaining));
     }
   };
 
@@ -438,12 +460,19 @@ export default function RepackPanel({ user, empresa }: RepackPanelProps) {
     <div className="flex flex-col gap-6">
       
       {/* Top Header bar with Metadata */}
-      <div className="flex items-center justify-between p-4 bg-[#11151c] border-b border-[#222d3a] rounded-t-xl -mx-6 md:-mx-12 -mt-6">
-        <span className="font-sans font-black text-sm tracking-widest text-[#f5a623] uppercase">♻️ REPACK TIMER — PRODUTIVIDADE</span>
+      <div className="flex items-center justify-between p-4 bg-[#11151c] border border-[#222d3a] rounded-xl w-full">
+        <div className="flex items-center gap-2">
+          <span className="font-sans font-black text-sm tracking-widest text-[#f5a623] uppercase flex items-center gap-2">
+            ♻️ REPACK TIMER — PRODUTIVIDADE
+          </span>
+        </div>
         <div className="text-xs text-[#6a7d92] tracking-wider font-semibold">
           META UNIT.: <strong className="text-[#f5a623] font-mono">{activeMeta}</strong>
         </div>
       </div>
+
+      {/* Standard Operating Procedure (POP / SOP) Banner for Operator */}
+      <SopBannerViewer operation="repack" operationName="Repack" />
 
       <div className="ptabs border-b border-[#222d3a] flex gap-2 flex-wrap">
         <button 

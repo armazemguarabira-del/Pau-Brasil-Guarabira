@@ -1,0 +1,3 @@
+data_despejo,colaborador_matricula,produto_codigo,lote,quantidade_cx,hectolitros_despejo,motivo_despejo,empresa_descarte_cnpj
+"2026-08-04","GBR-9042","838","LOT-838-BAD",2,1.000,"Lote com vencimento estourado sem possibilidade de doação","04.567.890/0001-12"
+"2026-08-05","GBR-1099","9093","LOT-9093-X",5,0.210,"Lata amassada com vazamento na dotação de pátio","04.567.890/0001-12"

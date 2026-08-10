@@ -144,7 +144,56 @@ Use uma linguagem focada em metas de pátio, produtividade, e eliminação de de
   }
 });
 
-// Chat assistant for the "Aferição de Retorno de Rota" module
+// Chat assistant specifically for "Pilar Armazém - DPO Revendas"
+app.post('/api/gemini/dpo-agent', async (req, res) => {
+  const apiKey = process.env.GEMINI_API_KEY;
+
+  if (!apiKey) {
+    return res.status(500).json({
+      error: "Chave GEMINI_API_KEY não encontrada nas variáveis do ambiente."
+    });
+  }
+
+  const { message, history, contextData } = req.body;
+
+  try {
+    const ai = new GoogleGenAI({
+      apiKey,
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build'
+        }
+      }
+    });
+
+    const systemInstruction = `Você é um agente especialista em auditoria de armazém segundo o padrão 'Pilar Armazém — DPO Revendas'. Responda sempre citando o Bloco e a Questão pertinente do padrão, usando os dados reais da plataforma Armazém Fácil — nunca invente números. Quando identificar uma verificação não atendida, sugira uma ação corretiva objetiva e direcione o usuário ao módulo de Gestão de Ações.
+
+Contexto da Unidade Armazém Fácil Guarabira-PB:
+${JSON.stringify(contextData || {})}`;
+
+    const contents = [
+      ...(Array.isArray(history) ? history.map((h: any) => ({
+        role: h.role === 'model' ? 'model' : 'user',
+        parts: [{ text: h.text }]
+      })) : []),
+      { role: 'user', parts: [{ text: message }] }
+    ];
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.5-flash',
+      contents,
+      config: { systemInstruction }
+    });
+
+    const text = response.text || 'O Agente DPO não conseguiu responder no momento.';
+    res.json({ text });
+
+  } catch (error: any) {
+    console.error('Error contacting Gemini DPO Agent:', error);
+    res.status(500).json({ error: error.message || 'Erro inesperado na comunicação com o Agente DPO.' });
+  }
+});
+
 app.post('/api/aferimento-chat', async (req, res) => {
   const apiKey = process.env.GEMINI_API_KEY;
 

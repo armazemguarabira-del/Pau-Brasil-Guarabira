@@ -1,0 +1,221 @@
+{
+  "database": "postgresql",
+  "version": "TAPA_X_v1.0",
+  "tables": {
+    "colaboradores": {
+      "description": "Tabela mestre de colaboradores do Armazém Ambev Guarabira com perfil TAPA X e matrícula funcional.",
+      "columns": [
+        {"name": "id", "type": "UUID", "primary_key": true, "default": "gen_random_uuid()"},
+        {"name": "matricula", "type": "VARCHAR(20)", "unique": true, "nullable": false},
+        {"name": "nome_completo", "type": "VARCHAR(150)", "nullable": false},
+        {"name": "email", "type": "VARCHAR(150)", "unique": true, "nullable": false},
+        {"name": "role", "type": "VARCHAR(50)", "nullable": false, "enum": ["Ajudante", "Operador Empilhadeira", "Conferente", "Administrativo"]},
+        {"name": "cargo_funcao", "type": "VARCHAR(100)", "nullable": false},
+        {"name": "turno", "type": "VARCHAR(20)", "default": "Turno A (Manhã)"},
+        {"name": "area_principal", "type": "VARCHAR(100)", "default": "PICKING"},
+        {"name": "status_ativo", "type": "BOOLEAN", "default": true},
+        {"name": "data_admissao", "type": "DATE", "nullable": true},
+        {"name": "created_at", "type": "TIMESTAMPTZ", "default": "NOW()"},
+        {"name": "updated_at", "type": "TIMESTAMPTZ", "default": "NOW()"}
+      ]
+    },
+    "products": {
+      "description": "Catálogo mestre de SKUs Ambev com fatores de conversão em Hectolitros e preço unitário.",
+      "columns": [
+        {"name": "id", "type": "UUID", "primary_key": true, "default": "gen_random_uuid()"},
+        {"name": "produto_codigo", "type": "VARCHAR(30)", "unique": true, "nullable": false},
+        {"name": "produto_descricao", "type": "VARCHAR(255)", "nullable": false},
+        {"name": "categoria", "type": "VARCHAR(50)", "default": "Cerveja"},
+        {"name": "embalagem", "type": "VARCHAR(50)", "default": "Caixa / Six-Pack / Keg"},
+        {"name": "hectolitro_por_unidade", "type": "DECIMAL(10,6)", "nullable": false},
+        {"name": "valor_unitario", "type": "DECIMAL(10,2)", "nullable": false},
+        {"name": "shelf_life_days", "type": "INTEGER", "nullable": false, "default": 180},
+        {"name": "fator_recolhimento_dias", "type": "INTEGER", "default": 45},
+        {"name": "active", "type": "BOOLEAN", "default": true},
+        {"name": "created_at", "type": "TIMESTAMPTZ", "default": "NOW()"}
+      ]
+    },
+    "logins": {
+      "description": "Sessões e credenciais de acesso de usuários à workstation CCO.",
+      "columns": [
+        {"name": "id", "type": "UUID", "primary_key": true, "default": "gen_random_uuid()"},
+        {"name": "colaborador_id", "type": "UUID", "foreign_key": "colaboradores.id", "nullable": false},
+        {"name": "password_hash", "type": "VARCHAR(255)", "nullable": false},
+        {"name": "last_login_at", "type": "TIMESTAMPTZ", "nullable": true},
+        {"name": "current_token", "type": "TEXT", "nullable": true},
+        {"name": "ip_address", "type": "VARCHAR(45)", "nullable": true},
+        {"name": "created_at", "type": "TIMESTAMPTZ", "default": "NOW()"}
+      ]
+    },
+    "demand_items": {
+      "description": "Demandas de giro de validade e future shelf extraídas via OCR ou lançadas no pátio.",
+      "columns": [
+        {"name": "demanda_id", "type": "UUID", "primary_key": true, "default": "gen_random_uuid()"},
+        {"name": "produto_codigo", "type": "VARCHAR(30)", "foreign_key": "products.produto_codigo", "nullable": false},
+        {"name": "produto_descricao", "type": "VARCHAR(255)", "nullable": false},
+        {"name": "lote", "type": "VARCHAR(50)", "nullable": false},
+        {"name": "quantidade", "type": "INTEGER", "nullable": false},
+        {"name": "unidade", "type": "VARCHAR(10)", "default": "cx"},
+        {"name": "venda_media", "type": "DECIMAL(10,2)", "nullable": false},
+        {"name": "dias_estoque", "type": "DECIMAL(10,2)", "nullable": false},
+        {"name": "data_vencimento", "type": "DATE", "nullable": false},
+        {"name": "ultima_data_recolhimento", "type": "DATE", "nullable": false},
+        {"name": "prazo_45dias_flag", "type": "BOOLEAN", "default": false},
+        {"name": "stock_age_index", "type": "DECIMAL(5,2)", "default": 0.60},
+        {"name": "previsao_escoamento", "type": "DATE", "nullable": true},
+        {"name": "tipo", "type": "VARCHAR(30)", "enum": ["validade", "futuro_shelf"]},
+        {"name": "origem_imagem", "type": "VARCHAR(100)", "nullable": true},
+        {"name": "confidence", "type": "DECIMAL(5,2)", "default": 0.95},
+        {"name": "requires_manual_review", "type": "BOOLEAN", "default": false},
+        {"name": "destino_workstation", "type": "VARCHAR(50)", "default": "Gestão de Escoamento"},
+        {"name": "created_at", "type": "TIMESTAMPTZ", "default": "NOW()"},
+        {"name": "updated_at", "type": "TIMESTAMPTZ", "default": "NOW()"}
+      ]
+    },
+    "desvios": {
+      "description": "Inconsistências de validade, erros de OCR e avarias no pátio.",
+      "columns": [
+        {"name": "id", "type": "UUID", "primary_key": true, "default": "gen_random_uuid()"},
+        {"name": "demanda_id", "type": "UUID", "foreign_key": "demand_items.demanda_id", "nullable": true},
+        {"name": "tipo_desvio", "type": "VARCHAR(100)", "nullable": false},
+        {"name": "descricao_inconsistencia", "type": "TEXT", "nullable": false},
+        {"name": "area_origem", "type": "VARCHAR(100)", "default": "PICKING"},
+        {"name": "status", "type": "VARCHAR(30)", "default": "PENDENTE", "enum": ["PENDENTE", "EM_TRATATIVA", "CONCLUIDO"]},
+        {"name": "responsavel_id", "type": "UUID", "foreign_key": "colaboradores.id", "nullable": true},
+        {"name": "created_at", "type": "TIMESTAMPTZ", "default": "NOW()"}
+      ]
+    },
+    "acoes": {
+      "description": "Planos de Ação baseados nos 5 Porquês para mitigação de desvios e giro de estoque.",
+      "columns": [
+        {"name": "id", "type": "UUID", "primary_key": true, "default": "gen_random_uuid()"},
+        {"name": "desvio_id", "type": "UUID", "foreign_key": "desvios.id", "nullable": false},
+        {"name": "porque_1", "type": "TEXT", "nullable": false},
+        {"name": "porque_2", "type": "TEXT", "nullable": false},
+        {"name": "porque_3", "type": "TEXT", "nullable": false},
+        {"name": "porque_4", "type": "TEXT", "nullable": false},
+        {"name": "porque_5", "type": "TEXT", "nullable": false},
+        {"name": "causa_raiz", "type": "TEXT", "nullable": false},
+        {"name": "acao_corretiva", "type": "TEXT", "nullable": false},
+        {"name": "responsavel_id", "type": "UUID", "foreign_key": "colaboradores.id", "nullable": false},
+        {"name": "prazo_conclusao", "type": "DATE", "nullable": false},
+        {"name": "status", "type": "VARCHAR(30)", "default": "ABERTO", "enum": ["ABERTO", "EM_ANDAMENTO", "FECHADO"]},
+        {"name": "fechado_em", "type": "TIMESTAMPTZ", "nullable": true},
+        {"name": "created_at", "type": "TIMESTAMPTZ", "default": "NOW()"}
+      ]
+    },
+    "diario": {
+      "description": "Registros de Diário de Bordo, passagem de turno e ocorrências operacionais do armazém.",
+      "columns": [
+        {"name": "id", "type": "UUID", "primary_key": true, "default": "gen_random_uuid()"},
+        {"name": "colaborador_id", "type": "UUID", "foreign_key": "colaboradores.id", "nullable": false},
+        {"name": "turno", "type": "VARCHAR(20)", "nullable": false},
+        {"name": "area", "type": "VARCHAR(100)", "nullable": false},
+        {"name": "tipo_registro", "type": "VARCHAR(50)", "enum": ["PASSAGEM_TURNO", "AVARIA", "QUEBRA", "OCORRENCIA_GERAL"]},
+        {"name": "descricao", "type": "TEXT", "nullable": false},
+        {"name": "quantidade_afetada_cx", "type": "INTEGER", "default": 0},
+        {"name": "status_resolucao", "type": "VARCHAR(30)", "default": "REGISTRADO"},
+        {"name": "created_at", "type": "TIMESTAMPTZ", "default": "NOW()"}
+      ]
+    },
+    "reunioes": {
+      "description": "Atas, listas de presença e registros de treinamentos de Padrões Operacionais DPO.",
+      "columns": [
+        {"name": "id", "type": "UUID", "primary_key": true, "default": "gen_random_uuid()"},
+        {"name": "titulo", "type": "VARCHAR(200)", "nullable": false},
+        {"name": "tipo", "type": "VARCHAR(50)", "enum": ["REUNIAO_MATINAL", "TREINAMENTO_POP", "AUDITORIA_DPO"]},
+        {"name": "pauta", "type": "TEXT", "nullable": false},
+        {"name": "instrutor_id", "type": "UUID", "foreign_key": "colaboradores.id", "nullable": false},
+        {"name": "data_realizacao", "type": "TIMESTAMPTZ", "default": "NOW()"},
+        {"name": "presentes_ids", "type": "JSONB", "default": "[]"}
+      ]
+    },
+    "uploads": {
+      "description": "Registro de imagens de pátio enviadas para escaneamento OCR de lote e validade.",
+      "columns": [
+        {"name": "id", "type": "UUID", "primary_key": true, "default": "gen_random_uuid()"},
+        {"name": "nome_arquivo", "type": "VARCHAR(255)", "nullable": false},
+        {"name": "url_publica", "type": "TEXT", "nullable": false},
+        {"name": "mime_type", "type": "VARCHAR(50)", "default": "image/png"},
+        {"name": "tamanho_bytes", "type": "INTEGER", "nullable": false},
+        {"name": "status_ocr", "type": "VARCHAR(30)", "default": "PROCESSADO"},
+        {"name": "created_at", "type": "TIMESTAMPTZ", "default": "NOW()"}
+      ]
+    },
+    "indicadores_repack_despejo_quebras": {
+      "description": "Métricas de produtividade individual por operador para Repack, Despejo e Quebras no pátio.",
+      "columns": [
+        {"name": "id", "type": "UUID", "primary_key": true, "default": "gen_random_uuid()"},
+        {"name": "colaborador_id", "type": "UUID", "foreign_key": "colaboradores.id", "nullable": false},
+        {"name": "data_referencia", "type": "DATE", "nullable": false},
+        {"name": "caixas_repack", "type": "INTEGER", "default": 0},
+        {"name": "tempo_repack_minutos", "type": "DECIMAL(8,2)", "default": 0.0},
+        {"name": "hectolitros_despejo", "type": "DECIMAL(10,3)", "default": 0.0},
+        {"name": "caixas_quebras", "type": "INTEGER", "default": 0},
+        {"name": "taxa_reaproveitamento_pct", "type": "DECIMAL(5,2)", "default": 95.0}
+      ]
+    },
+    "escoamento_registros": {
+      "description": "Histórico de ações de escoamento e liberações promocionais executadas no pátio.",
+      "columns": [
+        {"name": "id", "type": "UUID", "primary_key": true, "default": "gen_random_uuid()"},
+        {"name": "demanda_id", "type": "UUID", "foreign_key": "demand_items.demanda_id", "nullable": false},
+        {"name": "quantidade_escoada_cx", "type": "INTEGER", "nullable": false},
+        {"name": "tipo_escoamento", "type": "VARCHAR(50)", "enum": ["PROMOÇÃO_LOCAL", "TRANSFERENCIA_CD", "DESVIO_COMERCIAL", "DESCARTE"]},
+        {"name": "solicitante_id", "type": "UUID", "foreign_key": "colaboradores.id", "nullable": false},
+        {"name": "observacoes", "type": "TEXT", "nullable": true},
+        {"name": "created_at", "type": "TIMESTAMPTZ", "default": "NOW()"}
+      ]
+    },
+    "checklists": {
+      "description": "Submissões obrigatórias de auditoria 5S e Início de Jornada por área e turno.",
+      "columns": [
+        {"name": "id", "type": "UUID", "primary_key": true, "default": "gen_random_uuid()"},
+        {"name": "template_id", "type": "VARCHAR(100)", "default": "5s_armazem_guarabira_v1"},
+        {"name": "colaborador_id", "type": "UUID", "foreign_key": "colaboradores.id", "nullable": false},
+        {"name": "area", "type": "VARCHAR(100)", "nullable": false},
+        {"name": "respostas", "type": "JSONB", "nullable": false},
+        {"name": "status_aprovacao", "type": "BOOLEAN", "default": true},
+        {"name": "created_at", "type": "TIMESTAMPTZ", "default": "NOW()"}
+      ]
+    },
+    "notifications": {
+      "description": "Notificações operacionais emitidas por triggers e jobs agendados.",
+      "columns": [
+        {"name": "id", "type": "UUID", "primary_key": true, "default": "gen_random_uuid()"},
+        {"name": "destinatario_id", "type": "UUID", "foreign_key": "colaboradores.id", "nullable": true},
+        {"name": "titulo", "type": "VARCHAR(150)", "nullable": false},
+        {"name": "mensagem", "type": "TEXT", "nullable": false},
+        {"name": "tipo", "type": "VARCHAR(30)", "enum": ["CRITICO_45D", "DESVIO_OCR", "ALERTA_5S", "RECALCULO_GIRO"]},
+        {"name": "lida", "type": "BOOLEAN", "default": false},
+        {"name": "created_at", "type": "TIMESTAMPTZ", "default": "NOW()"}
+      ]
+    },
+    "jobs": {
+      "description": "Histórico de execução de tarefas agendadas Cron na workstation.",
+      "columns": [
+        {"name": "id", "type": "UUID", "primary_key": true, "default": "gen_random_uuid()"},
+        {"name": "job_name", "type": "VARCHAR(100)", "nullable": false},
+        {"name": "cron_expression", "type": "VARCHAR(50)", "nullable": false},
+        {"name": "status", "type": "VARCHAR(20)", "enum": ["SUCCESS", "FAILED", "RUNNING"]},
+        {"name": "itens_processados", "type": "INTEGER", "default": 0},
+        {"name": "executado_em", "type": "TIMESTAMPTZ", "default": "NOW()"},
+        {"name": "detalhes_log", "type": "TEXT", "nullable": true}
+      ]
+    },
+    "logs": {
+      "description": "Trilha de auditoria para alterações sensíveis de dados, permissões e saldos de estoque.",
+      "columns": [
+        {"name": "id", "type": "UUID", "primary_key": true, "default": "gen_random_uuid()"},
+        {"name": "colaborador_id", "type": "UUID", "foreign_key": "colaboradores.id", "nullable": true},
+        {"name": "acao", "type": "VARCHAR(100)", "nullable": false},
+        {"name": "tabela_afetada", "type": "VARCHAR(50)", "nullable": false},
+        {"name": "registro_id", "type": "VARCHAR(100)", "nullable": false},
+        {"name": "valores_antigos", "type": "JSONB", "nullable": true},
+        {"name": "valores_novos", "type": "JSONB", "nullable": true},
+        {"name": "ip_address", "type": "VARCHAR(45)", "nullable": true},
+        {"name": "created_at", "type": "TIMESTAMPTZ", "default": "NOW()"}
+      ]
+    }
+  }
+}

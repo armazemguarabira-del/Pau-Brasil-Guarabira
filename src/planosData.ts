@@ -1,3 +1,5 @@
+import { getProductMeta } from './utils/productCatalogData';
+
 export interface ModuloDef {
   id: string;
   icon: string;
@@ -125,7 +127,7 @@ export const AF_PAPEIS: Record<string, PapelDef> = {
   },
 };
 
-export const PRODUCTS = [
+const RAW_PRODUCTS = [
   { codigo: 347, descricao: "SUKITA PET 1L CAIXA C/12", fator: 12, fatorHecto: 0.12, caixasPallet: 84, unidade: 1008, fatorHectoPorUnidade: 0.01, hectoLitroTotalPallet: 10.08 },
   { codigo: 371, descricao: "MALZBIER BRAHMA LONG NECK 355ML SIX-PACK BANDEJA C/4", fator: 24, fatorHecto: 0.0852, caixasPallet: 84, unidade: 2016, fatorHectoPorUnidade: 0.00355, hectoLitroTotalPallet: 7.1568 },
   { codigo: 503, descricao: "SUKITA PET 2L CAIXA C/6", fator: 6, fatorHecto: 0.12, caixasPallet: 100, unidade: 600, fatorHectoPorUnidade: 0.02, hectoLitroTotalPallet: 12 },
@@ -377,3 +379,13 @@ export const PRODUCTS = [
   { codigo: 37583, descricao: "DOCES VIEIRA BEIJO DE MOCA PCT PLAST 23G POTE C/40", fator: 40, fatorHecto: 0.0092, caixasPallet: 50, unidade: 2000, fatorHectoPorUnidade: 0.00023, hectoLitroTotalPallet: 0.46 },
   { codigo: 37933, descricao: "DOCES VIEIRA BRIGADEIRO PCT PLAST 23G POTE C/40", fator: 40, fatorHecto: 0.0092, caixasPallet: 84, unidade: 3360, fatorHectoPorUnidade: 0.00023, hectoLitroTotalPallet: 0.7728 }
 ];
+
+export const PRODUCTS = RAW_PRODUCTS.map(p => {
+  const meta = getProductMeta(p.codigo);
+  return {
+    ...p,
+    preco: meta.preco,
+    grupo: meta.grupo,
+    curva: meta.curva
+  };
+});

@@ -6,13 +6,17 @@ import { useEmpresaData } from '../context/EmpresaDataContext';
 import DespejoDashboard from './DespejoDashboard';
 import { TrendingUp, CheckCircle, Clock, Award, BarChart2 } from 'lucide-react';
 import SugerirMelhoriaCard from './SugerirMelhoriaCard';
+import { SopBannerViewer } from './SopBannerViewer';
 import { filterHistoryForUser, HistoryRestrictionNotice } from '../utils/historyFilter';
 import { elaborarTemposIlustrativosOperacao } from '../utils/quebrasDespejoUtils';
+import { triggerAutoAcaoCorretiva } from '../utils/simulacaoAcoesUtils';
 
 interface DespejoPanelProps {
   user: Usuario;
   empresa: Empresa | null;
   theme?: 'light' | 'dark';
+  shiftStarted?: boolean;
+  onRequireShiftStart?: () => void;
 }
 
 const DESPEJO_EMBALAGENS = [
@@ -25,7 +29,7 @@ const DESPEJO_EMBALAGENS = [
   { nome: 'PET 2L', meta: '00:04:00' },
 ];
 
-export default function DespejoPanel({ user, empresa }: DespejoPanelProps) {
+export default function DespejoPanel({ user, empresa, shiftStarted, onRequireShiftStart }: DespejoPanelProps) {
   const empresaId = empresa?.id || 'demo';
   const draftKey = `despejo_draft_${empresaId}_${user.nome || 'guest'}`;
 
@@ -161,6 +165,12 @@ export default function DespejoPanel({ user, empresa }: DespejoPanelProps) {
   };
 
   const handleRegister = async () => {
+    if (shiftStarted === false) {
+      alert('⚠️ Você precisa Iniciar a Jornada na Operação Ajudante antes de realizar lançamentos!');
+      if (onRequireShiftStart) onRequireShiftStart();
+      return;
+    }
+
     if (!inicio || !fim) return;
     if (quantidade === '' || isNaN(Number(quantidade)) || Number(quantidade) <= 0) {
       alert('Por favor, informe uma quantidade válida de caixas despejadas.');
@@ -196,6 +206,18 @@ export default function DespejoPanel({ user, empresa }: DespejoPanelProps) {
         localStorage.setItem(`despejo_rows_${empresa?.id || 'demo'}`, JSON.stringify(current));
       }
 
+      if (statusMeta.includes('ACIMA')) {
+        triggerAutoAcaoCorretiva({
+          processo: 'Despejo',
+          colaboradorResponsavel: user.nome,
+          indicador: `Produtividade Despejo (${embalagem})`,
+          meta: activeMeta,
+          resultadoObtido: tempo,
+          desvioEncontrado: `Não atingimento da meta no Despejo de ${embalagem}. Tempo realizado (${tempo}) excedeu a meta unitária (${activeMeta}). Qtd: ${quantidade} caixas.`,
+          comentarioOperador: `Operação de despejo acima da meta para ${quantidade} cx de ${embalagem}.`
+        });
+      }
+
       // Reset fields
       setQuantidade('');
       setInicio('');
@@ -213,17 +235,17 @@ export default function DespejoPanel({ user, empresa }: DespejoPanelProps) {
   };
 
   const handleDelete = async (docId?: string) => {
-    if (!docId || !confirm('Excluir este registro?')) return;
+    if (!docId) return;
     try {
       if (db) {
         await deleteDoc(doc(db, 'despejo', docId));
-      } else {
-        const remaining = despejoRows.filter(r => r._docId !== docId);
-        setDespejoRows(remaining);
-        localStorage.setItem(`despejo_rows_${empresa?.id || 'demo'}`, JSON.stringify(remaining));
       }
     } catch (e) {
-      alert('Erro ao deletar: ' + e);
+      console.error(e);
+    } finally {
+      const remaining = despejoRows.filter(r => r._docId !== docId && (r as any).id !== docId);
+      setDespejoRows(remaining);
+      localStorage.setItem(`despejo_rows_${empresa?.id || 'demo'}`, JSON.stringify(remaining));
     }
   };
 
@@ -237,6 +259,9 @@ export default function DespejoPanel({ user, empresa }: DespejoPanelProps) {
           META UNIT.: <strong className="text-[#ef4444] font-mono">{activeMeta}</strong>
         </div>
       </div>
+
+      {/* Standard Operating Procedure (POP / SOP) Banner for Operator */}
+      <SopBannerViewer operation="despejo" operationName="Despejo" />
 
       <div className="ptabs border-b border-[#222d3a] flex gap-2">
         <button 

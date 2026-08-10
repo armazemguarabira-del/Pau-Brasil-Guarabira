@@ -107,11 +107,11 @@ const getFormattedRoles = (funcaoStr?: string) => {
     switch (role.trim()) {
       case 'repack': return 'Operação Repack';
       case 'despejo': return 'Operação Despejo';
-      case 'armazem': return 'Operação EFC / EFD';
+      case 'armazem': return 'Operação Empilhador';
       case 'quebras': return 'Operação Quebras';
       case 'validades': return 'Operação Validade';
       case 'refugo': return 'Operação Retorno de Rota';
-      case 'empilhador': return 'Operação Picking';
+      case 'empilhador': return 'Operação Empilhador';
       case 'conferente': return 'Operação Conferênte';
       case 'controle': return 'Supervisor Controle';
       default: return role;
@@ -945,18 +945,32 @@ export default function ControlePanel({ user, empresa, initialSection }: Control
     setColabMsg(null);
   };
 
-  const handleDeleteColaborador = async (docId?: string) => {
-    if (!docId) return;
+  const handleDeleteColaborador = async (docId?: string, colabObj?: any) => {
+    const targetId = docId || colabObj?._docId || colabObj?.id || colabObj?.matricula;
+    const matricula = colabObj?.matricula || targetId;
+    const nome = colabObj?.nome || '';
+
+    if (!confirm(`Tem certeza que deseja excluir este colaborador?`)) return;
+
     try {
-      if (db) {
-        await deleteDoc(doc(db, 'colaboradores', docId));
-        // Optimistically update the UI list immediately
-        setColaboradores(prev => prev.filter(c => c._docId !== docId && c.id !== docId));
-      } else {
-        const remaining = colaboradores.filter(c => c._docId !== docId && c.id !== docId);
-        setColaboradores(remaining);
-        localStorage.setItem(`colaboradores_${empresaId}`, JSON.stringify(remaining));
+      if (db && targetId && !targetId.startsWith('local_')) {
+        try {
+          await deleteDoc(doc(db, 'colaboradores', targetId));
+        } catch (e) {
+          console.warn('Firestore delete:', e);
+        }
       }
+      setColaboradores(prev => prev.filter(c => c._docId !== targetId && c.id !== targetId && c.matricula !== matricula));
+      const remaining = colaboradores.filter(c => c._docId !== targetId && c.id !== targetId && c.matricula !== matricula);
+      localStorage.setItem(`colaboradores_${empresaId}`, JSON.stringify(remaining));
+
+      // Global delete registration
+      const keyDel = `deleted_colaboradores_${empresaId}`;
+      const deletedList: string[] = JSON.parse(localStorage.getItem(keyDel) || '[]');
+      const updated = Array.from(new Set([...deletedList, matricula, nome].filter(Boolean)));
+      localStorage.setItem(keyDel, JSON.stringify(updated));
+
+      alert('Colaborador excluído com sucesso!');
     } catch (err: any) {
       console.error('Erro ao excluir colaborador:', err);
     }
@@ -1093,7 +1107,7 @@ export default function ControlePanel({ user, empresa, initialSection }: Control
       {/* Navigation sub-tabs (only visible when outside of 'hub') */}
       {currentSection !== 'hub' && (
         <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-[#222d3a] gap-4 pb-2">
-          <div className="flex gap-2 overflow-x-auto scrollbar-none">
+          <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-thin scrollbar-thumb-amber-500/40 scrollbar-track-slate-900/40">
             <button 
               onClick={() => setCurrentSection('colaboradores')}
               className={`py-2.5 px-4 font-sans font-bold text-xs uppercase cursor-pointer whitespace-nowrap transition-all rounded-lg flex items-center gap-1.5 ${currentSection === 'colaboradores' ? 'text-[#f5a623] bg-[#f5a623]/10 border border-[#f5a623]/20' : 'text-[#6a7d92] hover:text-[#e8eef5]'}`}
@@ -2245,13 +2259,13 @@ export default function ControlePanel({ user, empresa, initialSection }: Control
                       <label className="text-[10px] font-bold tracking-widest text-[#6a7d92] uppercase">Função Operacional / Acessos (Selecione um ou mais)</label>
                       <div className="grid grid-cols-1 gap-1.5 p-3 bg-[#151b23] border border-[#222d3a] rounded-xl max-h-56 overflow-y-auto">
                         {[
+                          { id: 'ajudante', label: 'Operação Ajudante' },
                           { id: 'repack', label: 'Operação Repack' },
                           { id: 'despejo', label: 'Operação Despejo' },
-                          { id: 'armazem', label: 'Operação EFC / EFD' },
+                          { id: 'empilhador', label: 'Operação Empilhador' },
                           { id: 'quebras', label: 'Operação Quebras' },
                           { id: 'validades', label: 'Operação Validade' },
                           { id: 'refugo', label: 'Operação Retorno de Rota' },
-                          { id: 'empilhador', label: 'Operação Picking' },
                           { id: 'conferente', label: 'Operação Conferênte' },
                           { id: 'controle', label: 'Supervisor Controle' }
                         ].map(op => {
@@ -2377,10 +2391,10 @@ export default function ControlePanel({ user, empresa, initialSection }: Control
                               >
                                 <Pencil className="w-4 h-4" />
                               </button>
-                              {confirmColabId === colab._docId ? (
+                              {confirmColabId === (colab._docId || colab.id || colab.matricula) ? (
                                 <button
                                   onClick={() => {
-                                    handleDeleteColaborador(colab._docId);
+                                    handleDeleteColaborador(colab._docId || colab.id || colab.matricula, colab);
                                     setConfirmColabId(null);
                                   }}
                                   className="px-2.5 py-1 text-[10px] uppercase font-black tracking-widest bg-red-500/20 border border-red-500/40 text-red-400 hover:bg-red-500 hover:text-white rounded-lg transition-all cursor-pointer"
@@ -2391,8 +2405,9 @@ export default function ControlePanel({ user, empresa, initialSection }: Control
                               ) : (
                                 <button
                                   onClick={() => {
-                                    setConfirmColabId(colab._docId || null);
-                                    setTimeout(() => setConfirmColabId(prev => prev === colab._docId ? null : prev), 4000);
+                                    const cKey = colab._docId || colab.id || colab.matricula;
+                                    setConfirmColabId(cKey || null);
+                                    setTimeout(() => setConfirmColabId(prev => prev === cKey ? null : prev), 4000);
                                   }}
                                   className="p-2 rounded-lg border border-[#222d3a] hover:border-red-500/40 bg-[#151b23] hover:bg-red-500/10 text-[#6a7d92] hover:text-red-400 transition-all cursor-pointer inline-flex items-center justify-center"
                                   title="Remover Colaborador"
@@ -2476,13 +2491,13 @@ export default function ControlePanel({ user, empresa, initialSection }: Control
                       <label className="text-[10px] font-bold tracking-widest text-[#6a7d92] uppercase">Função Operacional / Acessos * (Selecione uma ou mais)</label>
                       <div className="grid grid-cols-1 gap-1.5 p-3 bg-[#151b23] border border-[#222d3a] rounded-xl max-h-56 overflow-y-auto">
                         {[
+                          { id: 'ajudante', label: 'Operação Ajudante' },
                           { id: 'repack', label: 'Operação Repack' },
                           { id: 'despejo', label: 'Operação Despejo' },
-                          { id: 'armazem', label: 'Operação EFC / EFD' },
+                          { id: 'empilhador', label: 'Operação Empilhador' },
                           { id: 'quebras', label: 'Operação Quebras' },
                           { id: 'validades', label: 'Operação Validade' },
                           { id: 'refugo', label: 'Operação Retorno de Rota' },
-                          { id: 'empilhador', label: 'Operação Picking' },
                           { id: 'conferente', label: 'Operação Conferênte' },
                           { id: 'controle', label: 'Supervisor Controle' }
                         ].map(op => {
@@ -2583,10 +2598,10 @@ export default function ControlePanel({ user, empresa, initialSection }: Control
                               </span>
                             </td>
                             <td className="p-3 text-center flex items-center justify-center gap-2">
-                              {confirmColabId === colab._docId ? (
+                              {confirmColabId === (colab._docId || colab.id || colab.matricula) ? (
                                 <button
                                   onClick={() => {
-                                    handleDeleteColaborador(colab._docId);
+                                    handleDeleteColaborador(colab._docId || colab.id || colab.matricula, colab);
                                     setConfirmColabId(null);
                                   }}
                                   className="px-2.5 py-1 text-[10px] uppercase font-black tracking-widest bg-red-500/20 border border-red-500/40 text-red-400 hover:bg-red-500 hover:text-white rounded-lg transition-all cursor-pointer"
@@ -2597,8 +2612,9 @@ export default function ControlePanel({ user, empresa, initialSection }: Control
                               ) : (
                                 <button
                                   onClick={() => {
-                                    setConfirmColabId(colab._docId || null);
-                                    setTimeout(() => setConfirmColabId(prev => prev === colab._docId ? null : prev), 4000);
+                                    const cKey = colab._docId || colab.id || colab.matricula;
+                                    setConfirmColabId(cKey || null);
+                                    setTimeout(() => setConfirmColabId(prev => prev === cKey ? null : prev), 4000);
                                   }}
                                   className="p-2 rounded-lg border border-[#222d3a] hover:border-red-500/40 bg-[#151b23] hover:bg-red-500/10 text-[#6a7d92] hover:text-red-400 transition-all cursor-pointer inline-flex items-center justify-center"
                                   title="Revogar Pré-Autorização"

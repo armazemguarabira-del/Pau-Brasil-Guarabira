@@ -1,3 +1,4 @@
+import { ManualInstrucaoCard } from './ManualInstrucaoCard';
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   BarChart, 
@@ -24,17 +25,23 @@ import {
   Archive,
   Truck,
   Table,
-  Layers
+  Layers,
+  RotateCcw,
+  BookOpen,
+  ShieldCheck,
+  BarChart2
 } from 'lucide-react';
 import { Usuario, Empresa, QuebraRow } from '../types';
 import { db } from '../firebase';
 import { useEmpresaData } from '../context/EmpresaDataContext';
-import { generateMockQuebras } from '../mockDataGenerator';
 import A3BoardComponent from './A3BoardComponent';
 import CalendarFilter from './CalendarFilter';
-import WqiTab, { getItemHlInfo } from './WqiTab';
+import WqiTab, { getItemHlInfo, getItemValorReal } from './WqiTab';
 import { CrossFilterProvider, useCrossFilter, ActiveCrossFiltersBar } from '../context/CrossFilterContext';
 import { CrosstabMatrix } from './CrosstabMatrix';
+import ArvoreMotivosTree from './ArvoreMotivosTree';
+import { PadraoOperacionalModal } from './PadraoOperacionalModal';
+import { Checklist5SModal } from './Checklist5SModal';
 
 interface QuebrasDashboardProps {
   user: Usuario;
@@ -143,24 +150,43 @@ export const getGrupoName = (desc: string): string => {
 };
 
 function QuebrasDashboardInner({ user, empresa, onBack }: QuebrasDashboardProps) {
-  const { filters, toggleFilter, isFiltered, filterData } = useCrossFilter();
+  const { filters, toggleFilter, isFiltered, filterData, clearAllFilters } = useCrossFilter();
 
   const [actualQuebras, setActualQuebras] = useState<QuebraRow[]>([]);
-  const [startDate, setStartDate] = useState<string>(() => {
-    const d = new Date();
-    d.setDate(d.getDate() - 30);
-    return d.toISOString().split('T')[0];
-  });
-  const [endDate, setEndDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [startDate, setStartDate] = useState<string>('');
+  const [endDate, setEndDate] = useState<string>('');
   const [filterArea, setFilterArea] = useState<string>('TODAS');
   const [filterTurno, setFilterTurno] = useState<string>('TODOS');
   const [filterEmbalagem, setFilterEmbalagem] = useState<string>('TODAS');
   const [filterGrupo, setFilterGrupo] = useState<string>('TODOS');
   const [filterMotivo, setFilterMotivo] = useState<string>('TODOS');
+
+  const handleResetAllFilters = () => {
+    clearAllFilters();
+    setStartDate('');
+    setEndDate('');
+    setFilterArea('TODAS');
+    setFilterTurno('TODOS');
+    setFilterEmbalagem('TODAS');
+    setFilterGrupo('TODOS');
+    setFilterMotivo('TODOS');
+  };
+
+  const hasActiveHeaderFilters = filterArea !== 'TODAS' || 
+    filterTurno !== 'TODOS' || 
+    filterEmbalagem !== 'TODAS' || 
+    filterGrupo !== 'TODOS' || 
+    filterMotivo !== 'TODOS' || 
+    Boolean(startDate) || 
+    Boolean(endDate);
   const [secondChartMode, setSecondChartMode] = useState<'grupo' | 'embalagem'>('grupo');
   const [activeSubTab, setActiveSubTab] = useState<'indicadores' | 'wqi' | 'boarda3'>('indicadores');
-  const [viewUnit, setViewUnit] = useState<'cx' | 'he'>(() => {
-    return (localStorage.getItem('dashboard_view_unit') as 'cx' | 'he') || 'he';
+  const [isPopModalOpen, setIsPopModalOpen] = useState(false);
+  const [is5SModalOpen, setIs5SModalOpen] = useState(false);
+  const [viewUnit, setViewUnit] = useState<'rs' | 'hl' | 'sku'>(() => {
+    const saved = localStorage.getItem('dashboard_view_unit');
+    if (saved === 'rs' || saved === 'hl' || saved === 'sku') return saved;
+    return 'rs';
   });
 
   useEffect(() => {
@@ -178,16 +204,18 @@ function QuebrasDashboardInner({ user, empresa, onBack }: QuebrasDashboardProps)
   };
 
   const quebras = useMemo(() => {
-    const companyId = empresa?.id || 'demo';
-    if (actualQuebras && actualQuebras.length > 0) {
-      return actualQuebras;
-    }
-    return generateMockQuebras(companyId);
-  }, [actualQuebras, empresa?.id]);
+    return actualQuebras || [];
+  }, [actualQuebras]);
 
   // Convert physical units to HE (Hectolitros) accurately
   const convertCxToHE = (quantidade: number, descricao: string = '', codProduto?: string | number): number => {
     return getItemHlInfo({ quantidade, descricao, codProduto: codProduto ? String(codProduto) : undefined }).totalHl;
+  };
+
+  const getValorPorUnidade = (q: QuebraRow, unit: 'rs' | 'hl' | 'sku'): number => {
+    if (unit === 'sku') return q.quantidade || 0;
+    if (unit === 'hl') return convertCxToHE(q.quantidade, q.descricao, q.codProduto);
+    return getItemValorReal(q);
   };
   
   const empresaData = useEmpresaData();
@@ -310,47 +338,59 @@ function QuebrasDashboardInner({ user, empresa, onBack }: QuebrasDashboardProps)
   // Metric Calculation from crossFilteredData
   const totalQuantCx = crossFilteredData.reduce((acc, curr) => acc + curr.quantidade, 0);
   const totalQuantHE = crossFilteredData.reduce((acc, curr) => acc + convertCxToHE(curr.quantidade, curr.descricao, curr.codProduto), 0);
-  const totalQuant = viewUnit === 'cx' ? totalQuantCx : Math.round(totalQuantHE * 100) / 100;
-  const estimatedCost = totalQuantCx * 5.95;
+  const totalQuantReal = crossFilteredData.reduce((acc, curr) => acc + getItemValorReal(curr), 0);
+  const totalQuant = viewUnit === 'sku' ? totalQuantCx : viewUnit === 'hl' ? Math.round(totalQuantHE * 100) / 100 : Math.round(totalQuantReal * 100) / 100;
+  const estimatedCost = Math.round(totalQuantReal * 100) / 100;
+
+  const skuFilteredData = useMemo(() => {
+    return filterData(baseFilteredData, undefined, 'produto');
+  }, [baseFilteredData, filterData]);
 
   // SKU Pareto computation
   const sortedSkus = useMemo(() => {
-    const skuMap: Record<string, { desc: string, quantCx: number, quantHE: number }> = {};
-    crossFilteredData.forEach(q => {
-      if (!skuMap[q.codProduto]) {
-        skuMap[q.codProduto] = { desc: q.descricao, quantCx: 0, quantHE: 0 };
+    const skuMap: Record<string, { desc: string; quantCx: number; quantHE: number; valorTotal: number }> = {};
+    skuFilteredData.forEach(q => {
+      const cod = q.codProduto || 'S/C';
+      if (!skuMap[cod]) {
+        skuMap[cod] = { desc: q.descricao, quantCx: 0, quantHE: 0, valorTotal: 0 };
       }
-      skuMap[q.codProduto].quantCx += q.quantidade;
-      skuMap[q.codProduto].quantHE += convertCxToHE(q.quantidade, q.descricao, q.codProduto);
+      skuMap[cod].quantCx += q.quantidade;
+      const he = convertCxToHE(q.quantidade, q.descricao, q.codProduto);
+      skuMap[cod].quantHE += he;
+      const valor = getItemValorReal(q);
+      skuMap[cod].valorTotal += valor;
     });
 
     return Object.entries(skuMap)
       .map(([cod, item]) => ({
         cod,
         desc: item.desc,
-        quant: viewUnit === 'cx' ? item.quantCx : Math.round(item.quantHE * 100) / 100,
-        quantCx: item.quantCx
+        quantCx: item.quantCx,
+        quantHE: Math.round(item.quantHE * 100) / 100,
+        valorTotal: Math.round(item.valorTotal * 100) / 100,
+        quant: viewUnit === 'sku' ? item.quantCx : viewUnit === 'hl' ? Math.round(item.quantHE * 100) / 100 : Math.round(item.valorTotal * 100) / 100,
       }))
-      .sort((a, b) => b.quant - a.quant || b.quantCx - a.quantCx || a.cod.localeCompare(b.cod));
-  }, [crossFilteredData, viewUnit]);
+      .sort((a, b) => {
+        if (viewUnit === 'rs') return b.valorTotal - a.valorTotal;
+        if (viewUnit === 'hl') return b.quantHE - a.quantHE;
+        return b.quantCx - a.quantCx;
+      });
+  }, [skuFilteredData, viewUnit]);
 
-  const topSku = sortedSkus[0] || { cod: '-', desc: 'Nenhum', quant: 0, quantCx: 0 };
-  const topSkuPct = totalQuantCx > 0 ? ((topSku.quantCx / totalQuantCx) * 100).toFixed(1) : '0';
+  const topSku = sortedSkus[0] || { cod: '-', desc: 'Nenhum', quant: 0, quantCx: 0, quantHE: 0, valorTotal: 0 };
+  const topSkuPct = totalQuant > 0 ? ((topSku.quant / totalQuant) * 100).toFixed(1) : '0';
 
   // Critical Area computation
   const { areaVolumeMap, criticalAreaKey, criticalAreaName } = useMemo(() => {
-    const areaMapCx: Record<string, number> = { 'ARMAZEM': 0, 'ENTREGA': 0, 'MERCADO': 0, 'PUXADA': 0 };
-    const areaMapHE: Record<string, number> = { 'ARMAZEM': 0, 'ENTREGA': 0, 'MERCADO': 0, 'PUXADA': 0 };
+    const activeMap: Record<string, number> = { 'ARMAZEM': 0, 'ENTREGA': 0, 'MERCADO': 0, 'PUXADA': 0 };
 
     crossFilteredData.forEach(q => {
-      if (areaMapCx[q.area] !== undefined) {
-        areaMapCx[q.area] += q.quantidade;
-        areaMapHE[q.area] += convertCxToHE(q.quantidade, q.descricao, q.codProduto);
+      if (activeMap[q.area] !== undefined) {
+        activeMap[q.area] += getValorPorUnidade(q, viewUnit);
       }
     });
 
-    const activeMap = viewUnit === 'cx' ? areaMapCx : areaMapHE;
-    const cKey = Object.keys(areaMapCx).reduce((a, b) => areaMapCx[a] > areaMapCx[b] ? a : b, 'ARMAZEM');
+    const cKey = Object.keys(activeMap).reduce((a, b) => activeMap[a] > activeMap[b] ? a : b, 'ARMAZEM');
     const cName = {
       'ARMAZEM': 'Armazém / Depósito',
       'ENTREGA': 'Rota de Entrega',
@@ -370,7 +410,7 @@ function QuebrasDashboardInner({ user, empresa, onBack }: QuebrasDashboardProps)
       if (!map[key]) {
         map[key] = { desc: q.motivo, val: 0, rawMotivo: rawMot };
       }
-      map[key].val += viewUnit === 'cx' ? q.quantidade : convertCxToHE(q.quantidade, q.descricao, q.codProduto);
+      map[key].val += getValorPorUnidade(q, viewUnit);
     });
 
     return Object.entries(map)
@@ -388,7 +428,7 @@ function QuebrasDashboardInner({ user, empresa, onBack }: QuebrasDashboardProps)
     const map: Record<string, number> = {};
     embalagemData.forEach(q => {
       const embName = getEmbalagemName(q.descricao);
-      const val = viewUnit === 'cx' ? q.quantidade : convertCxToHE(q.quantidade, q.descricao, q.codProduto);
+      const val = getValorPorUnidade(q, viewUnit);
       map[embName] = (map[embName] || 0) + val;
     });
 
@@ -408,7 +448,7 @@ function QuebrasDashboardInner({ user, empresa, onBack }: QuebrasDashboardProps)
     const map: Record<string, number> = {};
     grupoData.forEach(q => {
       const gName = getGrupoName(q.descricao);
-      const val = viewUnit === 'cx' ? q.quantidade : convertCxToHE(q.quantidade, q.descricao, q.codProduto);
+      const val = getValorPorUnidade(q, viewUnit);
       map[gName] = (map[gName] || 0) + val;
     });
 
@@ -428,7 +468,7 @@ function QuebrasDashboardInner({ user, empresa, onBack }: QuebrasDashboardProps)
     const map: Record<string, number> = { 'ARMAZEM': 0, 'ENTREGA': 0, 'MERCADO': 0, 'PUXADA': 0 };
     areaData.forEach(q => {
       if (map[q.area] !== undefined) {
-        map[q.area] += viewUnit === 'cx' ? q.quantidade : convertCxToHE(q.quantidade, q.descricao, q.codProduto);
+        map[q.area] += getValorPorUnidade(q, viewUnit);
       }
     });
 
@@ -453,7 +493,7 @@ function QuebrasDashboardInner({ user, empresa, onBack }: QuebrasDashboardProps)
     timelineData.forEach(q => {
       const day = q.data ? q.data.substring(0, 5) : ''; // DD/MM
       if (day) {
-        map[day] = (map[day] || 0) + (viewUnit === 'cx' ? q.quantidade : convertCxToHE(q.quantidade, q.descricao, q.codProduto));
+        map[day] = (map[day] || 0) + getValorPorUnidade(q, viewUnit);
       }
     });
 
@@ -471,7 +511,7 @@ function QuebrasDashboardInner({ user, empresa, onBack }: QuebrasDashboardProps)
     const tMap: Record<string, number> = { 'MANHÃ': 0, 'NOITE / MADRUGADA': 0 };
     turnoData.forEach(q => {
       const norm = q.turno.toUpperCase().includes('MANHÃ') ? 'MANHÃ' : 'NOITE / MADRUGADA';
-      tMap[norm] = (tMap[norm] || 0) + (viewUnit === 'cx' ? q.quantidade : convertCxToHE(q.quantidade, q.descricao, q.codProduto));
+      tMap[norm] = (tMap[norm] || 0) + getValorPorUnidade(q, viewUnit);
     });
 
     const cData = Object.entries(tMap).map(([name, value]) => ({ name, value: Math.round(value * 100) / 100 }));
@@ -553,6 +593,57 @@ function QuebrasDashboardInner({ user, empresa, onBack }: QuebrasDashboardProps)
             </button>
           </div>
 
+          {/* POP & 5S BUTTONS */}
+          <button 
+            onClick={() => setIsPopModalOpen(true)}
+            className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-black text-xs transition-all cursor-pointer flex items-center gap-1.5 shadow-xs uppercase tracking-wider"
+          >
+            <BookOpen className="w-3.5 h-3.5 text-blue-200" /> Padrão Operacional
+          </button>
+
+          <button 
+            onClick={() => setIs5SModalOpen(true)}
+            className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-xl font-black text-xs transition-all cursor-pointer flex items-center gap-1.5 shadow-xs uppercase tracking-wider"
+          >
+            <ShieldCheck className="w-3.5 h-3.5 text-slate-950" /> Checklist 5S
+          </button>
+
+          {/* REQUISITO 23: 3 SELETORES LADO A LADO: R$, HL, SKU */}
+          <div className={`flex items-center p-1 rounded-xl border ${
+            theme === 'dark' ? 'bg-[#131d38] border-slate-700/80' : 'bg-gray-100 border-gray-200/80'
+          }`}>
+            <button
+              onClick={() => setViewUnit('rs')}
+              className={`px-3 py-1.5 rounded-lg font-black text-[10px] uppercase tracking-wider transition-all border-none cursor-pointer ${
+                viewUnit === 'rs'
+                  ? 'bg-emerald-600 text-white shadow-sm'
+                  : (theme === 'dark' ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900')
+              }`}
+            >
+              R$
+            </button>
+            <button
+              onClick={() => setViewUnit('hl')}
+              className={`px-3 py-1.5 rounded-lg font-black text-[10px] uppercase tracking-wider transition-all border-none cursor-pointer ${
+                viewUnit === 'hl'
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : (theme === 'dark' ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900')
+              }`}
+            >
+              HL
+            </button>
+            <button
+              onClick={() => setViewUnit('sku')}
+              className={`px-3 py-1.5 rounded-lg font-black text-[10px] uppercase tracking-wider transition-all border-none cursor-pointer ${
+                viewUnit === 'sku'
+                  ? 'bg-amber-600 text-white shadow-sm'
+                  : (theme === 'dark' ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900')
+              }`}
+            >
+              SKU
+            </button>
+          </div>
+
           {/* Theme Toggle Button */}
           <button
             onClick={toggleTheme}
@@ -581,6 +672,24 @@ function QuebrasDashboardInner({ user, empresa, onBack }: QuebrasDashboardProps)
 
       {activeSubTab === 'indicadores' && (
         <>
+          {/* MANUAL DE INSTRUÇÃO E METAS */}
+          <ManualInstrucaoCard
+            title="Manual de Instrução & Parâmetros de Meta — Controle de Quebras & Avarias"
+            metrics={[
+              {
+                key: 'quebras_limite',
+                label: 'Índice de Quebras Total',
+                unit: '%',
+                comoCalcular: '(Volume em Caixas/Caixas Fisicamente Quebradas na Operação) ÷ (Total de Volume Movimentado no Período) × 100.'
+              },
+              {
+                key: 'refugo',
+                label: 'Avarias por Mau Manuseio',
+                unit: '%',
+                comoCalcular: '(Custo Total de Avarias por Queda/Abalroamento) ÷ (Faturamento Bruto de Vendas no Mês) × 100.'
+              }
+            ]}
+          />
           {/* HEADER DROPDOWN FILTERS */}
           <div className={`flex flex-wrap items-center justify-between gap-4 p-3.5 rounded-xl border shadow-sm transition-colors ${
             theme === 'dark' ? 'bg-[#131d38] border-slate-700/80 text-slate-100' : 'bg-white border-gray-200'
@@ -701,46 +810,27 @@ function QuebrasDashboardInner({ user, empresa, onBack }: QuebrasDashboardProps)
                   ))}
                 </select>
               </div>
-
-              {/* Visualização Unit Toggle */}
-              <div className="flex flex-col gap-1">
-                <span className={`text-[9px] font-black uppercase tracking-widest ${theme === 'dark' ? 'text-slate-400' : 'text-gray-400'}`}>Visualização</span>
-                <div className={`flex items-center p-0.5 rounded-lg border h-[28px] min-w-[90px] ${
-                  theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-gray-100 border-gray-200/60'
-                }`}>
-                  <button
-                    type="button"
-                    onClick={() => setViewUnit('cx')}
-                    className={`flex-1 rounded-md font-sans font-black text-[10px] transition-all border-none cursor-pointer h-full flex items-center justify-center ${
-                      viewUnit === 'cx' 
-                        ? (theme === 'dark' ? 'bg-blue-600 text-white shadow-sm' : 'bg-[#032b5e] text-white shadow-sm') 
-                        : 'text-slate-400 hover:text-white bg-transparent'
-                    }`}
-                  >
-                    UN
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setViewUnit('he')}
-                    className={`flex-1 rounded-md font-sans font-black text-[10px] transition-all border-none cursor-pointer h-full flex items-center justify-center ${
-                      viewUnit === 'he' 
-                        ? (theme === 'dark' ? 'bg-blue-600 text-white shadow-sm' : 'bg-[#032b5e] text-white shadow-sm') 
-                        : 'text-slate-400 hover:text-white bg-transparent'
-                    }`}
-                  >
-                    HE
-                  </button>
-                </div>
-              </div>
             </div>
 
-            <div className="text-[10px] text-gray-400 font-bold uppercase hidden md:block">
-              Filtros ativos para a visualização dos gráficos
+            <div className="flex items-center gap-2">
+              {hasActiveHeaderFilters && (
+                <button
+                  type="button"
+                  onClick={handleResetAllFilters}
+                  className="inline-flex items-center gap-1.5 px-3 py-1 text-[10px] font-black text-rose-600 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 dark:text-rose-300 dark:hover:bg-rose-900 rounded-lg border border-rose-200 dark:border-rose-800 transition-all cursor-pointer shadow-xs uppercase tracking-wider h-[28px]"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  Limpar Filtros
+                </button>
+              )}
+              <div className="text-[10px] text-gray-400 font-bold uppercase hidden md:block">
+                Filtros ativos para a visualização dos gráficos
+              </div>
             </div>
           </div>
 
           {/* ACTIVE CROSS-FILTERS TOOLBAR BANNER */}
-          <ActiveCrossFiltersBar />
+          <ActiveCrossFiltersBar onClearAll={handleResetAllFilters} />
 
           {/* TOP KPI CARDS */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -753,11 +843,13 @@ function QuebrasDashboardInner({ user, empresa, onBack }: QuebrasDashboardProps)
                 </span>
                 <div className="flex items-baseline mt-2">
                   <span className="text-4xl font-extrabold tracking-tight">
-                    {viewUnit === 'cx' 
-                      ? totalQuantCx.toLocaleString('pt-BR') 
-                      : totalQuant.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    {viewUnit === 'rs' 
+                      ? `R$ ${totalQuant.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` 
+                      : totalQuant.toLocaleString('pt-BR', { minimumFractionDigits: viewUnit === 'hl' ? 2 : 0, maximumFractionDigits: viewUnit === 'hl' ? 2 : 0 })}
                   </span>
-                  <span className="text-xs font-bold ml-1.5 text-[#fecaca]">{viewUnit === 'cx' ? 'unidades' : 'HE'}</span>
+                  <span className="text-xs font-bold ml-1.5 text-[#fecaca]">
+                    {viewUnit === 'rs' ? 'R$' : viewUnit === 'hl' ? 'HL' : 'unidades'}
+                  </span>
                 </div>
               </div>
               <p className="text-[10px] text-red-100 font-medium leading-normal mt-2 border-t border-red-500/30 pt-2 flex items-center gap-1">
@@ -779,15 +871,24 @@ function QuebrasDashboardInner({ user, empresa, onBack }: QuebrasDashboardProps)
               </div>
               <div className={`mt-2 border-t pt-2 ${theme === 'dark' ? 'border-slate-800' : 'border-gray-100'}`}>
                 <span className="text-[10px] text-gray-400 font-bold block uppercase">
-                  Custo médio ponderado por SKU
+                  Valor real do catálogo / lançamentos
                 </span>
               </div>
             </div>
 
             {/* KPI 3: Principal SKU Ofensor */}
-            <div className={`p-4.5 rounded-xl border shadow-sm flex flex-col justify-between min-h-[125px] transition-colors ${
-              theme === 'dark' ? 'bg-[#131d38] border-slate-700/80 text-slate-100' : 'bg-white border-gray-200'
-            }`}>
+            <div 
+              onClick={() => {
+                if (topSku.cod && topSku.cod !== '-') {
+                  const filterVal = (topSku.cod && topSku.cod !== 'S/C') ? topSku.cod : topSku.desc;
+                  toggleFilter('produto', filterVal, 'Produto');
+                }
+              }}
+              className={`p-4.5 rounded-xl border shadow-sm flex flex-col justify-between min-h-[125px] transition-colors cursor-pointer hover:border-amber-400/80 ${
+                theme === 'dark' ? 'bg-[#131d38] border-slate-700/80 text-slate-100' : 'bg-white border-gray-200'
+              }`}
+              title="Clique para filtrar pelo SKU Ofensor Principal"
+            >
               <div>
                 <span className={`text-[9px] uppercase font-black tracking-widest block ${theme === 'dark' ? 'text-slate-400' : 'text-gray-400'}`}>
                   OFENSOR PRINCIPAL (80/20)
@@ -803,7 +904,9 @@ function QuebrasDashboardInner({ user, empresa, onBack }: QuebrasDashboardProps)
                 theme === 'dark' ? 'border-slate-800 text-slate-400' : 'border-gray-100 text-gray-500'
               }`}>
                 <span>Volumetria SKU</span>
-                <span className="text-[#ef4444]">{topSku.quant} {viewUnit === 'cx' ? 'un' : 'HE'} ({topSkuPct}%)</span>
+                <span className="text-[#ef4444]">
+                  {viewUnit === 'rs' ? `R$ ${topSku.quant.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : `${topSku.quant.toLocaleString('pt-BR')} ${viewUnit === 'hl' ? 'HL' : 'un'}`} ({topSkuPct}%)
+                </span>
               </div>
             </div>
 
@@ -834,6 +937,18 @@ function QuebrasDashboardInner({ user, empresa, onBack }: QuebrasDashboardProps)
           </div>
 
           {/* CHARTS CONTAINER - TOP ROW (3 CHARTS) */}
+          {crossFilteredData.length === 0 && (
+            <div className="bg-slate-50 dark:bg-slate-900 border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-2xl p-6 text-center mb-4 flex flex-col items-center justify-center">
+              <BarChart2 className="w-6 h-6 text-slate-400 mb-2" />
+              <h4 className="text-xs font-black text-slate-700 dark:text-slate-300 uppercase tracking-wide">
+                Nenhum dado importado para o período selecionado
+              </h4>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 max-w-md mt-1">
+                Não existem lançamentos ou registros de quebras para os filtros aplicados. As métricas em R$, HL e SKU foram zeradas e nenhum gráfico fictício é gerado.
+              </p>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             
             {/* CHART 1: Pareto por Código DPO / Motivo */}
@@ -851,25 +966,30 @@ function QuebrasDashboardInner({ user, empresa, onBack }: QuebrasDashboardProps)
                 </span>
               </div>
 
-              <div className="h-48 w-full cursor-pointer">
+              <div className="h-56 w-full cursor-pointer">
                 {motivosChartData.length === 0 ? (
                   <div className="w-full h-full flex items-center justify-center text-xs text-gray-400">
                     Sem registros para gerar o Pareto.
                   </div>
                 ) : (
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={motivosChartData} layout="vertical" margin={{ top: 5, right: 10, left: 15, bottom: 5 }} accessibilityLayer={false}>
+                    <BarChart data={motivosChartData} layout="vertical" margin={{ top: 5, right: 45, left: -5, bottom: 5 }} accessibilityLayer={false}>
                       <CartesianGrid stroke={theme === 'dark' ? '#1e293b' : '#f1f5f9'} horizontal={false} />
                       <XAxis type="number" stroke={theme === 'dark' ? '#64748b' : '#94a3b8'} fontSize={8} tickLine={false} axisLine={false} />
                       <YAxis 
                         type="category" 
                         dataKey="name" 
-                        stroke={theme === 'dark' ? '#94a3b8' : '#475569'} 
-                        fontSize={8} 
+                        stroke={theme === 'dark' ? '#cbd5e1' : '#334155'} 
+                        fontSize={9.5} 
+                        fontWeight={700}
                         tickLine={false} 
                         axisLine={false} 
-                        width={45}
-                        tickFormatter={(val) => val.split(' — ')[0] || val}
+                        width={135}
+                        tickFormatter={(val) => {
+                          if (!val) return '';
+                          const clean = String(val).replace(/\s+/g, ' ').trim();
+                          return clean.length > 22 ? clean.slice(0, 20) + '...' : clean;
+                        }}
                       />
                       <Tooltip 
                         cursor={{ fill: 'transparent' }}
@@ -882,17 +1002,26 @@ function QuebrasDashboardInner({ user, empresa, onBack }: QuebrasDashboardProps)
                         }}
                         labelStyle={{ color: theme === 'dark' ? '#93c5fd' : '#032b5e', fontWeight: 'bold' }}
                         itemStyle={{ color: '#ef4444' }}
+                        formatter={(val: any) => [`${viewUnit === 'rs' ? `R$ ${Number(val).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : `${Number(val).toLocaleString('pt-BR')} ${viewUnit === 'hl' ? 'HL' : 'UN'}`}`, 'Valor']}
                       />
                       <Bar 
                         dataKey="value" 
                         radius={[0, 4, 4, 0]} 
-                        barSize={12}
+                        barSize={14}
                         onClick={(entry) => {
                           if (entry && entry.name) {
                             toggleFilter('motivo', entry.name, 'Motivo');
                           }
                         }}
                       >
+                        <LabelList 
+                          dataKey="value" 
+                          position="right" 
+                          fontSize={9} 
+                          fontWeight={800} 
+                          fill={theme === 'dark' ? '#93c5fd' : '#032b5e'} 
+                          formatter={(val: number) => viewUnit === 'rs' ? `R$ ${val.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : val.toLocaleString('pt-BR')} 
+                        />
                         {motivosChartData.map((entry, index) => {
                           const isSelected = isFiltered('motivo', entry.name);
                           const opacity = isMotivoFiltered ? (isSelected ? 1.0 : 0.3) : 1.0;
@@ -940,7 +1069,7 @@ function QuebrasDashboardInner({ user, empresa, onBack }: QuebrasDashboardProps)
                 <span className={`text-[10px] font-mono font-black border px-2 py-0.5 rounded-md ${
                   theme === 'dark' ? 'text-blue-300 bg-slate-800 border-slate-700' : 'text-[#032b5e] bg-slate-100 border-slate-200/80'
                 }`}>
-                  {totalGrupoVolume.toLocaleString('pt-BR')} {viewUnit === 'cx' ? 'UN' : 'HL'}
+                  {viewUnit === 'rs' ? `R$ ${totalGrupoVolume.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : `${totalGrupoVolume.toLocaleString('pt-BR')} ${viewUnit === 'hl' ? 'HL' : 'UN'}`}
                 </span>
               </div>
 
@@ -980,7 +1109,7 @@ function QuebrasDashboardInner({ user, empresa, onBack }: QuebrasDashboardProps)
                         }}
                         labelStyle={{ color: theme === 'dark' ? '#38bdf8' : '#032b5e', fontWeight: 'bold' }}
                         itemStyle={{ color: '#38bdf8' }}
-                        formatter={(val: any) => [`${val.toLocaleString('pt-BR')} ${viewUnit === 'cx' ? 'UN' : 'HL'}`, 'Volume']}
+                        formatter={(val: any) => [`${viewUnit === 'rs' ? `R$ ${Number(val).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : `${Number(val).toLocaleString('pt-BR')} ${viewUnit === 'hl' ? 'HL' : 'UN'}`}`, 'Volume']}
                       />
                       <Bar 
                         dataKey="value" 
@@ -998,7 +1127,7 @@ function QuebrasDashboardInner({ user, empresa, onBack }: QuebrasDashboardProps)
                           fontSize={9} 
                           fontWeight={800} 
                           fill={theme === 'dark' ? '#93c5fd' : '#032b5e'} 
-                          formatter={(val: number) => `${val.toLocaleString('pt-BR')}`} 
+                          formatter={(val: number) => viewUnit === 'rs' ? `R$ ${val.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : val.toLocaleString('pt-BR')} 
                         />
                         {grupoChartData.map((entry, index) => {
                           const isSelected = isFiltered('grupo', entry.name);
@@ -1163,6 +1292,7 @@ function QuebrasDashboardInner({ user, empresa, onBack }: QuebrasDashboardProps)
                         }}
                         labelStyle={{ color: theme === 'dark' ? '#93c5fd' : '#032b5e', fontWeight: 'bold' }}
                         itemStyle={{ color: '#ef4444' }}
+                        formatter={(val: any) => [`${viewUnit === 'rs' ? `R$ ${Number(val).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : `${Number(val).toLocaleString('pt-BR')} ${viewUnit === 'hl' ? 'HL' : 'UN'}`}`, 'Total Perda']}
                       />
                       <Line 
                         type="monotone" 
@@ -1211,7 +1341,7 @@ function QuebrasDashboardInner({ user, empresa, onBack }: QuebrasDashboardProps)
                 <span className={`text-[10px] font-mono font-black border px-2 py-0.5 rounded-md ${
                   theme === 'dark' ? 'text-blue-300 bg-slate-800 border-slate-700' : 'text-[#032b5e] bg-slate-100 border-slate-200/80'
                 }`}>
-                  {totalEmbalagemVolume.toLocaleString('pt-BR')} {viewUnit === 'cx' ? 'UN' : 'HL'}
+                  {viewUnit === 'rs' ? `R$ ${totalEmbalagemVolume.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : `${totalEmbalagemVolume.toLocaleString('pt-BR')} ${viewUnit === 'hl' ? 'HL' : 'UN'}`}
                 </span>
               </div>
 
@@ -1251,7 +1381,7 @@ function QuebrasDashboardInner({ user, empresa, onBack }: QuebrasDashboardProps)
                         }}
                         labelStyle={{ color: theme === 'dark' ? '#38bdf8' : '#032b5e', fontWeight: 'bold' }}
                         itemStyle={{ color: '#38bdf8' }}
-                        formatter={(val: any) => [`${val.toLocaleString('pt-BR')} ${viewUnit === 'cx' ? 'UN' : 'HL'}`, 'Volume']}
+                        formatter={(val: any) => [`${viewUnit === 'rs' ? `R$ ${Number(val).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : `${Number(val).toLocaleString('pt-BR')} ${viewUnit === 'hl' ? 'HL' : 'UN'}`}`, 'Volume']}
                       />
                       <Bar 
                         dataKey="value" 
@@ -1269,7 +1399,7 @@ function QuebrasDashboardInner({ user, empresa, onBack }: QuebrasDashboardProps)
                           fontSize={9} 
                           fontWeight={800} 
                           fill={theme === 'dark' ? '#93c5fd' : '#032b5e'} 
-                          formatter={(val: number) => `${val.toLocaleString('pt-BR')}`} 
+                          formatter={(val: number) => viewUnit === 'rs' ? `R$ ${val.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : val.toLocaleString('pt-BR')} 
                         />
                         {embalagemChartData.map((entry, index) => {
                           const isSelected = isFiltered('embalagem', entry.name);
@@ -1336,6 +1466,7 @@ function QuebrasDashboardInner({ user, empresa, onBack }: QuebrasDashboardProps)
                           fontSize: 9,
                           color: theme === 'dark' ? '#f8fafc' : '#0f172a'
                         }} 
+                        formatter={(val: any) => [`${viewUnit === 'rs' ? `R$ ${Number(val).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : `${Number(val).toLocaleString('pt-BR')} ${viewUnit === 'hl' ? 'HL' : 'UN'}`}`, 'Valor']}
                       />
                       <Bar 
                         dataKey="value" 
@@ -1347,6 +1478,14 @@ function QuebrasDashboardInner({ user, empresa, onBack }: QuebrasDashboardProps)
                           }
                         }}
                       >
+                        <LabelList 
+                          dataKey="value" 
+                          position="top" 
+                          fontSize={8.5} 
+                          fontWeight={800} 
+                          fill={theme === 'dark' ? '#93c5fd' : '#032b5e'} 
+                          formatter={(val: number) => viewUnit === 'rs' ? `R$ ${val.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : val.toLocaleString('pt-BR')} 
+                        />
                         {turnoChartData.map((entry, index) => {
                           const isSelected = isFiltered('turno', entry.name);
                           const opacity = isTurnoFiltered ? (isSelected ? 1.0 : 0.3) : 1.0;
@@ -1394,96 +1533,62 @@ function QuebrasDashboardInner({ user, empresa, onBack }: QuebrasDashboardProps)
 
           </div>
 
-          {/* CROSSTAB / MATRIX TABLES SECTION */}
-          <div className="mt-4">
-            <div className="flex items-center gap-2 mb-3">
-              <div className="p-1.5 bg-[#032b5e] text-white rounded-lg shadow-xs">
-                <Layers className="w-4 h-4" />
-              </div>
-              <div>
-                <h2 className="font-sans font-black text-sm uppercase text-[#032b5e] tracking-wider">
-                  MATRIZ DE CRUZAMENTO DE DADOS (CROSSTAB / MATRIX)
-                </h2>
-                <p className="text-[11px] text-slate-500 font-medium">
-                  Cruzamento bidimensional com suporte a filtros dinâmicos de linha, coluna e células
-                </p>
-              </div>
-            </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* CROSSTAB 1: Motorista / Responsável x Produto */}
-              <CrosstabMatrix
-                data={baseFilteredData}
-                rowField={(item) => item.colaboradorQuebrou || item.responsavel || 'Não Informado'}
-                rowLabel="Motorista / Responsável"
-                colField="descricao"
-                colLabel="Produto / SKU"
-                valueField={(item) => viewUnit === 'cx' ? item.quantidade : convertCxToHE(item.quantidade, item.descricao, item.codProduto)}
-                valueLabel={viewUnit === 'cx' ? 'Unidades' : 'Volume (HE)'}
-                title="Motorista / Responsável x Produto (SKU)"
-                subtitle="Matriz de relacionamento entre o colaborador que causou a quebra e os SKUs afetados"
-                maxRows={8}
-                maxCols={5}
-                theme={theme}
-              />
 
-              {/* CROSSTAB 2: Área / CD x Motivo de Quebra */}
-              <CrosstabMatrix
-                data={baseFilteredData}
-                rowField="area"
-                rowLabel="Área Operacional"
-                colField={(item) => item.motivo || item.codQuebra || 'Outros'}
-                colLabel="Motivo de Quebra"
-                valueField={(item) => viewUnit === 'cx' ? item.quantidade : convertCxToHE(item.quantidade, item.descricao, item.codProduto)}
-                valueLabel={viewUnit === 'cx' ? 'Unidades' : 'Volume (HE)'}
-                title="Área Operacional x Motivo de Quebra"
-                subtitle="Matriz de origem física dos descartes versus motivo e código DPO"
-                maxRows={6}
-                maxCols={5}
-                theme={theme}
-              />
-            </div>
+          {/* REQUISITO 23: ÁRVORE DE MOTIVOS TOTALMENTE EXPANSÍVEL */}
+          <div className="w-full mt-4">
+            <ArvoreMotivosTree data={crossFilteredData} viewUnit={viewUnit} theme={theme} />
           </div>
 
-          {/* DETAILED SKU AND RECENT REGISTRIES TABS */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-4">
-            
-            {/* Top SKU Ofensores Table */}
+          {/* DETAILED SKU RANKING TABLE (FULL WIDTH HORIZONTAL) */}
+          <div className="w-full mt-4">
             <div className={`p-5 rounded-xl border shadow-sm transition-colors ${
               theme === 'dark' ? 'bg-[#131d38] border-slate-700/80 text-slate-100' : 'bg-white border-gray-200'
             }`}>
-              <div className="flex items-center justify-between mb-3">
-                <h3 className={`font-sans font-black text-xs uppercase tracking-wider ${
-                  theme === 'dark' ? 'text-blue-300' : 'text-[#032b5e]'
-                }`}>
-                  RANKING DE PRODUTOS OFENSORES (SKUs) ({sortedSkus.length})
-                </h3>
-                <span className="text-[10px] text-slate-400 font-medium">Clique na linha para filtrar</span>
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
+                <div>
+                  <h3 className={`font-sans font-black text-xs uppercase tracking-wider ${
+                    theme === 'dark' ? 'text-blue-300' : 'text-[#032b5e]'
+                  }`}>
+                    RANKING DE PRODUTOS OFENSORES (SKUs) ({sortedSkus.length})
+                  </h3>
+                  <p className="text-[10px] text-slate-400 font-medium mt-0.5">
+                    Detalhamento de perdas por produto. Clique em qualquer produto para filtrar todo o dashboard.
+                  </p>
+                </div>
+                <span className="text-[10px] text-slate-400 font-medium self-start sm:self-auto bg-slate-100 dark:bg-slate-800 px-2.5 py-1 rounded-full border border-slate-200 dark:border-slate-700">
+                  Clique na linha para filtrar
+                </span>
               </div>
-              <div className="overflow-x-auto max-h-[350px] overflow-y-auto">
-                <table className="w-full border-collapse font-sans text-xs">
+              <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
+                <table className="w-full border-collapse font-sans text-xs min-w-[700px]">
                   <thead>
                     <tr className={`border-b sticky top-0 z-10 ${theme === 'dark' ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-slate-100 border-gray-200 text-gray-500'}`}>
-                      <th className="p-2 text-left uppercase tracking-wider text-[9px]">Posição</th>
-                      <th className="p-2 text-left uppercase tracking-wider text-[9px]">Código</th>
-                      <th className="p-2 text-left uppercase tracking-wider text-[9px]">SKU Descrição</th>
-                      <th className="p-2 text-center uppercase tracking-wider text-[9px]">Unidades</th>
-                      <th className="p-2 text-right uppercase tracking-wider text-[9px]">Proporção</th>
+                      <th className="p-2.5 text-left uppercase tracking-wider text-[9px]">Posição</th>
+                      <th className="p-2.5 text-left uppercase tracking-wider text-[9px]">Código</th>
+                      <th className="p-2.5 text-left uppercase tracking-wider text-[9px]">Descrição</th>
+                      <th className="p-2.5 text-right uppercase tracking-wider text-[9px]">Unidades Avariadas</th>
+                      <th className="p-2.5 text-right uppercase tracking-wider text-[9px]">Impacto Financeiro</th>
+                      <th className="p-2.5 text-right uppercase tracking-wider text-[9px]">Impacto em Hectolitro (HE)</th>
                     </tr>
                   </thead>
                   <tbody className={`divide-y ${theme === 'dark' ? 'divide-slate-800' : 'divide-gray-100'}`}>
                     {sortedSkus.length === 0 ? (
                       <tr>
-                        <td colSpan={5} className="p-4 text-center text-gray-400">Sem produtos no ranking</td>
+                        <td colSpan={6} className="p-6 text-center text-gray-400 font-bold uppercase text-[10px]">
+                          Sem produtos no ranking para os filtros selecionados
+                        </td>
                       </tr>
                     ) : (
                       sortedSkus.map((item, index) => {
-                        const pct = totalQuant > 0 ? ((item.quant / totalQuant) * 100).toFixed(1) : '0';
-                        const isSelected = isFiltered('produto', item.desc);
+                        const isSelected = isFiltered('produto', item.desc) || isFiltered('produto', item.cod) || isFiltered('codProduto', item.cod);
+                        const filterVal = (item.cod && item.cod !== 'S/C') ? item.cod : item.desc;
+                        const filterLabel = (item.cod && item.cod !== 'S/C') ? `SKU ${item.cod} - ${item.desc}` : item.desc;
                         return (
                           <tr 
                             key={item.cod} 
-                            onClick={() => toggleFilter('produto', item.desc, 'Produto')}
+                            onClick={() => toggleFilter('produto', filterVal, 'Produto')}
+                            title={`Filtrar por ${filterLabel}`}
                             className={`cursor-pointer transition-colors ${
                               isSelected 
                                 ? (theme === 'dark' ? 'bg-amber-500/20 text-amber-200 font-bold border-l-4 border-amber-400' : 'bg-amber-100/80 font-bold border-l-4 border-amber-500') 
@@ -1492,10 +1597,13 @@ function QuebrasDashboardInner({ user, empresa, onBack }: QuebrasDashboardProps)
                           >
                             <td className={`p-2.5 font-bold ${theme === 'dark' ? 'text-slate-200' : 'text-slate-800'}`}>#{index + 1}</td>
                             <td className={`p-2.5 font-mono font-bold ${theme === 'dark' ? 'text-blue-300' : 'text-slate-700'}`}>{item.cod}</td>
-                            <td className={`p-2.5 font-semibold uppercase ${theme === 'dark' ? 'text-slate-200' : 'text-slate-700'}`}>{item.desc}</td>
-                            <td className="p-2.5 text-center text-[#ef4444] font-black">{item.quant}</td>
-                            <td className="p-2.5 text-right font-mono font-bold text-gray-400">
-                              {pct}%
+                            <td className={`p-2.5 font-semibold uppercase ${theme === 'dark' ? 'text-slate-200' : 'text-slate-800'}`}>{item.desc}</td>
+                            <td className="p-2.5 text-right text-[#ef4444] font-black">{item.quantCx.toLocaleString('pt-BR')} un</td>
+                            <td className={`p-2.5 text-right font-bold font-mono ${theme === 'dark' ? 'text-emerald-400' : 'text-emerald-700'}`}>
+                              {item.valorTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                            </td>
+                            <td className={`p-2.5 text-right font-bold font-mono ${theme === 'dark' ? 'text-blue-300' : 'text-blue-800'}`}>
+                              {item.quantHE.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} HE
                             </td>
                           </tr>
                         );
@@ -1505,92 +1613,6 @@ function QuebrasDashboardInner({ user, empresa, onBack }: QuebrasDashboardProps)
                 </table>
               </div>
             </div>
-
-            {/* Recent Registries List */}
-            <div className={`p-5 rounded-xl border shadow-sm flex flex-col justify-between transition-colors ${
-              theme === 'dark' ? 'bg-[#131d38] border-slate-700/80 text-slate-100' : 'bg-white border-gray-200'
-            }`}>
-              <div>
-                <h3 className={`font-sans font-black text-xs uppercase tracking-wider mb-3 ${
-                  theme === 'dark' ? 'text-blue-300' : 'text-[#032b5e]'
-                }`}>
-                  LANÇAMENTOS DO PERÍODO ({crossFilteredData.length})
-                </h3>
-                <div className="overflow-x-auto max-h-[350px] overflow-y-auto">
-                  <table className="w-full border-collapse font-sans text-[11px]">
-                    <thead>
-                      <tr className={`border-b sticky top-0 z-10 ${
-                        theme === 'dark' ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-slate-100 border-gray-200 text-gray-500'
-                      }`}>
-                        <th className="p-2 text-left uppercase tracking-wider text-[9px]">Data</th>
-                        <th className="p-2 text-left uppercase tracking-wider text-[9px]">SKU</th>
-                        <th className="p-2 text-center uppercase tracking-wider text-[9px]">Quantidade</th>
-                        <th className="p-2 text-left uppercase tracking-wider text-[9px]">Área / Turno</th>
-                        <th className="p-2 text-left uppercase tracking-wider text-[9px]">Código</th>
-                      </tr>
-                    </thead>
-                    <tbody className={`divide-y ${theme === 'dark' ? 'divide-slate-800' : 'divide-gray-100'}`}>
-                      {crossFilteredData.length === 0 ? (
-                        <tr>
-                          <td colSpan={5} className="p-4 text-center text-gray-400">Nenhum registro encontrado</td>
-                        </tr>
-                      ) : (
-                        crossFilteredData.map((q, idx) => (
-                          <tr key={idx} className={theme === 'dark' ? 'hover:bg-slate-800/50' : 'hover:bg-slate-50/50'}>
-                            <td className={`p-2 font-medium ${theme === 'dark' ? 'text-slate-300' : 'text-slate-600'}`}>{q.data}</td>
-                            <td 
-                              className="p-2 cursor-pointer hover:text-amber-500"
-                              onClick={() => toggleFilter('produto', q.descricao, 'Produto')}
-                            >
-                              <div className={`font-bold ${theme === 'dark' ? 'text-slate-100' : 'text-slate-800'}`}>{q.codProduto}</div>
-                              <div className="text-[9px] text-gray-400 uppercase truncate max-w-[130px]">{q.descricao}</div>
-                            </td>
-                            <td className="p-2 text-center text-red-500 font-extrabold">{q.quantidade}</td>
-                            <td 
-                              className="p-2 cursor-pointer hover:text-amber-500"
-                              onClick={() => toggleFilter('area', q.area, 'Área')}
-                            >
-                              <div className={`font-semibold text-[10px] uppercase ${theme === 'dark' ? 'text-slate-200' : 'text-slate-700'}`}>{q.area}</div>
-                              <div className="text-[9px] text-gray-400 font-medium uppercase">{q.turno}</div>
-                            </td>
-                            <td 
-                              className="p-2 font-mono font-bold text-[#f5a623] cursor-pointer" 
-                              title={q.motivo}
-                              onClick={() => toggleFilter('motivo', q.motivo || q.codQuebra, 'Motivo')}
-                            >
-                              {q.codQuebra}
-                              {q.colaboradorQuebrou && (
-                                <div 
-                                  className="text-[9px] text-red-400 font-extrabold uppercase mt-1 hover:underline" 
-                                  title={`Quebrado por: ${q.colaboradorQuebrou}`}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    toggleFilter('motorista', q.colaboradorQuebrou || '', 'Motorista');
-                                  }}
-                                >
-                                  👤 {q.colaboradorQuebrou}
-                                </div>
-                              )}
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-              
-              <div className={`flex items-center justify-between border-t pt-3 mt-3 ${
-                theme === 'dark' ? 'border-slate-800' : 'border-gray-100'
-              }`}>
-                <span className={`text-[10px] font-bold uppercase ${
-                  theme === 'dark' ? 'text-blue-300' : 'text-[#032b5e]'
-                }`}>
-                  Total de registros exibidos: {Math.min(10, crossFilteredData.length)} de {crossFilteredData.length}
-                </span>
-              </div>
-            </div>
-
           </div>
         </>
       )}
@@ -1622,6 +1644,22 @@ function QuebrasDashboardInner({ user, empresa, onBack }: QuebrasDashboardProps)
           Atualizado em tempo real • Versão 3.6.0
         </span>
       </div>
+
+      {/* MODALS: POP AND 5S CHECKLIST */}
+      <PadraoOperacionalModal
+        moduleKey="quebras"
+        moduleName="Gestão e Apontamento de Quebras"
+        isOpen={isPopModalOpen}
+        onClose={() => setIsPopModalOpen(false)}
+        user={user}
+      />
+
+      <Checklist5SModal
+        isOpen={is5SModalOpen}
+        onClose={() => setIs5SModalOpen(false)}
+        defaultSetor="Quebras / WQI"
+        user={user}
+      />
 
     </div>
   );

@@ -7,12 +7,18 @@ import { PRODUCTS } from '../planosData';
 import { TrendingUp, CheckCircle, Clock, Award, BarChart2, AlertTriangle, FileSpreadsheet, Upload, Download, FileText, Database, Check, RefreshCw } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import SugerirMelhoriaCard from './SugerirMelhoriaCard';
+import { SopBannerViewer } from './SopBannerViewer';
 import { filterHistoryForUser, HistoryRestrictionNotice } from '../utils/historyFilter';
+import { triggerAutoAcaoCorretiva } from '../utils/simulacaoAcoesUtils';
+import { LISTA_COLABORADORES_OFICIAIS } from './RankingModule';
+import { safeSetLocalStorage } from '../utils/safeLocalStorage';
 
 interface QuebrasPanelProps {
   user: Usuario;
   empresa: Empresa | null;
   theme?: 'light' | 'dark';
+  shiftStarted?: boolean;
+  onRequireShiftStart?: () => void;
 }
 
 const QB_TIPOS: Record<string, Array<{ cod: number; motivo: string }>> = {
@@ -95,25 +101,9 @@ const QB_TIPOS: Record<string, Array<{ cod: number; motivo: string }>> = {
   ],
 };
 
-export const COLABORADORES_QUEBRA = [
-  "DEJEAN SILVA DE OLIVEIRA",
-  "PAULO PEREIRA DA SILVA",
-  "DIOGENES PEREIRA DA SILVA",
-  "MARIVALDO ARTUR ALVES",
-  "GILSON ROSA DA SILVA",
-  "JOSE RONILDO DA SILVA",
-  "CICERO MATHEU DE OLIVEIRA SILVA",
-  "NATANAEL LUIZ DA SILVA",
-  "ELDENKLEBER MAURICIO DA SILVA",
-  "OZENILDO SOUSA SILVA",
-  "GLADSON LISBOA DOS SANTOS",
-  "LUIS ANTONIO FREIRE MOREIRA",
-  "EDILSON VIEIRA DA SILVA",
-  "ADMILTON HERMINIO DOS SANTOS MARCELINO",
-  "DIMAS EMANUEL MISSIAS DA SILVA"
-];
+export const COLABORADORES_QUEBRA = LISTA_COLABORADORES_OFICIAIS.map(c => c.nome);
 
-export default function QuebrasPanel({ user, empresa }: QuebrasPanelProps) {
+export default function QuebrasPanel({ user, empresa, shiftStarted, onRequireShiftStart }: QuebrasPanelProps) {
   const empresaId = empresa?.id || 'demo';
   const draftKey = `quebras_draft_${empresaId}_${user.nome || 'guest'}`;
   const empresaData = useEmpresaData();
@@ -362,7 +352,7 @@ export default function QuebrasPanel({ user, empresa }: QuebrasPanelProps) {
       if (!db) {
         const updated = [...quebras, ...newItems];
         setQuebras(updated);
-        localStorage.setItem(`quebras_${empresa?.id || 'demo'}`, JSON.stringify(updated));
+        safeSetLocalStorage(`quebras_${empresa?.id || 'demo'}`, JSON.stringify(updated));
       }
 
       setImportStatusMsg(`✅ Sucesso! ${importedCount} registros de quebras foram importados com êxito!`);
@@ -462,7 +452,7 @@ export default function QuebrasPanel({ user, empresa }: QuebrasPanelProps) {
       motivoCod,
       colaboradorQuebrou
     };
-    localStorage.setItem(draftKey, JSON.stringify(draftData));
+    safeSetLocalStorage(draftKey, JSON.stringify(draftData));
   }, [produtoBusca, selectedProd, quantidade, area, turno, motivoCod, colaboradorQuebrou, draftKey]);
 
   // Sync with prop updates / user changing
@@ -509,7 +499,7 @@ export default function QuebrasPanel({ user, empresa }: QuebrasPanelProps) {
     const rows = [...empresaData.quebras];
     rows.sort((a, b) => (b.dataISO || '').localeCompare(a.dataISO || ''));
     setQuebras(rows);
-    localStorage.setItem(`quebras_${companyId}`, JSON.stringify(rows));
+    safeSetLocalStorage(`quebras_${companyId}`, JSON.stringify(rows));
   }, [empresaData.quebras, empresa?.id]);
 
   const handleSelectProd = (p: { codigo: number, descricao: string }) => {
@@ -519,6 +509,12 @@ export default function QuebrasPanel({ user, empresa }: QuebrasPanelProps) {
   };
 
   const handleRegister = async () => {
+    if (shiftStarted === false) {
+      alert('⚠️ Você precisa Iniciar a Jornada na Operação Ajudante antes de realizar lançamentos!');
+      if (onRequireShiftStart) onRequireShiftStart();
+      return;
+    }
+
     if (!selectedProd || !quantidade || Number(quantidade) <= 0 || !area || !turno || !motivoCod) {
       alert('Selecione o produto, digite uma quantidade válida e insira o motivo.');
       return;
@@ -559,8 +555,21 @@ export default function QuebrasPanel({ user, empresa }: QuebrasPanelProps) {
       } else {
         const current = [...quebras, { _docId: String(Date.now()), ...newRow }];
         setQuebras(current);
-        localStorage.setItem(`quebras_${empresa?.id || 'demo'}`, JSON.stringify(current));
+        safeSetLocalStorage(`quebras_${empresa?.id || 'demo'}`, JSON.stringify(current));
       }
+
+      triggerAutoAcaoCorretiva({
+        processo: 'Gestão de Quebras',
+        colaboradorResponsavel: colaboradorQuebrou || user.nome,
+        indicador: 'Avaria e Quebra Físico-Operacional',
+        meta: '0.50% max',
+        resultadoObtido: `${quantidade} un (${selectedProd.descricao})`,
+        desvioEncontrado: `Quebra registrada na área ${area} (${chosenMotive}). Produto: ${selectedProd.descricao} [${selectedProd.codigo}]. Quantidade: ${quantidade} un.`,
+        comentarioOperador: `Ocorrência de quebra na área ${area}, turno ${turno}. Colaborador envolvido: ${colaboradorQuebrou || 'Não especificado'}`,
+        produto: selectedProd.descricao,
+        codigoProduto: String(selectedProd.codigo),
+        quantidade: Number(quantidade)
+      });
 
       setProdutoBusca('');
       setSelectedProd(null);
@@ -592,17 +601,17 @@ export default function QuebrasPanel({ user, empresa }: QuebrasPanelProps) {
   const [savingEdit, setSavingEdit] = useState<boolean>(false);
 
   const handleDelete = async (docId?: string) => {
-    if (!docId || !confirm('Excluir este lançamento de quebras?')) return;
+    if (!docId) return;
     try {
       if (db) {
         await deleteDoc(doc(db, 'quebras', docId));
-      } else {
-        const remaining = quebras.filter(r => r._docId !== docId);
-        setQuebras(remaining);
-        localStorage.setItem(`quebras_${empresa?.id || 'demo'}`, JSON.stringify(remaining));
       }
     } catch (e) {
-      alert('Erro ao excluir: ' + e);
+      console.error(e);
+    } finally {
+      const remaining = quebras.filter(r => r._docId !== docId && (r as any).id !== docId);
+      setQuebras(remaining);
+      safeSetLocalStorage(`quebras_${empresa?.id || 'demo'}`, JSON.stringify(remaining));
     }
   };
 
@@ -669,7 +678,7 @@ export default function QuebrasPanel({ user, empresa }: QuebrasPanelProps) {
 
       const nextQuebras = quebras.map(r => (r._docId === editingRow._docId ? { ...r, ...updatedFields } : r));
       setQuebras(nextQuebras);
-      localStorage.setItem(`quebras_${empresa?.id || 'demo'}`, JSON.stringify(nextQuebras));
+      safeSetLocalStorage(`quebras_${empresa?.id || 'demo'}`, JSON.stringify(nextQuebras));
 
       setEditingRow(null);
     } catch (e) {
@@ -691,6 +700,8 @@ export default function QuebrasPanel({ user, empresa }: QuebrasPanelProps) {
       <div className="flex items-center justify-between p-4 bg-[#11151c] border-b border-[#222d3a] rounded-t-xl -mx-6 md:-mx-12 -mt-6">
         <span className="font-sans font-black text-sm tracking-widest text-[#ef4444] uppercase">💥 CONTROLE DE QUEBRAS E AVARIAS</span>
       </div>
+
+      <SopBannerViewer operation="quebras" operationName="Quebras e Avarias" theme="dark" />
 
       <div className="ptabs border-b border-[#222d3a] flex gap-2 flex-wrap">
         <button 

@@ -1,0 +1,8 @@
+produto_codigo,produto_descricao,categoria,embalagem,hectolitro_por_unidade,valor_unitario,shelf_life_days,fator_recolhimento_dias,active
+"838","CHOPP BRAHMA CLARO BARRIL KEG 50L","Cerveja","Barril / Keg",0.500000,85.00,180,45,true
+"23269","SKOL BEATS GT LONG NECK 269ML SIX-PACK","Cerveja","Six-Pack / Garrafa",0.016143,85.00,180,45,true
+"21666","RED BULL TROPICAL BR LATA 250ML FOUR-PACK","Energético","Four-Pack / Lata",0.014000,85.00,180,45,true
+"31795","BRUTAL FRUIT LONG NECK 275ML SIX-PACK","Cerveja","Six-Pack / Garrafa",0.016550,85.00,180,45,true
+"9093","PEPSI TWIST LATA 350ML SH C/12 NPAL","Refrigerante","Shrink / Lata",0.042000,45.00,180,45,true
+"347","SUKITA PET 1L CAIXA C/12","Refrigerante","Caixa / PET",0.129000,42.00,180,45,true
+"18267","SODA LIMONADA ANTARCTICA PET 200ML","Refrigerante","Shrink / PET",0.024000,35.00,180,45,true

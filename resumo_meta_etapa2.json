@@ -1,0 +1,12 @@
+{
+  "next_step_ready": true,
+  "total_items": 10,
+  "enriched_count": 10,
+  "requires_review_count": 1,
+  "items_without_venda_media": 0,
+  "calculations_validated": {
+    "total_hectolitro": "OK",
+    "total_reais": "OK",
+    "dias_estoque": "OK"
+  }
+}

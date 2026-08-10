@@ -21,6 +21,9 @@ export interface Usuario {
   email: string;
   empresaId: string;
   papel: 'admin' | 'supervisor' | 'operador' | string;
+  cargo?: string;
+  matricula?: string;
+  modulosPermitidos?: string[];
   status: 'ativo' | 'inativo';
   criadoEm?: any;
   mfaHabilitado?: boolean;
@@ -137,7 +140,7 @@ export interface ValidadeRow {
   lastro: number;
   caixa: number;
   validade: string;
-  localizacao: 'picking' | 'central' | 'marketplace';
+  localizacao: 'central' | 'pnc' | 'repack' | 'picking' | 'marketplace' | string;
   bloco?: string;
   cadastradoEm?: string;
   _criadoEm?: string;
@@ -177,6 +180,7 @@ export interface Tarefa {
   quantidade: number;
   conferente: string;
   operador: string;
+  operadoresAtribuidos?: string[];
   status: 'pending' | 'in_progress' | 'done';
   criadoEm: string;
   iniciadoEm: string | null;
@@ -257,5 +261,123 @@ export interface RepackA3Board {
   dataRevisao: string;
   _criadoEm?: string;
 }
+
+export interface ProdutoMaster {
+  _docId?: string;
+  empresaId?: string;
+  codigo: string;
+  descricao: string;
+  fator: number;
+  valor: number;
+  fatorHecto: number;
+  grupo: string;
+  curva: 'A' | 'B' | 'C' | string;
+  idade?: number;
+  fatorPallet?: number;
+  embalagem?: string;
+  _criadoEm?: string;
+}
+
+export interface ColaboradorMaster {
+  _docId?: string;
+  empresaId?: string;
+  matricula: string;
+  nome: string;
+  cpf?: string;
+  cargo: string;
+  turno?: string;
+  senha?: string;
+  ativo?: boolean;
+  modulosPermitidos?: string[];
+  primeiroAcesso?: boolean;
+  _criadoEm?: string;
+}
+
+export interface AcessoColaborador {
+  _docId?: string;
+  empresaId?: string;
+  matricula: string;
+  nomeColaborador?: string;
+  modulosPermitidos: string[];
+  _criadoEm?: string;
+}
+
+export interface TmrDemand {
+  _docId?: string;
+  id: string;
+  empresaId: string;
+  carreta: string; // Placa da carreta/caminhão
+  revendaNome: string; // Revenda de destino
+  tipoCarga: 'TMR Revenda' | 'Carreta Transbordo' | 'Recarga' | 'Terceiros';
+  tipoPlaca?: 'casa' | 'terceiros';
+  isTerceiros?: boolean;
+  instrucoes?: string;
+  
+  // Quantidades de pallets/ativos por tipo
+  palletsLitrinho: number;
+  palletsLitrao: number;
+  pallets600Verde: number;
+  pallets600Ambar: number;
+  palletsBarrilChopp?: number;
+  palletsPbr1?: number;
+  palletsPbr2?: number;
+  palletsPbr: number;
+  totalPallets: number;
+  
+  conferente: string;
+  operadorDesignado?: string;
+  operadoresAtribuidos?: string[];
+  operadorExecutor?: string; // Nome do usuário logado que realizou
+  
+  status: 'pending' | 'in_progress' | 'done';
+  criadoEm: string;
+  iniciadoEm?: string | null;
+  finalizadoEm?: string | null;
+  duracaoMin?: number | null;
+}
+
+export interface FefoRelocationDemand {
+  _docId?: string;
+  id: string;
+  empresaId: string;
+  tipoQuebra: 'estoque_x_picking' | 'estoque_x_estoque';
+  codigo: string;
+  descricao: string;
+  ruaOndeEsta: string;
+  ruaOndePrecisaEstar: string;
+  validadeLoteInconforme: string;
+  validadeLoteComparado?: string;
+  diasInversao: number;
+  mensagem: string;
+  sugestaoAcao: string;
+  status: 'pending' | 'in_progress' | 'done';
+  solicitadoPorConferente?: boolean;
+  solicitadoPor?: string;
+  solicitadoEm?: string;
+  operadorDesignado?: string;
+  operadoresAtribuidos?: string[];
+  operadorExecutor?: string;
+  criadoEm: string;
+  iniciadoEm?: string | null;
+  finalizadoEm?: string | null;
+  duracaoMin?: number | null;
+}
+
+export interface ArmazemTemperaturaLog {
+  id: string;
+  dataISO: string;
+  dataFormatted: string;
+  mesAno: string;
+  hora: string;
+  temperatura: number;
+  umidade: number;
+  setor: string;
+  conferenteNome: string;
+  observacao?: string;
+  alertaCritico: boolean;
+  registradoPor?: string;
+  cargoUsuario?: string;
+}
+
 
 

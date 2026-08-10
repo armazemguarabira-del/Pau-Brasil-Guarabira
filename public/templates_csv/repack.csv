@@ -1,0 +1,3 @@
+data_registro,colaborador_matricula,produto_codigo,lote,caixas_entrada,caixas_repackadas,caixas_descarte,tempo_minutos,observacao
+"2026-08-05","GBR-9042","21666","L260801A",10,9,1,45,"Substituição de embalagem secundária avariada no pátio"
+"2026-08-05","GBR-1099","347","LOT-347-99",15,15,0,30,"Reembalagem de caixas PET sem avaria de líquido"

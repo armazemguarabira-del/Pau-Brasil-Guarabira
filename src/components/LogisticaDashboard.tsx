@@ -1,3 +1,6 @@
+import { ManualInstrucaoCard } from './ManualInstrucaoCard';
+import { IndicatorMetaHeader } from './IndicatorMetaHeader';
+import { getStoredEfcVehicles, calculateEfcMetrics, calculateEfdMetrics } from '../utils/efcEfdManager';
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   BarChart, 
@@ -41,15 +44,17 @@ import {
   Trash2,
   Search,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Trophy
 } from 'lucide-react';
+import { ChartTooltipExplainer } from './ChartTooltipExplainer';
 import { Usuario, Empresa, ArmazemRow } from '../types';
 import { db, isCustomFirebaseConnected } from '../firebase';
 import { useEmpresaData } from '../context/EmpresaDataContext';
-import { generateMockArmazemRows } from '../mockDataGenerator';
 import A3BoardComponent from './A3BoardComponent';
 import LogisticaDrilldown from './LogisticaDrilldown';
 import CalendarFilter from './CalendarFilter';
+import PadraoOperacionalModal from './PadraoOperacionalModal';
 
 interface ActionPlanItem {
   id: string;
@@ -137,7 +142,30 @@ interface LogisticaDashboardProps {
   theme?: 'light' | 'dark';
 }
 
-export default function LogisticaDashboard({ user, empresa, onBack }: LogisticaDashboardProps) {
+export default function LogisticaDashboard({ user, empresa, onBack, theme = 'dark' }: LogisticaDashboardProps) {
+  const isDark = theme === 'dark';
+  const companyId = empresa?.id || 'demo';
+
+  const [metaEfc, setMetaEfc] = useState<number>(() => {
+    const saved = localStorage.getItem(`meta_efc_${companyId}`);
+    return saved ? Number(saved) : 96;
+  });
+
+  const [metaEfd, setMetaEfd] = useState<number>(() => {
+    const saved = localStorage.getItem(`meta_efd_${companyId}`);
+    return saved ? Number(saved) : 90;
+  });
+
+  const updateMetaEfc = (val: number) => {
+    setMetaEfc(val);
+    localStorage.setItem(`meta_efc_${companyId}`, String(val));
+  };
+
+  const updateMetaEfd = (val: number) => {
+    setMetaEfd(val);
+    localStorage.setItem(`meta_efd_${companyId}`, String(val));
+  };
+
   const [actualArmazemRows, setActualArmazemRows] = useState<ArmazemRow[]>([]);
   const [activeSubTab, setActiveSubTab] = useState<'faturamento' | 'boarda3' | 'detalhes' | 'pernoite'>('faturamento');
   const [selectedDrilldownMetric, setSelectedDrilldownMetric] = useState<string | null>(null);
@@ -146,12 +174,8 @@ export default function LogisticaDashboard({ user, empresa, onBack }: LogisticaD
   const [controlChartMetric, setControlChartMetric] = useState<'EFC' | 'EFD' | 'Estadia'>('EFC');
 
   const armazemRows = useMemo(() => {
-    if (actualArmazemRows && actualArmazemRows.length > 0) {
-      return actualArmazemRows;
-    }
-    const companyId = empresa?.id || 'demo';
-    return generateMockArmazemRows(companyId);
-  }, [actualArmazemRows, empresa?.id]);
+    return actualArmazemRows || [];
+  }, [actualArmazemRows]);
 
   const handleDrilldown = (metric: string) => {
     setSelectedDrilldownMetric(metric);
@@ -228,6 +252,7 @@ export default function LogisticaDashboard({ user, empresa, onBack }: LogisticaD
   };
 
   // CALENDAR FILTERS STATE
+  const [isPopModalOpen, setIsPopModalOpen] = useState(false);
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
   const [statusMeta, setStatusMeta] = useState<string>('Todos');
@@ -235,6 +260,7 @@ export default function LogisticaDashboard({ user, empresa, onBack }: LogisticaD
   const [turnoFilter, setTurnoFilter] = useState<string>('Todos');
   const [empilhadorFilter, setEmpilhadorFilter] = useState<string>('Todos');
   const [tipoVeiculoFilter, setTipoVeiculoFilter] = useState<string>('Todos');
+  const [heatmapWindow, setHeatmapWindow] = useState<'24h' | '72h'>('24h');
 
   // State for daily records table
   const [recordSearch, setRecordSearch] = useState<string>('');
@@ -639,13 +665,13 @@ export default function LogisticaDashboard({ user, empresa, onBack }: LogisticaD
     });
 
     const eDiffC = (efcVal - 96).toFixed(1);
-    const eDiffD = (efdVal - 85).toFixed(1);
+    const eDiffD = (efdVal - 90).toFixed(1);
 
     const cColor = efcVal >= 96 ? 'text-emerald-500' : efcVal >= 94 ? 'text-amber-500' : 'text-rose-500';
     const cBg = efcVal >= 96 ? 'bg-emerald-500/10 border-emerald-500/20 text-slate-800' : efcVal >= 94 ? 'bg-amber-500/10 border-amber-500/20 text-slate-800' : 'bg-rose-500/10 border-rose-500/20 text-slate-800';
 
-    const dColor = efdVal >= 85 ? 'text-emerald-500' : efdVal >= 82 ? 'text-amber-500' : 'text-rose-500';
-    const dBg = efdVal >= 85 ? 'bg-emerald-500/10 border-emerald-500/20 text-slate-800' : efdVal >= 82 ? 'bg-amber-500/10 border-amber-500/20 text-slate-800' : 'bg-rose-500/10 border-rose-500/20 text-slate-800';
+    const dColor = efdVal >= 90 ? 'text-emerald-500' : efdVal >= 87 ? 'text-amber-500' : 'text-rose-500';
+    const dBg = efdVal >= 90 ? 'bg-emerald-500/10 border-emerald-500/20 text-slate-800' : efdVal >= 87 ? 'bg-amber-500/10 border-amber-500/20 text-slate-800' : 'bg-rose-500/10 border-rose-500/20 text-slate-800';
 
     return {
       totalCarregados: totalC,
@@ -949,6 +975,197 @@ export default function LogisticaDashboard({ user, empresa, onBack }: LogisticaD
 
     return { grid, days, hours };
   }, [filteredRows]);
+
+  // ==========================================
+  // SPECIFIC 6 EFC / EFD DASHBOARD DATASETS
+  // ==========================================
+
+  // 1. HISTOGRAMA DOS ÚLTIMOS 7 DIAS (EFC x EFD)
+  const histograma7DiasData = useMemo(() => {
+    const dailyMap: Record<string, { totalC: number; inMetaC: number; totalD: number; inMetaD: number }> = {};
+    filteredRows.forEach(r => {
+      let dateKey = r.data || 'Hoje';
+      const dt = parseRowDate(r);
+      if (dt) dateKey = `${dt.day}/${dt.month}`;
+      if (!dailyMap[dateKey]) {
+        dailyMap[dateKey] = { totalC: 0, inMetaC: 0, totalD: 0, inMetaD: 0 };
+      }
+      const isC = r.operacao === 'Carregamento' || r.operacao?.toUpperCase().includes('CARREG');
+      const isD = r.operacao === 'Descarregamento' || r.operacao?.toUpperCase().includes('DESCARG');
+      const isInside = r.status?.toUpperCase().includes('DENTRO');
+      if (isC) {
+        dailyMap[dateKey].totalC += 1;
+        if (isInside) dailyMap[dateKey].inMetaC += 1;
+      } else if (isD) {
+        dailyMap[dateKey].totalD += 1;
+        if (isInside) dailyMap[dateKey].inMetaD += 1;
+      }
+    });
+
+    const sortedKeys = Object.keys(dailyMap);
+    if (sortedKeys.length === 0) {
+      const today = new Date();
+      const result = [];
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(today);
+        d.setDate(d.getDate() - i);
+        const label = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+        result.push({ dia: label, EFC: 96.0, EFD: 91.5, metaEFC: 96, metaEFD: 90 });
+      }
+      return result;
+    }
+
+    const last7 = sortedKeys.slice(-7);
+    return last7.map(dia => {
+      const d = dailyMap[dia];
+      const efc = d.totalC > 0 ? parseFloat(((d.inMetaC / d.totalC) * 100).toFixed(1)) : 100;
+      const efd = d.totalD > 0 ? parseFloat(((d.inMetaD / d.totalD) * 100).toFixed(1)) : 100;
+      return { dia, EFC: efc, EFD: efd, metaEFC: 96, metaEFD: 90 };
+    });
+  }, [filteredRows]);
+
+  // 2. TEMPO MÉDIO EVOLUÇÃO (CARREGAMENTO / DESCARREGAMENTO)
+  const tempoMedioEvolucaoData = useMemo(() => {
+    if (trend4MonthsData && trend4MonthsData.length > 0) {
+      return trend4MonthsData.map(d => ({
+        dia: d.month,
+        tempoCarregamento: d.tempoCarregamento || 14,
+        tempoDescarga: d.tempoDescarga || 9,
+        metaCarregamento: 15,
+        metaDescarga: 10
+      }));
+    }
+    return [
+      { dia: 'Qui', tempoCarregamento: 14, tempoDescarga: 9, metaCarregamento: 15, metaDescarga: 10 },
+      { dia: 'Sex', tempoCarregamento: 13, tempoDescarga: 8, metaCarregamento: 15, metaDescarga: 10 },
+      { dia: 'Sáb', tempoCarregamento: 15, tempoDescarga: 10, metaCarregamento: 15, metaDescarga: 10 },
+      { dia: 'Seg', tempoCarregamento: 12, tempoDescarga: 7, metaCarregamento: 15, metaDescarga: 10 },
+      { dia: 'Ter', tempoCarregamento: 14, tempoDescarga: 9, metaCarregamento: 15, metaDescarga: 10 },
+      { dia: 'Qua', tempoCarregamento: 13, tempoDescarga: 8, metaCarregamento: 15, metaDescarga: 10 },
+      { dia: 'Hoje', tempoCarregamento: tempoMedioCarregamento || 14, tempoDescarga: tempoMedioDescarga || 9, metaCarregamento: 15, metaDescarga: 10 }
+    ];
+  }, [trend4MonthsData, tempoMedioCarregamento, tempoMedioDescarga]);
+
+  // 3. RANKING DE PRODUTIVIDADE / TEMPO POR OPERADOR
+  const rankingOperadoresData = useMemo(() => {
+    const empMap: Record<string, { totalMin: number; count: number; totalPaletes: number; totalOps: number; insideMeta: number }> = {};
+    filteredRows.forEach(r => {
+      const emp = r.empilhador?.trim() || 'Operador Geral';
+      if (!empMap[emp]) {
+        empMap[emp] = { totalMin: 0, count: 0, totalPaletes: 0, totalOps: 0, insideMeta: 0 };
+      }
+      empMap[emp].totalOps += 1;
+      empMap[emp].totalPaletes += Number(r.palhete) || 0;
+      if (r.status?.toUpperCase().includes('DENTRO')) empMap[emp].insideMeta += 1;
+      if (r.inicio && r.fim) {
+        const diff = timeToMinutes(r.fim) - timeToMinutes(r.inicio);
+        if (diff > 0) {
+          empMap[emp].totalMin += diff;
+          empMap[emp].count += 1;
+        }
+      }
+    });
+
+    const list = Object.entries(empMap).map(([operador, d]) => {
+      const avgMin = d.count > 0 ? Math.round(d.totalMin / d.count) : 12;
+      const pctMeta = d.totalOps > 0 ? Math.round((d.insideMeta / d.totalOps) * 100) : 100;
+      const isConforme = avgMin <= 15 && pctMeta >= 90;
+      return {
+        operador,
+        tempoMedio: avgMin,
+        produtividade: d.totalPaletes,
+        operacoes: d.totalOps,
+        pctMeta,
+        fill: isConforme ? '#10b981' : '#f43f5e'
+      };
+    });
+
+    list.sort((a, b) => a.tempoMedio - b.tempoMedio);
+    return list.slice(0, 8);
+  }, [filteredRows]);
+
+  // 4. COMPARATIVO META X REAL
+  const comparativoMetaRealData = useMemo(() => {
+    return [
+      {
+        indicador: 'EFC (Carregamento)',
+        Real: efcValue,
+        Meta: 96,
+        diferenca: parseFloat((efcValue - 96).toFixed(1)),
+        status: efcValue >= 96 ? 'Conforme' : 'Fora da Meta',
+        fillReal: efcValue >= 96 ? '#032b5e' : '#f43f5e'
+      },
+      {
+        indicador: 'EFD (Descarregamento)',
+        Real: efdValue,
+        Meta: 90,
+        diferenca: parseFloat((efdValue - 90).toFixed(1)),
+        status: efdValue >= 90 ? 'Conforme' : 'Fora da Meta',
+        fillReal: efdValue >= 90 ? '#f97316' : '#f43f5e'
+      }
+    ];
+  }, [efcValue, efdValue]);
+
+  // 5. RANKING DE VEÍCULOS COM MAIOR TEMPO DE ESTADIA
+  const rankingVeiculosMaiorTempoData = useMemo(() => {
+    const list: { placa: string; duracaoMin: number; operacao: string; empilhador: string; fill: string }[] = [];
+    filteredRows.forEach(r => {
+      if (r.placa && r.inicio && r.fim) {
+        const diff = timeToMinutes(r.fim) - timeToMinutes(r.inicio);
+        if (diff > 0) {
+          const isCarregamento = r.operacao === 'Carregamento';
+          list.push({
+            placa: r.placa,
+            duracaoMin: diff,
+            operacao: r.operacao || 'Carregamento',
+            empilhador: r.empilhador || '—',
+            fill: isCarregamento ? '#032b5e' : '#f97316'
+          });
+        }
+      }
+    });
+
+    list.sort((a, b) => b.duracaoMin - a.duracaoMin);
+    return list.slice(0, 7);
+  }, [filteredRows]);
+
+  // 6. MAPA DE CALOR 24H / 72H DE PRODUTIVIDADE + TRAJETÓRIA IDEAL
+  const mapaCalor24h72hData = useMemo(() => {
+    const hours = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0') + ':00');
+    const hourlyCounts = new Array(24).fill(0);
+    const hourlyPallets = new Array(24).fill(0);
+
+    filteredRows.forEach(r => {
+      if (r.inicio) {
+        const [hStr] = r.inicio.split(':');
+        const h = parseInt(hStr, 10);
+        if (!isNaN(h) && h >= 0 && h < 24) {
+          hourlyCounts[h] += 1;
+          hourlyPallets[h] += Number(r.palhete) || 0;
+        }
+      }
+    });
+
+    const totalVehicles = hourlyCounts.reduce((a, b) => a + b, 0) || 20;
+    const multiplier = heatmapWindow === '72h' ? 3 : 1;
+    let runningIdeal = 0;
+    const stepIdeal = (totalVehicles * multiplier) / 24;
+
+    return hours.map((hora, idx) => {
+      const veiculos = hourlyCounts[idx] * multiplier;
+      const volume = hourlyPallets[idx] * multiplier;
+      runningIdeal += stepIdeal;
+      const idealCumulative = Math.round(runningIdeal * 10) / 10;
+
+      return {
+        hora,
+        veiculos,
+        volume,
+        trajetoriaIdeal: idealCumulative,
+        fillBar: veiculos > 10 ? '#0284c7' : veiculos > 5 ? '#38bdf8' : '#cbd5e1'
+      };
+    });
+  }, [filteredRows, heatmapWindow]);
 
   // Statistical Process Control (SPC) Control Chart Calculations
   const controlChartData = useMemo(() => {
@@ -1886,15 +2103,21 @@ export default function LogisticaDashboard({ user, empresa, onBack }: LogisticaD
   };
 
   return (
-    <div id="logistica-dashboard-wrapper" className="flex flex-col gap-3 bg-[#f8fafc] text-[#0f172a] p-4 rounded-xl shadow-sm border border-gray-200/80">
+    <div id="logistica-dashboard-wrapper" className={`flex flex-col gap-3 p-4 rounded-xl shadow-sm border transition-colors ${
+      isDark ? 'bg-[#0d1218] text-slate-100 border-[#222d3a]' : 'bg-[#f8fafc] text-[#0f172a] border-gray-200/80'
+    }`}>
       
       {/* HEADER BAR */}
-      <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4 border-b border-gray-200 pb-5">
+      <div className={`flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4 border-b pb-5 ${
+        isDark ? 'border-[#222d3a]' : 'border-gray-200'
+      }`}>
         <div className="flex items-center gap-3">
           {onBack && (
             <button 
               onClick={onBack}
-              className="p-1.5 hover:bg-gray-200/80 rounded-lg transition-colors cursor-pointer text-gray-500"
+              className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                isDark ? 'hover:bg-slate-800 text-slate-300' : 'hover:bg-gray-200/80 text-gray-500'
+              }`}
               title="Voltar ao Hub"
             >
               <ArrowLeft className="w-5 h-5" />
@@ -1902,14 +2125,18 @@ export default function LogisticaDashboard({ user, empresa, onBack }: LogisticaD
           )}
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="font-sans font-black text-2xl tracking-tight text-[#032b5e] uppercase">
+              <h1 className={`font-sans font-black text-2xl tracking-tight uppercase ${
+                isDark ? 'text-white' : 'text-[#032b5e]'
+              }`}>
                 DASHBOARD EFC EFD
               </h1>
-              <span className="bg-[#f5a623]/15 text-[#d4780a] border border-[#f5a623]/25 px-2.5 py-0.5 rounded-full text-[9px] font-black tracking-widest uppercase">
+              <span className="bg-[#f5a623]/15 text-[#f5a623] border border-[#f5a623]/30 px-2.5 py-0.5 rounded-full text-[9px] font-black tracking-widest uppercase">
                 EFC EFD
               </span>
             </div>
-            <p className="text-[10px] text-gray-500 tracking-wider font-bold uppercase mt-0.5">
+            <p className={`text-[10px] tracking-wider font-bold uppercase mt-0.5 ${
+              isDark ? 'text-slate-400' : 'text-gray-500'
+            }`}>
               Controle de Estadia, Carregamentos (EFC), Descarregamentos (EFD) e Planos de Ação
             </p>
           </div>
@@ -1917,23 +2144,41 @@ export default function LogisticaDashboard({ user, empresa, onBack }: LogisticaD
 
         {/* Subtab Selector */}
         <div className="flex flex-wrap items-center gap-4">
-          <div className="flex flex-wrap items-center bg-gray-100 p-1 rounded-xl border border-gray-200/60 gap-1">
+          <div className={`flex flex-wrap items-center p-1 rounded-xl border gap-1 ${
+            isDark ? 'bg-[#151b23] border-[#222d3a]' : 'bg-gray-100 border-gray-200/60'
+          }`}>
             <button 
               onClick={() => setActiveSubTab('faturamento')}
-              className={`px-4 py-1.5 rounded-lg font-sans font-bold text-[10px] uppercase tracking-wider transition-all border-none cursor-pointer ${activeSubTab === 'faturamento' ? 'bg-[#032b5e] text-white shadow-sm' : 'text-gray-500 hover:text-[#032b5e] bg-transparent'}`}
+              className={`px-4 py-1.5 rounded-lg font-sans font-bold text-[10px] uppercase tracking-wider transition-all border-none cursor-pointer ${
+                activeSubTab === 'faturamento' 
+                  ? (isDark ? 'bg-amber-500 text-slate-950 shadow-sm' : 'bg-[#032b5e] text-white shadow-sm')
+                  : (isDark ? 'text-slate-400 hover:text-white bg-transparent' : 'text-gray-500 hover:text-[#032b5e] bg-transparent')
+              }`}
             >
               EFC EFD & BI (Geral)
             </button>
             <button 
               onClick={() => setActiveSubTab('boarda3')}
-              className={`px-4 py-1.5 rounded-lg font-sans font-bold text-[10px] uppercase tracking-wider transition-all border-none cursor-pointer ${activeSubTab === 'boarda3' ? 'bg-[#032b5e] text-white shadow-sm' : 'text-gray-500 hover:text-[#032b5e] bg-transparent'}`}
+              className={`px-4 py-1.5 rounded-lg font-sans font-bold text-[10px] uppercase tracking-wider transition-all border-none cursor-pointer ${
+                activeSubTab === 'boarda3'
+                  ? (isDark ? 'bg-amber-500 text-slate-950 shadow-sm' : 'bg-[#032b5e] text-white shadow-sm')
+                  : (isDark ? 'text-slate-400 hover:text-white bg-transparent' : 'text-gray-500 hover:text-[#032b5e] bg-transparent')
+              }`}
             >
               Quadro de Ações
+            </button>
+            <button 
+              onClick={() => setIsPopModalOpen(true)}
+              className="px-3.5 py-1.5 rounded-lg font-sans font-bold text-[10px] uppercase tracking-wider transition-all border border-emerald-500/30 bg-emerald-500/20 text-emerald-300 hover:bg-emerald-600 hover:text-white cursor-pointer flex items-center gap-1.5 shadow-sm"
+            >
+              📋 Padrão Operacional (POP EFC/EFD)
             </button>
             {selectedDrilldownMetric && (
               <button 
                 onClick={() => setActiveSubTab('detalhes')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-sans font-bold text-[10px] uppercase tracking-wider transition-all border-none cursor-pointer ${activeSubTab === 'detalhes' ? 'bg-[#4f46e5] text-white shadow-sm' : 'text-[#4f46e5] hover:text-[#3730a3] bg-indigo-50/70 hover:bg-indigo-100/70'}`}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-sans font-bold text-[10px] uppercase tracking-wider transition-all border-none cursor-pointer ${
+                  activeSubTab === 'detalhes' ? 'bg-[#4f46e5] text-white shadow-sm' : 'text-[#4f46e5] hover:text-[#3730a3] bg-indigo-50/70 hover:bg-indigo-100/70'
+                }`}
               >
                 <span>🔍 Detalhes: {selectedDrilldownMetric}</span>
                 <span 
@@ -1954,113 +2199,269 @@ export default function LogisticaDashboard({ user, empresa, onBack }: LogisticaD
         </div>
       </div>
 
+      {/* FIXED TOP BLOCK FOR EFC/EFD METAS */}
+      <IndicatorMetaHeader
+        indicatorName="EFC / EFD (Carregamento e Descarregamento)"
+        theme={theme}
+        metas={[
+          {
+            id: 'meta_efc',
+            label: 'Meta EFC (Carregamento)',
+            value: metaEfc,
+            unit: '%',
+            step: 1,
+            min: 0,
+            max: 100,
+            onChange: updateMetaEfc,
+            calculationText: '(Veículos com Carregamento Concluído dentro da Meta <= 06:30 ÷ Total de Veículos Carregados) × 100'
+          },
+          {
+            id: 'meta_efd',
+            label: 'Meta EFD (Descarregamento)',
+            value: metaEfd,
+            unit: '%',
+            step: 1,
+            min: 0,
+            max: 100,
+            onChange: updateMetaEfd,
+            calculationText: '(Veículos com Descarregamento Concluído dentro da Meta <= 22:00 ÷ Total de Veículos Descarregados) × 100'
+          }
+        ]}
+      />
+
       {activeSubTab === 'faturamento' && (
         <>
+          {/* MANUAL DE INSTRUÇÃO E METAS */}
+          <ManualInstrucaoCard
+            title="Manual de Instrução & Parâmetros de Meta — Logística & Expedição (EFC / EFD)"
+            metrics={[
+              {
+                key: 'efc',
+                label: 'Eficiência no Carregamento (EFC)',
+                unit: '%',
+                comoCalcular: '(Veículos com Carregamento Finalizado ≤ 06:30) ÷ (Total de Veículos Importados do Relatório 03.11.49.02) × 100.'
+              },
+              {
+                key: 'efd',
+                label: 'Eficiência no Descarregamento (EFD)',
+                unit: '%',
+                comoCalcular: '(Veículos Descarregados ≤ 22:00) ÷ (Total de Veículos que Saíram para Rota Comercial, Excluindo Pernoite do Cálculo de Falha) × 100.'
+              }
+            ]}
+          />
 
       {/* FILTER BOX SECTION */}
-      <section className="bg-white p-3.5 rounded-xl border border-gray-200 shadow-xs">
-        <div className="flex flex-wrap items-center gap-4">
+      <section className={`p-3.5 rounded-xl border shadow-xs ${
+        isDark ? 'bg-[#151b23] border-[#222d3a] text-slate-200' : 'bg-white border-gray-200 text-slate-800'
+      }`}>
+        <div className="flex flex-wrap items-center gap-4 justify-between">
           
-          {/* Período (Calendário) */}
-          <div className="flex flex-col gap-1 min-w-[150px]">
-            <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Período (Calendário)</label>
-            <CalendarFilter
-              startDate={startDate}
-              endDate={endDate}
-              onChange={(start, end) => {
-                setStartDate(start);
-                setEndDate(end);
-              }}
-            />
+          <div className="flex flex-wrap items-center gap-4">
+            {/* Período (Calendário) */}
+            <div className="flex flex-col gap-1 min-w-[150px]">
+              <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Período (Calendário)</label>
+              <CalendarFilter
+                startDate={startDate}
+                endDate={endDate}
+                onChange={(start, end) => {
+                  setStartDate(start);
+                  setEndDate(end);
+                }}
+              />
+            </div>
+
+            {/* Status da Meta */}
+            <div className="flex flex-col gap-1 w-[130px]">
+              <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Status da Meta</label>
+              <select
+                value={statusMeta}
+                onChange={(e) => setStatusMeta(e.target.value)}
+                className={`w-full font-sans font-bold rounded-lg outline-none px-2.5 py-1 text-[10px] h-[28px] cursor-pointer transition-all border ${
+                  isDark 
+                    ? 'bg-[#0d1218] border-[#222d3a] text-slate-100 hover:border-amber-400 focus:border-amber-400'
+                    : 'bg-white border-gray-200 text-[#032b5e] hover:border-amber-400 focus:border-[#032b5e]'
+                }`}
+              >
+                <option value="Todos">Todos</option>
+                <option value="Dentro">Dentro da Meta</option>
+                <option value="Fora">Fora da Meta</option>
+              </select>
+            </div>
+
+            {/* Operação */}
+            <div className="flex flex-col gap-1 w-[130px]">
+              <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Operação</label>
+              <select
+                value={operacaoFilter}
+                onChange={(e) => setOperacaoFilter(e.target.value)}
+                className={`w-full font-sans font-bold rounded-lg outline-none px-2.5 py-1 text-[10px] h-[28px] cursor-pointer transition-all border ${
+                  isDark 
+                    ? 'bg-[#0d1218] border-[#222d3a] text-slate-100 hover:border-amber-400 focus:border-amber-400'
+                    : 'bg-white border-gray-200 text-[#032b5e] hover:border-amber-400 focus:border-[#032b5e]'
+                }`}
+              >
+                <option value="Todos">Todos</option>
+                <option value="Carregamento">Carregamento</option>
+                <option value="Descarregamento">Descarregamento</option>
+              </select>
+            </div>
+
+            {/* Turno */}
+            <div className="flex flex-col gap-1 w-[110px]">
+              <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Turno</label>
+              <select
+                value={turnoFilter}
+                onChange={(e) => setTurnoFilter(e.target.value)}
+                className={`w-full font-sans font-bold rounded-lg outline-none px-2.5 py-1 text-[10px] h-[28px] cursor-pointer transition-all border ${
+                  isDark 
+                    ? 'bg-[#0d1218] border-[#222d3a] text-slate-100 hover:border-amber-400 focus:border-amber-400'
+                    : 'bg-white border-gray-200 text-[#032b5e] hover:border-amber-400 focus:border-[#032b5e]'
+                }`}
+              >
+                <option value="Todos">Todos</option>
+                <option value="Diurno">Diurno</option>
+                <option value="Noturno">Noturno</option>
+              </select>
+            </div>
+
+            {/* Empilhador */}
+            <div className="flex flex-col gap-1 min-w-[160px] max-w-[200px]">
+              <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Empilhador</label>
+              <select
+                value={empilhadorFilter}
+                onChange={(e) => setEmpilhadorFilter(e.target.value)}
+                className={`w-full font-sans font-bold rounded-lg outline-none px-2.5 py-1 text-[10px] h-[28px] cursor-pointer transition-all border ${
+                  isDark 
+                    ? 'bg-[#0d1218] border-[#222d3a] text-slate-100 hover:border-amber-400 focus:border-amber-400'
+                    : 'bg-white border-gray-200 text-[#032b5e] hover:border-amber-400 focus:border-[#032b5e]'
+                }`}
+              >
+                <option value="Todos">Todos</option>
+                {uniqueEmpilhadores.map(name => (
+                  <option key={name} value={name}>{name}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Tipo de Veículo */}
+            <div className="flex flex-col gap-1 w-[150px]">
+              <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Tipo de Veículo / Classif.</label>
+              <select
+                value={tipoVeiculoFilter}
+                onChange={(e) => setTipoVeiculoFilter(e.target.value)}
+                className={`w-full font-sans font-bold rounded-lg outline-none px-2.5 py-1 text-[10px] h-[28px] cursor-pointer transition-all border ${
+                  isDark 
+                    ? 'bg-[#0d1218] border-[#222d3a] text-slate-100 hover:border-amber-400 focus:border-amber-400'
+                    : 'bg-white border-gray-200 text-[#032b5e] hover:border-amber-400 focus:border-[#032b5e]'
+                }`}
+              >
+                <option value="Todos">Todos</option>
+                {uniqueTipos.map(tipo => (
+                  <option key={tipo} value={tipo}>{tipo}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Clear Filters Button */}
+            {(startDate || endDate || statusMeta !== 'Todos' || operacaoFilter !== 'Todos' || turnoFilter !== 'Todos' || empilhadorFilter !== 'Todos' || tipoVeiculoFilter !== 'Todos') && (
+              <button
+                onClick={handleClearFilters}
+                className={`mt-4.5 px-3 py-1 border rounded-lg text-[9px] font-black tracking-widest uppercase transition-all flex items-center gap-1.5 cursor-pointer h-[28px] ${
+                  isDark 
+                    ? 'bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border-rose-500/30'
+                    : 'bg-[#032b5e]/5 hover:bg-[#032b5e]/10 text-[#032b5e] border-[#032b5e]/10'
+                }`}
+              >
+                <RotateCcw className="w-3 h-3" />
+                Limpar Filtros
+              </button>
+            )}
           </div>
 
-          {/* Status da Meta */}
-          <div className="flex flex-col gap-1 w-[130px]">
-            <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Status da Meta</label>
-            <select
-              value={statusMeta}
-              onChange={(e) => setStatusMeta(e.target.value)}
-              className="w-full bg-white border border-gray-200 text-[#032b5e] font-sans font-bold rounded-lg outline-none px-2.5 py-1 text-[10px] h-[28px] cursor-pointer transition-all hover:border-amber-400 focus:border-[#032b5e]"
-            >
-              <option value="Todos">Todos</option>
-              <option value="Dentro">Dentro da Meta</option>
-              <option value="Fora">Fora da Meta</option>
-            </select>
-          </div>
-
-          {/* Operação */}
-          <div className="flex flex-col gap-1 w-[130px]">
-            <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Operação</label>
-            <select
-              value={operacaoFilter}
-              onChange={(e) => setOperacaoFilter(e.target.value)}
-              className="w-full bg-white border border-gray-200 text-[#032b5e] font-sans font-bold rounded-lg outline-none px-2.5 py-1 text-[10px] h-[28px] cursor-pointer transition-all hover:border-amber-400 focus:border-[#032b5e]"
-            >
-              <option value="Todos">Todos</option>
-              <option value="Carregamento">Carregamento</option>
-              <option value="Descarregamento">Descarregamento</option>
-            </select>
-          </div>
-
-          {/* Turno */}
-          <div className="flex flex-col gap-1 w-[110px]">
-            <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Turno</label>
-            <select
-              value={turnoFilter}
-              onChange={(e) => setTurnoFilter(e.target.value)}
-              className="w-full bg-white border border-gray-200 text-[#032b5e] font-sans font-bold rounded-lg outline-none px-2.5 py-1 text-[10px] h-[28px] cursor-pointer transition-all hover:border-amber-400 focus:border-[#032b5e]"
-            >
-              <option value="Todos">Todos</option>
-              <option value="Diurno">Diurno</option>
-              <option value="Noturno">Noturno</option>
-            </select>
-          </div>
-
-          {/* Empilhador */}
-          <div className="flex flex-col gap-1 min-w-[160px] max-w-[200px]">
-            <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Empilhador</label>
-            <select
-              value={empilhadorFilter}
-              onChange={(e) => setEmpilhadorFilter(e.target.value)}
-              className="w-full bg-white border border-gray-200 text-[#032b5e] font-sans font-bold rounded-lg outline-none px-2.5 py-1 text-[10px] h-[28px] cursor-pointer transition-all hover:border-amber-400 focus:border-[#032b5e]"
-            >
-              <option value="Todos">Todos</option>
-              {uniqueEmpilhadores.map(name => (
-                <option key={name} value={name}>{name}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Tipo de Veículo */}
-          <div className="flex flex-col gap-1 w-[150px]">
-            <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Tipo de Veículo / Classif.</label>
-            <select
-              value={tipoVeiculoFilter}
-              onChange={(e) => setTipoVeiculoFilter(e.target.value)}
-              className="w-full bg-white border border-gray-200 text-[#032b5e] font-sans font-bold rounded-lg outline-none px-2.5 py-1 text-[10px] h-[28px] cursor-pointer transition-all hover:border-amber-400 focus:border-[#032b5e]"
-            >
-              <option value="Todos">Todos</option>
-              {uniqueTipos.map(tipo => (
-                <option key={tipo} value={tipo}>{tipo}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Clear Filters Button */}
-          {(startDate || endDate || statusMeta !== 'Todos' || operacaoFilter !== 'Todos' || turnoFilter !== 'Todos' || empilhadorFilter !== 'Todos' || tipoVeiculoFilter !== 'Todos') && (
-            <button
-              onClick={handleClearFilters}
-              className="mt-4.5 px-3 py-1 bg-[#032b5e]/5 hover:bg-[#032b5e]/10 text-[#032b5e] border border-[#032b5e]/10 rounded-lg text-[9px] font-black tracking-widest uppercase transition-all flex items-center gap-1.5 cursor-pointer h-[28px]"
-            >
-              <RotateCcw className="w-3 h-3" />
-              Limpar Filtros
-            </button>
-          )}
+          <button 
+            onClick={() => setIsPopModalOpen(true)}
+            className="px-3.5 py-1.5 rounded-lg font-sans font-bold text-[10px] uppercase tracking-wider transition-all border border-emerald-500/40 bg-emerald-500/20 text-emerald-300 hover:bg-emerald-600 hover:text-white cursor-pointer flex items-center gap-1.5 shadow-sm"
+            title="Abrir Padrão Operacional EFC/EFD"
+          >
+            📋 Padrão Operacional (POP EFC/EFD)
+          </button>
 
         </div>
       </section>
 
+      {/* TOP BANNER: RANKING DE EMPILHADORES E RENDIMENTOS OPERACIONAIS */}
+      <div className="bg-gradient-to-r from-[#0d1527] via-[#111a2e] to-[#0d1527] border border-[#1e293b] p-4 rounded-2xl shadow-md text-white flex flex-col gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#1e293b] pb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 bg-amber-500/20 text-amber-400 rounded-xl border border-amber-500/30">
+              <Trophy className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="text-sm font-black tracking-wider uppercase text-amber-400 flex items-center gap-2">
+                🏆 RANKING DE EMPILHADORES & RENDIMENTOS OPERACIONAIS
+              </h2>
+              <p className="text-[10px] text-slate-400 font-medium">
+                Produtividade por Operador (Paletes/Cx Movimentadas), Tempo Médio de Execução e Aderência DPO %
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 bg-[#172136] px-3 py-1.5 rounded-xl border border-[#2a3854] text-[10px] font-mono">
+            <span className="text-slate-400">Meta Aderência:</span>
+            <span className="font-bold text-emerald-400">≥ 90%</span>
+            <span className="text-slate-400 border-l border-slate-700 pl-2">Meta Tempo:</span>
+            <span className="font-bold text-amber-400">≤ 15 min</span>
+          </div>
+        </div>
 
+        {rankingOperadoresData.length === 0 ? (
+          <p className="text-xs text-slate-400 text-center py-2">Nenhum dado de operador registrado para os filtros selecionados.</p>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+            {rankingOperadoresData.slice(0, 5).map((op, idx) => {
+              const isTop1 = idx === 0;
+              const isTop2 = idx === 1;
+              const isTop3 = idx === 2;
+              const badgeColor = isTop1 ? 'bg-amber-500 text-slate-950 font-black' : isTop2 ? 'bg-slate-300 text-slate-950 font-black' : isTop3 ? 'bg-amber-700 text-white font-black' : 'bg-slate-800 text-slate-300';
+              const medalIcon = isTop1 ? '🥇' : isTop2 ? '🥈' : isTop3 ? '🥉' : `#${idx + 1}`;
+
+              return (
+                <div key={op.operador} className="bg-[#152035] border border-[#223250] hover:border-amber-500/50 p-3 rounded-xl flex flex-col justify-between gap-2.5 transition-all shadow-xs">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className={`text-[10px] px-2 py-0.5 rounded-md flex items-center gap-1 ${badgeColor}`}>
+                      <span>{medalIcon}</span>
+                      <span>RANK {idx + 1}</span>
+                    </span>
+                    <span className={`text-[9px] font-black px-2 py-0.5 rounded-full ${op.pctMeta >= 90 ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'}`}>
+                      {op.pctMeta}% ADERÊNCIA
+                    </span>
+                  </div>
+
+                  <div>
+                    <span className="text-xs font-black text-white block truncate uppercase font-mono tracking-tight" title={op.operador}>
+                      {op.operador}
+                    </span>
+                    <div className="flex items-center justify-between text-[10px] text-slate-400 mt-1">
+                      <span>Rendimento:</span>
+                      <span className="font-mono font-bold text-amber-300">{op.produtividade.toLocaleString('pt-BR')} paletes</span>
+                    </div>
+                    <div className="flex items-center justify-between text-[10px] text-slate-400 mt-0.5">
+                      <span>Tempo Médio:</span>
+                      <span className="font-mono font-bold text-slate-200">{op.tempoMedio} min/op</span>
+                    </div>
+                  </div>
+
+                  <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                    <div 
+                      className={`h-full transition-all rounded-full ${op.pctMeta >= 90 ? 'bg-emerald-500' : 'bg-rose-500'}`}
+                      style={{ width: `${Math.min(100, op.pctMeta)}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
 
       {/* SEÇÃO 1: FATURAMENTO & CARREGAMENTO */}
 
@@ -2069,7 +2470,9 @@ export default function LogisticaDashboard({ user, empresa, onBack }: LogisticaD
         
         {/* KPI 1: % EFC */}
         <div 
-          className="bg-white p-4 rounded-xl border border-gray-200/80 shadow-xs flex flex-col justify-between transition-all"
+          className={`p-4 rounded-xl border shadow-xs flex flex-col justify-between transition-all ${
+            isDark ? 'bg-[#151b23] border-[#222d3a] text-slate-100' : 'bg-white border-gray-200/80 text-slate-800'
+          }`}
         >
           <div>
             <div className="flex items-center justify-between">
@@ -2077,24 +2480,30 @@ export default function LogisticaDashboard({ user, empresa, onBack }: LogisticaD
                 EFC (CARREGAMENTO)
               </span>
             </div>
-            <span className="text-2xl font-black tracking-tight block mt-1.5 text-[#032b5e]">
+            <span className={`text-2xl font-black tracking-tight block mt-1.5 ${
+              isDark ? 'text-amber-400' : 'text-[#032b5e]'
+            }`}>
               {efcValue.toFixed(1)}%
             </span>
             <div className="flex items-center gap-1 mt-1">
-              <span className="text-[9px] text-slate-500 font-bold">Meta: 96%</span>
-              <span className={`text-[9px] font-black ${parseFloat(efcDiff) >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+              <span className="text-[9px] text-slate-400 font-bold">Meta: 96%</span>
+              <span className={`text-[9px] font-black ${parseFloat(efcDiff) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                 ({parseFloat(efcDiff) >= 0 ? '+' : ''}{efcDiff}%)
               </span>
             </div>
           </div>
-          <div className="mt-2 border-t border-gray-100 pt-1.5 text-[9px] text-gray-400 font-medium">
+          <div className={`mt-2 border-t pt-1.5 text-[9px] font-medium ${
+            isDark ? 'border-[#222d3a] text-slate-400' : 'border-gray-100 text-gray-400'
+          }`}>
             Status: {efcValue >= 96 ? 'Conforme' : 'Fora da Meta'}
           </div>
         </div>
 
         {/* KPI 2: % EFD */}
         <div 
-          className="bg-white p-4 rounded-xl border border-gray-200/80 shadow-xs flex flex-col justify-between transition-all"
+          className={`p-4 rounded-xl border shadow-xs flex flex-col justify-between transition-all ${
+            isDark ? 'bg-[#151b23] border-[#222d3a] text-slate-100' : 'bg-white border-gray-200/80 text-slate-800'
+          }`}
         >
           <div>
             <div className="flex items-center justify-between">
@@ -2102,24 +2511,30 @@ export default function LogisticaDashboard({ user, empresa, onBack }: LogisticaD
                 EFD (DESCARGA)
               </span>
             </div>
-            <span className="text-2xl font-black tracking-tight block mt-1.5 text-[#032b5e]">
+            <span className={`text-2xl font-black tracking-tight block mt-1.5 ${
+              isDark ? 'text-sky-400' : 'text-[#032b5e]'
+            }`}>
               {efdValue.toFixed(1)}%
             </span>
             <div className="flex items-center gap-1 mt-1">
-              <span className="text-[9px] text-slate-500 font-bold">Meta: 85%</span>
-              <span className={`text-[9px] font-black ${parseFloat(efdDiff) >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+              <span className="text-[9px] text-slate-400 font-bold">Meta: 90%</span>
+              <span className={`text-[9px] font-black ${parseFloat(efdDiff) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                 ({parseFloat(efdDiff) >= 0 ? '+' : ''}{efdDiff}%)
               </span>
             </div>
           </div>
-          <div className="mt-2 border-t border-gray-100 pt-1.5 text-[9px] text-gray-400 font-medium">
-            Status: {efdValue >= 85 ? 'Conforme' : 'Fora da Meta'}
+          <div className={`mt-2 border-t pt-1.5 text-[9px] font-medium ${
+            isDark ? 'border-[#222d3a] text-slate-400' : 'border-gray-100 text-gray-400'
+          }`}>
+            Status: {efdValue >= 90 ? 'Conforme' : 'Fora da Meta'}
           </div>
         </div>
 
         {/* KPI 3: CAMINHÕES CARREGADOS */}
         <div 
-          className="bg-white p-4 rounded-xl border border-gray-200/80 shadow-xs flex flex-col justify-between transition-all"
+          className={`p-4 rounded-xl border shadow-xs flex flex-col justify-between transition-all ${
+            isDark ? 'bg-[#151b23] border-[#222d3a] text-slate-100' : 'bg-white border-gray-200/80 text-slate-800'
+          }`}
         >
           <div>
             <div className="flex items-center justify-between">
@@ -2127,21 +2542,27 @@ export default function LogisticaDashboard({ user, empresa, onBack }: LogisticaD
                 CARREGAMENTOS
               </span>
             </div>
-            <span className="text-2xl font-black tracking-tight block mt-1.5 text-[#032b5e]">
+            <span className={`text-2xl font-black tracking-tight block mt-1.5 ${
+              isDark ? 'text-emerald-400' : 'text-[#032b5e]'
+            }`}>
               {totalCarregados}
             </span>
-            <span className="text-[9px] text-emerald-600 font-bold block mt-1">
+            <span className="text-[9px] text-emerald-400 font-bold block mt-1">
               Viagens registradas
             </span>
           </div>
-          <div className="mt-2 border-t border-gray-100 pt-1.5 text-[9px] text-gray-400 font-medium">
+          <div className={`mt-2 border-t pt-1.5 text-[9px] font-medium ${
+            isDark ? 'border-[#222d3a] text-slate-400' : 'border-gray-100 text-gray-400'
+          }`}>
             Atendimento Pátio
           </div>
         </div>
 
         {/* KPI 4: CAMINHÕES DESCARREGADOS */}
         <div 
-          className="bg-white p-4 rounded-xl border border-gray-200/80 shadow-xs flex flex-col justify-between transition-all"
+          className={`p-4 rounded-xl border shadow-xs flex flex-col justify-between transition-all ${
+            isDark ? 'bg-[#151b23] border-[#222d3a] text-slate-100' : 'bg-white border-gray-200/80 text-slate-800'
+          }`}
         >
           <div>
             <div className="flex items-center justify-between">
@@ -2149,21 +2570,27 @@ export default function LogisticaDashboard({ user, empresa, onBack }: LogisticaD
                 DESCARREGAMENTOS
               </span>
             </div>
-            <span className="text-2xl font-black tracking-tight block mt-1.5 text-sky-700">
+            <span className={`text-2xl font-black tracking-tight block mt-1.5 ${
+              isDark ? 'text-sky-300' : 'text-sky-700'
+            }`}>
               {totalDescarregados}
             </span>
-            <span className="text-[9px] text-sky-600 font-bold block mt-1">
+            <span className="text-[9px] text-sky-400 font-bold block mt-1">
               Recebimento físico
             </span>
           </div>
-          <div className="mt-2 border-t border-gray-100 pt-1.5 text-[9px] text-gray-400 font-medium">
+          <div className={`mt-2 border-t pt-1.5 text-[9px] font-medium ${
+            isDark ? 'border-[#222d3a] text-slate-400' : 'border-gray-100 text-gray-400'
+          }`}>
             Concluídos na doca
           </div>
         </div>
 
         {/* KPI 5: TEMPO MÉDIO CARREGAMENTO */}
         <div 
-          className="bg-white p-4 rounded-xl border border-gray-200/80 shadow-xs flex flex-col justify-between transition-all"
+          className={`p-4 rounded-xl border shadow-xs flex flex-col justify-between transition-all ${
+            isDark ? 'bg-[#151b23] border-[#222d3a] text-slate-100' : 'bg-white border-gray-200/80 text-slate-800'
+          }`}
         >
           <div>
             <div className="flex items-center justify-between">
@@ -2172,23 +2599,29 @@ export default function LogisticaDashboard({ user, empresa, onBack }: LogisticaD
               </span>
             </div>
             <div className="flex items-baseline gap-1 mt-1.5">
-              <span className="text-2xl font-black tracking-tight text-slate-800">
+              <span className={`text-2xl font-black tracking-tight ${
+                isDark ? 'text-white' : 'text-slate-800'
+              }`}>
                 {tempoMedioCarregamento}
               </span>
               <span className="text-[10px] font-bold text-gray-400">min</span>
             </div>
-            <span className={`text-[9px] font-bold block mt-1 ${tempoMedioCarregamento <= 15 ? 'text-emerald-500' : 'text-rose-500'}`}>
+            <span className={`text-[9px] font-bold block mt-1 ${tempoMedioCarregamento <= 15 ? 'text-emerald-400' : 'text-rose-400'}`}>
               {tempoMedioCarregamento <= 15 ? 'Dentro do limite' : 'Fora da meta'}
             </span>
           </div>
-          <div className="mt-2 border-t border-gray-100 pt-1.5 text-[9px] text-gray-400 font-medium">
+          <div className={`mt-2 border-t pt-1.5 text-[9px] font-medium ${
+            isDark ? 'border-[#222d3a] text-slate-400' : 'border-gray-100 text-gray-400'
+          }`}>
             Meta: &lt; 15 min
           </div>
         </div>
 
         {/* KPI 6: TEMPO MÉDIO DESCARGA */}
         <div 
-          className="bg-white p-4 rounded-xl border border-gray-200/80 shadow-xs flex flex-col justify-between transition-all"
+          className={`p-4 rounded-xl border shadow-xs flex flex-col justify-between transition-all ${
+            isDark ? 'bg-[#151b23] border-[#222d3a] text-slate-100' : 'bg-white border-gray-200/80 text-slate-800'
+          }`}
         >
           <div>
             <div className="flex items-center justify-between">
@@ -2197,16 +2630,20 @@ export default function LogisticaDashboard({ user, empresa, onBack }: LogisticaD
               </span>
             </div>
             <div className="flex items-baseline gap-1 mt-1.5">
-              <span className="text-2xl font-black tracking-tight text-slate-800">
+              <span className={`text-2xl font-black tracking-tight ${
+                isDark ? 'text-white' : 'text-slate-800'
+              }`}>
                 {tempoMedioDescarga}
               </span>
               <span className="text-[10px] font-bold text-gray-400">min</span>
             </div>
-            <span className={`text-[9px] font-bold block mt-1 ${tempoMedioDescarga <= 10 ? 'text-emerald-500' : 'text-rose-500'}`}>
+            <span className={`text-[9px] font-bold block mt-1 ${tempoMedioDescarga <= 10 ? 'text-emerald-400' : 'text-rose-400'}`}>
               {tempoMedioDescarga <= 10 ? 'Dentro do limite' : 'Fora da meta'}
             </span>
           </div>
-          <div className="mt-2 border-t border-gray-100 pt-1.5 text-[9px] text-gray-400 font-medium">
+          <div className={`mt-2 border-t pt-1.5 text-[9px] font-medium ${
+            isDark ? 'border-[#222d3a] text-slate-400' : 'border-gray-100 text-gray-400'
+          }`}>
             Meta: &lt; 10 min
           </div>
         </div>
@@ -2284,251 +2721,276 @@ export default function LogisticaDashboard({ user, empresa, onBack }: LogisticaD
         </div>
       </div>
 
-      {/* GRAPH GRIDS SECTION (MIDDLE OF PAGE) */}
+      {/* 📊 SEÇÃO ESPECIALIZADA: 6 GRÁFICOS DPO DO DASHBOARD EFC / EFD */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        
-        {/* CHART 1: DESEMPENHO OPERACIONAL – EFC (CARREGAMENTO) */}
-        <div className="bg-white p-6 rounded-xl border border-gray-200/80 shadow-xs flex flex-col gap-4">
-          <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between border-b border-gray-100 pb-4 gap-3">
+
+        {/* CHART 1: HISTOGRAMA DOS ÚLTIMOS 7 DIAS (EFC x EFD) */}
+        <div className="bg-white p-6 rounded-xl border border-gray-200/80 shadow-xs flex flex-col justify-between gap-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-gray-100 pb-4 gap-2">
             <div>
               <h3 className="font-sans font-black text-sm uppercase text-[#032b5e] tracking-wider">
-                DESEMPENHO OPERACIONAL – EFC (CARREGAMENTO)
+                1. Histograma dos ÚLTIMOS 7 DIAS – EFC x EFD
               </h3>
-              <p className="text-[11px] text-gray-400 font-bold uppercase mt-0.5 tracking-wide">Acompanhamento de performance vs. meta</p>
+              <p className="text-[11px] text-gray-400 font-bold uppercase mt-0.5 tracking-wide">
+                Atingimento diário vs. Metas Oficiais (EFC ≥ 96%, EFD ≥ 90%)
+              </p>
             </div>
-            
-            {/* Custom Legend */}
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[10px] font-black uppercase tracking-wider text-slate-600 bg-slate-50/80 p-2 rounded-lg border border-slate-100/80">
-              <div className="flex items-center gap-1.5">
-                <span className="w-4 h-1 bg-[#032b5e] rounded-full"></span>
-                <span>EFC Real</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="w-4 h-0 border-t-2 border-dashed border-[#032b5e]"></span>
-                <span className="text-slate-500">Meta EFC: 96%</span>
-              </div>
+            <div className="flex items-center gap-3 text-[10px] font-black uppercase tracking-wider text-slate-600 bg-slate-50 p-2 rounded-lg border border-slate-100">
+              <span className="flex items-center gap-1"><span className="w-3 h-3 bg-[#032b5e] rounded-xs inline-block"></span> EFC Real</span>
+              <span className="flex items-center gap-1"><span className="w-3 h-3 bg-[#f97316] rounded-xs inline-block"></span> EFD Real</span>
             </div>
           </div>
 
           <div className="h-72 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={trend4MonthsData} margin={{ top: 30, right: 85, left: 10, bottom: 10 }}>
+              <BarChart data={histograma7DiasData} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}>
                 <CartesianGrid stroke="#f1f5f9" vertical={false} />
-                <XAxis dataKey="month" stroke="#94a3b8" fontSize={11} fontWeight="bold" tickLine={false} padding={{ left: 35, right: 35 }} />
-                <YAxis 
-                  domain={[0, 105]} 
-                  stroke="#94a3b8" 
-                  fontSize={11} 
-                  tickLine={false} 
-                  axisLine={false}
-                  label={{ value: '%', angle: -90, position: 'insideLeft', style: { textAnchor: 'middle', fontSize: 11, fill: '#64748b', fontWeight: 'bold' }, offset: -5 }} 
+                <XAxis dataKey="dia" stroke="#94a3b8" fontSize={11} fontWeight="bold" tickLine={false} />
+                <YAxis domain={[0, 105]} stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} unit="%" />
+                <Tooltip 
+                  content={
+                    <ChartTooltipExplainer 
+                      title="1. Histograma dos ÚLTIMOS 7 DIAS"
+                      concept="Atingimento diário percentual de carregamentos (EFC) e descarregamentos (EFD)."
+                      formula="EFC% = (No Prazo / Total) * 100 | EFD% = (No Prazo / Total Avaliados) * 100"
+                      unit="%"
+                    />
+                  } 
                 />
-                <Tooltip contentStyle={{ backgroundColor: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px' }} />
                 
-                {/* Reference line EFC at 96% */}
-                <ReferenceLine 
-                  y={96} 
-                  stroke="#032b5e" 
-                  strokeDasharray="4 4" 
-                  strokeWidth={1.5} 
-                  label={{ value: 'Meta: 96%', fill: '#032b5e', position: 'right', fontSize: 10, fontWeight: 'black', offset: 8 }} 
-                />
+                <ReferenceLine y={96} stroke="#032b5e" strokeDasharray="4 4" strokeWidth={1.5} label={{ value: 'Meta EFC: 96%', fill: '#032b5e', position: 'top', fontSize: 10, fontWeight: 'black' }} />
+                <ReferenceLine y={90} stroke="#f97316" strokeDasharray="4 4" strokeWidth={1.5} label={{ value: 'Meta EFD: 90%', fill: '#f97316', position: 'bottom', fontSize: 10, fontWeight: 'black' }} />
 
-                <Line 
-                  type="monotone" 
-                  dataKey="EFC" 
-                  stroke="#032b5e" 
-                  strokeWidth={3} 
-                  dot={{ r: 5, stroke: '#032b5e', strokeWidth: 2, fill: '#fff' }} 
-                  activeDot={{ r: 7 }}
-                  label={<CustomizedPercentLabel fill="#032b5e" position="top" />}
-                  isAnimationActive={false}
-                />
-              </LineChart>
+                <Bar dataKey="EFC" name="EFC (%)" fill="#032b5e" radius={[4, 4, 0, 0]} barSize={18} />
+                <Bar dataKey="EFD" name="EFD (%)" fill="#f97316" radius={[4, 4, 0, 0]} barSize={18} />
+              </BarChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-        {/* CHART 2: DESEMPENHO OPERACIONAL – EFD (DESCARGA) */}
-        <div className="bg-white p-6 rounded-xl border border-gray-200/80 shadow-xs flex flex-col gap-4">
-          <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between border-b border-gray-100 pb-4 gap-3">
-            <div>
-              <h3 className="font-sans font-black text-sm uppercase text-[#f97316] tracking-wider">
-                DESEMPENHO OPERACIONAL – EFD (DESCARGA)
-              </h3>
-              <p className="text-[11px] text-gray-400 font-bold uppercase mt-0.5 tracking-wide">Acompanhamento de performance vs. meta</p>
-            </div>
-            
-            {/* Custom Legend */}
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[10px] font-black uppercase tracking-wider text-slate-600 bg-slate-50/80 p-2 rounded-lg border border-slate-100/80">
-              <div className="flex items-center gap-1.5">
-                <span className="w-4 h-1 bg-[#f97316] rounded-full"></span>
-                <span>EFD Real</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="w-4 h-0 border-t-2 border-dashed border-[#f97316]"></span>
-                <span className="text-slate-500">Meta EFD: 85%</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="h-72 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={trend4MonthsData} margin={{ top: 30, right: 85, left: 10, bottom: 10 }}>
-                <CartesianGrid stroke="#f1f5f9" vertical={false} />
-                <XAxis dataKey="month" stroke="#94a3b8" fontSize={11} fontWeight="bold" tickLine={false} padding={{ left: 35, right: 35 }} />
-                <YAxis 
-                  domain={[0, 105]} 
-                  stroke="#94a3b8" 
-                  fontSize={11} 
-                  tickLine={false} 
-                  axisLine={false}
-                  label={{ value: '%', angle: -90, position: 'insideLeft', style: { textAnchor: 'middle', fontSize: 11, fill: '#64748b', fontWeight: 'bold' }, offset: -5 }} 
-                />
-                <Tooltip contentStyle={{ backgroundColor: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px' }} />
-
-                {/* Reference line EFD at 85% */}
-                <ReferenceLine 
-                  y={85} 
-                  stroke="#f97316" 
-                  strokeDasharray="4 4" 
-                  strokeWidth={1.5} 
-                  label={{ value: 'Meta: 85%', fill: '#f97316', position: 'right', fontSize: 10, fontWeight: 'black', offset: 8 }} 
-                />
-
-                <Line 
-                  type="monotone" 
-                  dataKey="EFD" 
-                  stroke="#f97316" 
-                  strokeWidth={3} 
-                  dot={{ r: 5, stroke: '#f97316', strokeWidth: 2, fill: '#fff' }} 
-                  activeDot={{ r: 7 }}
-                  label={<CustomizedPercentLabel fill="#f97316" position="top" />}
-                  isAnimationActive={false}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        {/* CHART 3: TEMPO MÉDIO – CARREGAMENTO (MINUTOS) */}
-        <div className="bg-white p-6 rounded-xl border border-gray-200/80 shadow-xs flex flex-col gap-4">
-          <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between border-b border-gray-100 pb-4 gap-3">
+        {/* CHART 2: TEMPO MÉDIO DE CARREGAMENTO E DESCARREGAMENTO */}
+        <div className="bg-white p-6 rounded-xl border border-gray-200/80 shadow-xs flex flex-col justify-between gap-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-gray-100 pb-4 gap-2">
             <div>
               <h3 className="font-sans font-black text-sm uppercase text-[#032b5e] tracking-wider">
-                TEMPO MÉDIO – CARREGAMENTO (MINUTOS)
+                2. Tempo Médio Operacional (Evolução Temporal)
               </h3>
-              <p className="text-[11px] text-gray-400 font-bold uppercase mt-0.5 tracking-wide">Acompanhamento de tempo médio vs. meta</p>
+              <p className="text-[11px] text-gray-400 font-bold uppercase mt-0.5 tracking-wide">
+                Tempo de atendimento por veículo em minutos vs. SLA máximo
+              </p>
             </div>
-            
-            {/* Custom Legend */}
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[10px] font-black uppercase tracking-wider text-slate-600 bg-slate-50/80 p-2 rounded-lg border border-slate-100/80">
-              <div className="flex items-center gap-1.5">
-                <span className="w-4 h-1 bg-[#032b5e] rounded-full"></span>
-                <span>Média Carregamento</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="w-4 h-0 border-t-2 border-dashed border-[#032b5e]"></span>
-                <span className="text-slate-500">Meta: ≤ 15 min</span>
-              </div>
+            <div className="flex items-center gap-3 text-[10px] font-black uppercase tracking-wider text-slate-600 bg-slate-50 p-2 rounded-lg border border-slate-100">
+              <span className="flex items-center gap-1"><span className="w-3 h-1 bg-[#032b5e] rounded-full inline-block"></span> T.M. Carregamento</span>
+              <span className="flex items-center gap-1"><span className="w-3 h-1 bg-[#f97316] rounded-full inline-block"></span> T.M. Descarga</span>
             </div>
           </div>
 
           <div className="h-72 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={trend4MonthsData} margin={{ top: 30, right: 85, left: 10, bottom: 10 }}>
+              <LineChart data={tempoMedioEvolucaoData} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}>
                 <CartesianGrid stroke="#f1f5f9" vertical={false} />
-                <XAxis dataKey="month" stroke="#94a3b8" fontSize={11} fontWeight="bold" tickLine={false} padding={{ left: 35, right: 35 }} />
-                <YAxis 
-                  stroke="#94a3b8" 
-                  fontSize={11} 
-                  tickLine={false} 
-                  axisLine={false}
-                  label={{ value: 'Minutos', angle: -90, position: 'insideLeft', style: { textAnchor: 'middle', fontSize: 11, fill: '#64748b', fontWeight: 'bold' }, offset: -5 }} 
-                />
-                <Tooltip contentStyle={{ backgroundColor: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px' }} />
-                
-                {/* Reference line at 15 min */}
-                <ReferenceLine 
-                  y={15} 
-                  stroke="#032b5e" 
-                  strokeDasharray="4 4" 
-                  strokeWidth={1.5} 
-                  label={{ value: 'Meta: ≤ 15 min', fill: '#032b5e', position: 'right', fontSize: 10, fontWeight: 'black', offset: 8 }} 
+                <XAxis dataKey="dia" stroke="#94a3b8" fontSize={11} fontWeight="bold" tickLine={false} />
+                <YAxis stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} unit=" min" />
+                <Tooltip 
+                  content={
+                    <ChartTooltipExplainer 
+                      title="2. Tempo Médio Operacional (Evolução)"
+                      concept="Evolução do tempo médio de permanência em minutos por operação de carregamento/descarregamento."
+                      formula="Média (min) = (Minutos totais gastos) / (Total de operações no dia)"
+                      unit=" min"
+                    />
+                  } 
                 />
 
-                <Line 
-                  type="monotone" 
-                  dataKey="tempoCarregamento" 
-                  stroke="#032b5e" 
-                  strokeWidth={3} 
-                  dot={{ r: 5, stroke: '#032b5e', strokeWidth: 2, fill: '#fff' }} 
-                  activeDot={{ r: 7 }}
-                  label={<CustomizedMinLabel fill="#032b5e" position="top" />}
-                  isAnimationActive={false}
-                />
+                <ReferenceLine y={15} stroke="#032b5e" strokeDasharray="3 3" label={{ value: 'SLA Carregamento ≤15m', fill: '#032b5e', position: 'right', fontSize: 9, fontWeight: 'bold' }} />
+                <ReferenceLine y={10} stroke="#f97316" strokeDasharray="3 3" label={{ value: 'SLA Descarga ≤10m', fill: '#f97316', position: 'right', fontSize: 9, fontWeight: 'bold' }} />
+
+                <Line type="monotone" dataKey="tempoCarregamento" name="T.M. Carregamento (min)" stroke="#032b5e" strokeWidth={3} dot={{ r: 4 }} />
+                <Line type="monotone" dataKey="tempoDescarga" name="T.M. Descarga (min)" stroke="#f97316" strokeWidth={3} dot={{ r: 4 }} />
               </LineChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-        {/* CHART 4: TEMPO MÉDIO – DESCARGA (MINUTOS) */}
-        <div className="bg-white p-6 rounded-xl border border-gray-200/80 shadow-xs flex flex-col gap-4">
-          <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between border-b border-gray-100 pb-4 gap-3">
+        {/* CHART 3: RANKING DE MELHOR TEMPO / PRODUTIVIDADE POR OPERADOR */}
+        <div className="bg-white p-6 rounded-xl border border-gray-200/80 shadow-xs flex flex-col justify-between gap-4">
+          <div className="border-b border-gray-100 pb-4">
+            <h3 className="font-sans font-black text-sm uppercase text-[#032b5e] tracking-wider">
+              3. Ranking de Performance por Operador (Empilhador)
+            </h3>
+            <p className="text-[11px] text-gray-400 font-bold uppercase mt-0.5 tracking-wide">
+              Tempo médio de movimentação e atingimento de SLA (Verde: Conforme | Vermelho: Atencao)
+            </p>
+          </div>
+
+          <div className="h-72 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart layout="vertical" data={rankingOperadoresData} margin={{ top: 5, right: 30, left: 40, bottom: 5 }}>
+                <CartesianGrid stroke="#f1f5f9" horizontal={false} />
+                <XAxis type="number" stroke="#94a3b8" fontSize={11} tickLine={false} unit=" min" />
+                <YAxis dataKey="operador" type="category" stroke="#032b5e" fontSize={10} fontWeight="bold" tickLine={false} width={110} />
+                <Tooltip 
+                  content={
+                    <ChartTooltipExplainer 
+                      title="3. Performance por Operador"
+                      concept="Média de minutos de movimentação por empilhador (Verde = Conforme | Vermelho = Atenção)."
+                      formula="Tempo Médio = (Minutos Executados pelo Op.) / (Operações Concluídas)"
+                      unit=" min"
+                    />
+                  } 
+                />
+                <Bar dataKey="tempoMedio" name="Tempo Médio (min)" radius={[0, 4, 4, 0]} barSize={16}>
+                  {rankingOperadoresData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.fill} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* CHART 4: COMPARATIVO META X REAL */}
+        <div className="bg-white p-6 rounded-xl border border-gray-200/80 shadow-xs flex flex-col justify-between gap-4">
+          <div className="border-b border-gray-100 pb-4">
+            <h3 className="font-sans font-black text-sm uppercase text-[#032b5e] tracking-wider">
+              4. Comparativo Geral: Meta DPO x Realizado
+            </h3>
+            <p className="text-[11px] text-gray-400 font-bold uppercase mt-0.5 tracking-wide">
+              EFC (Meta 96.0%) vs EFD (Meta 90.0%) acumulados no período
+            </p>
+          </div>
+
+          <div className="h-72 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={comparativoMetaRealData} margin={{ top: 20, right: 30, left: 10, bottom: 5 }}>
+                <CartesianGrid stroke="#f1f5f9" vertical={false} />
+                <XAxis dataKey="indicador" stroke="#94a3b8" fontSize={11} fontWeight="bold" tickLine={false} />
+                <YAxis domain={[0, 105]} stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} unit="%" />
+                <Tooltip 
+                  content={
+                    <ChartTooltipExplainer 
+                      title="4. Comparativo Meta DPO x Real"
+                      concept="Percentual atingido de conformidade versus meta oficial DPO (EFC 96.0% / EFD 90.0%)."
+                      formula="Realizado (%) = (Veículos Conformes / Total Avaliados) * 100"
+                      unit="%"
+                    />
+                  } 
+                />
+                
+                <Bar dataKey="Real" name="Realizado (%)" radius={[4, 4, 0, 0]} barSize={45}>
+                  {comparativoMetaRealData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.fillReal} />
+                  ))}
+                </Bar>
+                <Bar dataKey="Meta" name="Meta Oficial (%)" fill="#cbd5e1" radius={[4, 4, 0, 0]} barSize={45} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* CHART 5: RANKING DE VEÍCULOS COM MAIOR TEMPO */}
+        <div className="bg-white p-6 rounded-xl border border-gray-200/80 shadow-xs flex flex-col justify-between gap-4">
+          <div className="border-b border-gray-100 pb-4">
+            <h3 className="font-sans font-black text-sm uppercase text-[#032b5e] tracking-wider">
+              5. Ranking de Veículos com Maior Tempo (Gargalos)
+            </h3>
+            <p className="text-[11px] text-gray-400 font-bold uppercase mt-0.5 tracking-wide">
+              Maior permanência nas docas (Azul: Carregamento | Laranja: Descarga)
+            </p>
+          </div>
+
+          <div className="h-72 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart layout="vertical" data={rankingVeiculosMaiorTempoData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                <CartesianGrid stroke="#f1f5f9" horizontal={false} />
+                <XAxis type="number" stroke="#94a3b8" fontSize={11} tickLine={false} unit=" min" />
+                <YAxis dataKey="placa" type="category" stroke="#032b5e" fontSize={10} fontWeight="bold" tickLine={false} width={80} />
+                <Tooltip 
+                  content={
+                    <ChartTooltipExplainer 
+                      title="5. Veículos com Maior Tempo"
+                      concept="Gargalos de maior permanência em doca (Azul = Carregamento | Laranja = Descarregamento)."
+                      formula="Tempo Estadia = Hora Término - Hora Início (em minutos)"
+                      unit=" min"
+                    />
+                  } 
+                />
+                <Bar dataKey="duracaoMin" name="Tempo Estadia (min)" radius={[0, 4, 4, 0]} barSize={16}>
+                  {rankingVeiculosMaiorTempoData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.fill} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* CHART 6: MAPA DE CALOR 24H / 72H + TRAJETÓRIA IDEAL */}
+        <div className="bg-white p-6 rounded-xl border border-gray-200/80 shadow-xs flex flex-col justify-between gap-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-gray-100 pb-4 gap-2">
             <div>
-              <h3 className="font-sans font-black text-sm uppercase text-[#f97316] tracking-wider">
-                TEMPO MÉDIO – DESCARGA (MINUTOS)
+              <h3 className="font-sans font-black text-sm uppercase text-[#032b5e] tracking-wider">
+                6. Mapa de Calor (Produtividade 24h/72h) & Trajetória Ideal
               </h3>
-              <p className="text-[11px] text-gray-400 font-bold uppercase mt-0.5 tracking-wide">Acompanhamento de tempo médio vs. meta</p>
+              <p className="text-[11px] text-gray-400 font-bold uppercase mt-0.5 tracking-wide">
+                Processamento por hora com curva de meta acumulada (06:30 EFC / 22:00 EFD)
+              </p>
             </div>
             
-            {/* Custom Legend */}
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[10px] font-black uppercase tracking-wider text-slate-600 bg-slate-50/80 p-2 rounded-lg border border-slate-100/80">
-              <div className="flex items-center gap-1.5">
-                <span className="w-4 h-1 bg-[#f97316] rounded-full"></span>
-                <span>Média Descarga</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="w-4 h-0 border-t-2 border-dashed border-[#f97316]"></span>
-                <span className="text-slate-500">Meta: ≤ 10 min</span>
-              </div>
+            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg">
+              <button
+                onClick={() => setHeatmapWindow('24h')}
+                className={`px-2.5 py-1 text-[10px] font-black rounded-md transition-all ${
+                  heatmapWindow === '24h' ? 'bg-[#032b5e] text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                24 Horas
+              </button>
+              <button
+                onClick={() => setHeatmapWindow('72h')}
+                className={`px-2.5 py-1 text-[10px] font-black rounded-md transition-all ${
+                  heatmapWindow === '72h' ? 'bg-[#032b5e] text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                72 Horas
+              </button>
             </div>
           </div>
 
           <div className="h-72 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={trend4MonthsData} margin={{ top: 30, right: 85, left: 10, bottom: 10 }}>
+              <ComposedChart data={mapaCalor24h72hData} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}>
                 <CartesianGrid stroke="#f1f5f9" vertical={false} />
-                <XAxis dataKey="month" stroke="#94a3b8" fontSize={11} fontWeight="bold" tickLine={false} padding={{ left: 35, right: 35 }} />
-                <YAxis 
-                  stroke="#94a3b8" 
-                  fontSize={11} 
-                  tickLine={false} 
-                  axisLine={false}
-                  label={{ value: 'Minutos', angle: -90, position: 'insideLeft', style: { textAnchor: 'middle', fontSize: 11, fill: '#64748b', fontWeight: 'bold' }, offset: -5 }} 
-                />
-                <Tooltip contentStyle={{ backgroundColor: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px' }} />
-
-                {/* Reference line at 10 min */}
-                <ReferenceLine 
-                  y={10} 
-                  stroke="#f97316" 
-                  strokeDasharray="4 4" 
-                  strokeWidth={1.5} 
-                  label={{ value: 'Meta: ≤ 10 min', fill: '#f97316', position: 'right', fontSize: 10, fontWeight: 'black', offset: 8 }} 
+                <XAxis dataKey="hora" stroke="#94a3b8" fontSize={9} fontWeight="bold" tickLine={false} interval={1} />
+                <YAxis yAxisId="left" stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} />
+                <YAxis yAxisId="right" orientation="right" stroke="#10b981" fontSize={11} tickLine={false} axisLine={false} />
+                <Tooltip 
+                  content={
+                    <ChartTooltipExplainer 
+                      title="6. Mapa de Calor & Trajetória"
+                      concept="Produtividade de veículos por hora sobreposta pela trajetória de meta acumulada."
+                      formula="Barras = Veículos Concluídos na hora | Linha = Trajetória Ideal Acumulada"
+                    />
+                  } 
                 />
 
-                <Line 
-                  type="monotone" 
-                  dataKey="tempoDescarga" 
-                  stroke="#f97316" 
-                  strokeWidth={3} 
-                  dot={{ r: 5, stroke: '#f97316', strokeWidth: 2, fill: '#fff' }} 
-                  activeDot={{ r: 7 }}
-                  label={<CustomizedMinLabel fill="#f97316" position="top" />}
-                  isAnimationActive={false}
+                <Bar yAxisId="left" dataKey="veiculos" name="Veículos Processados" radius={[4, 4, 0, 0]} barSize={14}>
+                  {mapaCalor24h72hData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.fillBar} />
+                  ))}
+                </Bar>
+
+                <Line
+                  yAxisId="right"
+                  type="monotone"
+                  dataKey="trajetoriaIdeal"
+                  name="Trajetória Ideal Acumulada"
+                  stroke="#10b981"
+                  strokeDasharray="4 4"
+                  strokeWidth={2.5}
+                  dot={false}
                 />
-              </LineChart>
+              </ComposedChart>
             </ResponsiveContainer>
           </div>
         </div>
@@ -3447,6 +3909,15 @@ export default function LogisticaDashboard({ user, empresa, onBack }: LogisticaD
         </div>
       </div>
       )}
+
+      {/* MODAL PADRÃO OPERACIONAL */}
+      <PadraoOperacionalModal
+        moduleKey="efc_efd"
+        moduleName="Movimentação EFC / EFD"
+        isOpen={isPopModalOpen}
+        onClose={() => setIsPopModalOpen(false)}
+        user={user}
+      />
 
       {/* FOOTER BAR STYLED EXACTLY LIKE PHOTO */}
       <div className="flex items-center justify-between border-t border-gray-200 pt-4 mt-2">

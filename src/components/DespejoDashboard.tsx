@@ -1,3 +1,4 @@
+import { ManualInstrucaoCard } from './ManualInstrucaoCard';
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   BarChart, 
@@ -35,16 +36,19 @@ import {
   Box,
   AlertTriangle,
   SlidersHorizontal,
-  CheckCircle2
+  CheckCircle2,
+  BarChart2
 } from 'lucide-react';
 import { Usuario, Empresa, DespejoRow, QuebraRow } from '../types';
 import { db, isCustomFirebaseConnected } from '../firebase';
 import { deleteDoc, doc, collection, addDoc } from 'firebase/firestore';
 import { useEmpresaData } from '../context/EmpresaDataContext';
-import { generateMockDespejoRows, generateMockQuebras } from '../mockDataGenerator';
 import { analisarQuebraParaDespejo } from '../utils/quebrasDespejoUtils';
 import A3BoardComponent from './A3BoardComponent';
 import CalendarFilter from './CalendarFilter';
+import { SimuladorAgilidadeMeta } from './SimuladorAgilidadeMeta';
+import { PadraoOperacionalModal } from './PadraoOperacionalModal';
+import { SopManagerModal } from './SopManagerModal';
 
 interface DespejoDashboardProps {
   user: Usuario;
@@ -66,140 +70,6 @@ const EMBALAGENS_CONFIG: Record<string, { label: string; metaSec: number }> = {
   '300OW': { label: '300OW', metaSec: 75 },
 };
 
-// Seed / Demo Data to populate dashboard when database is empty
-const DEMO_DESPEJO_ROWS: DespejoRow[] = [
-  {
-    _docId: 'demo-1',
-    data: '16/05/2026',
-    dataISO: '2026-05-16',
-    operador: 'João',
-    embalagem: 'LATA 250',
-    quantidade: 35,
-    inicio: '08:00:00',
-    fim: '08:24:00',
-    tempo: '00:24:00',
-    meta: '00:00:43',
-    resultado: '🟢 META BATIDA'
-  },
-  {
-    _docId: 'demo-2',
-    data: '16/05/2026',
-    dataISO: '2026-05-16',
-    operador: 'Carlos',
-    embalagem: 'PET 500',
-    quantidade: 40,
-    inicio: '09:15:00',
-    fim: '09:42:00',
-    tempo: '00:27:00',
-    meta: '00:00:45',
-    resultado: '🟢 META BATIDA'
-  },
-  {
-    _docId: 'demo-3',
-    data: '16/05/2026',
-    dataISO: '2026-05-16',
-    operador: 'Pedro',
-    embalagem: 'PET 2L',
-    quantidade: 28,
-    inicio: '10:00:00',
-    fim: '10:25:00',
-    tempo: '00:25:00',
-    meta: '00:00:50',
-    resultado: '🟡 DENTRO DO LIMITE'
-  },
-  {
-    _docId: 'demo-4',
-    data: '16/05/2026',
-    dataISO: '2026-05-16',
-    operador: 'Ana',
-    embalagem: 'LATA 473',
-    quantidade: 50,
-    inicio: '11:10:00',
-    fim: '11:51:00',
-    tempo: '00:41:00',
-    meta: '00:00:55',
-    resultado: '🟢 META BATIDA'
-  },
-  {
-    _docId: 'demo-5',
-    data: '16/05/2026',
-    dataISO: '2026-05-16',
-    operador: 'Ricardo',
-    embalagem: '300OW',
-    quantidade: 15,
-    inicio: '12:30:00',
-    fim: '12:52:00',
-    tempo: '00:22:00',
-    meta: '00:01:15',
-    resultado: '🔴 ACIMA DA META'
-  },
-  {
-    _docId: 'demo-6',
-    data: '16/05/2026',
-    dataISO: '2026-05-16',
-    operador: 'João',
-    embalagem: 'LATA 250',
-    quantidade: 45,
-    inicio: '13:40:00',
-    fim: '14:11:00',
-    tempo: '00:31:00',
-    meta: '00:00:43',
-    resultado: '🟢 META BATIDA'
-  },
-  {
-    _docId: 'demo-7',
-    data: '15/05/2026',
-    dataISO: '2026-05-15',
-    operador: 'Carlos',
-    embalagem: 'PET 500',
-    quantidade: 32,
-    inicio: '08:30:00',
-    fim: '08:52:00',
-    tempo: '00:22:00',
-    meta: '00:00:45',
-    resultado: '🟢 META BATIDA'
-  },
-  {
-    _docId: 'demo-8',
-    data: '15/05/2026',
-    dataISO: '2026-05-15',
-    operador: 'Pedro',
-    embalagem: 'PET 2L',
-    quantidade: 20,
-    inicio: '09:40:00',
-    fim: '09:58:00',
-    tempo: '00:18:00',
-    meta: '00:00:50',
-    resultado: '🟡 DENTRO DO LIMITE'
-  },
-  {
-    _docId: 'demo-9',
-    data: '15/05/2026',
-    dataISO: '2026-05-15',
-    operador: 'Ana',
-    embalagem: 'LATA 250',
-    quantidade: 21,
-    inicio: '11:00:00',
-    fim: '11:14:00',
-    tempo: '00:14:00',
-    meta: '00:00:43',
-    resultado: '🟢 META BATIDA'
-  },
-  {
-    _docId: 'demo-10',
-    data: '14/05/2026',
-    dataISO: '2026-05-14',
-    operador: 'João',
-    embalagem: 'LATA 250',
-    quantidade: 25,
-    inicio: '08:20:00',
-    fim: '08:37:00',
-    tempo: '00:17:00',
-    meta: '00:00:43',
-    resultado: '🟢 META BATIDA'
-  }
-];
-
 export default function DespejoDashboard({ user, empresa, onBack }: DespejoDashboardProps) {
   const [activeSubTab, setActiveSubTab] = useState<'produtividade' | 'boarda3'>('produtividade');
   // Database rows
@@ -209,30 +79,25 @@ export default function DespejoDashboard({ user, empresa, onBack }: DespejoDashb
   const [colaboradorVal, setColaboradorVal] = useState('Todos');
   const [embalagemVal, setEmbalagemVal] = useState('Todos');
   const [horaVal, setHoraVal] = useState('');
-  const [startDate, setStartDate] = useState<string>(() => {
-    const d = new Date();
-    d.setDate(d.getDate() - 30);
-    return d.toISOString().split('T')[0];
-  });
-  const [endDate, setEndDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [startDate, setStartDate] = useState<string>('');
+  const [endDate, setEndDate] = useState<string>('');
 
   // Applied filter states
   const [appliedFilters, setAppliedFilters] = useState({
     colaborador: 'Todos',
     embalagem: 'Todos',
     hora: '',
-    startDate: (() => {
-      const d = new Date();
-      d.setDate(d.getDate() - 30);
-      return d.toISOString().split('T')[0];
-    })(),
-    endDate: new Date().toISOString().split('T')[0]
+    startDate: '',
+    endDate: ''
   });
 
   // Table search & pagination
   const [tableSearch, setTableSearch] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 8;
+
+  // POP Modal State
+  const [isPopModalOpen, setIsPopModalOpen] = useState(false);
 
   // Selected row for real-time audit details
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
@@ -286,12 +151,10 @@ export default function DespejoDashboard({ user, empresa, onBack }: DespejoDashb
     setDespejoRows(rows);
   }, [empresaData.despejo, empresa?.id]);
 
-  // Combine real database rows and demo rows
+  // Combine real database rows
   const activeRows = useMemo(() => {
-    const companyId = empresa?.id || 'demo';
-    const mockRows = generateMockDespejoRows(companyId);
-    return [...despejoRows, ...mockRows];
-  }, [despejoRows, empresa?.id]);
+    return despejoRows;
+  }, [despejoRows]);
 
   // Unique lists for the filters
   const colaboradoresList = useMemo(() => {
@@ -436,8 +299,7 @@ export default function DespejoDashboard({ user, empresa, onBack }: DespejoDashb
 
   // Derived core KPIs and Metrics matching Repack's Cockpit
   const totalSkus = useMemo(() => {
-    const sum = filteredRows.reduce((sum, r) => sum + (Number(r.quantidade) || 0), 0);
-    return sum > 0 ? sum : 286;
+    return filteredRows.reduce((sum, r) => sum + (Number(r.quantidade) || 0), 0);
   }, [filteredRows]);
 
   const totalHE = useMemo(() => {
@@ -457,17 +319,15 @@ export default function DespejoDashboard({ user, empresa, onBack }: DespejoDashb
       const factor = EMBALAGENS_VOLUME[r.embalagem] || 10.0;
       return sum + (factor * (Number(r.quantidade) || 0));
     }, 0);
-    const calculatedHE = Math.round((totalLiters / 100) * 100) / 100;
-    return calculatedHE > 0 ? calculatedHE : 21.45;
+    return Math.round((totalLiters / 100) * 100) / 100;
   }, [filteredRows]);
 
   const totalTempoGastoSec = useMemo(() => {
-    const sum = filteredRows.reduce((sum, r) => sum + toSec(r.tempo), 0);
-    return sum > 0 ? sum : 13156;
+    return filteredRows.reduce((sum, r) => sum + toSec(r.tempo), 0);
   }, [filteredRows]);
 
   const tempoMedioPorSkuSec = useMemo(() => {
-    return totalTempoGastoSec / totalSkus;
+    return totalSkus > 0 ? totalTempoGastoSec / totalSkus : 0;
   }, [totalTempoGastoSec, totalSkus]);
 
   const tempoMedioPorSkuStr = useMemo(() => {
@@ -483,12 +343,11 @@ export default function DespejoDashboard({ user, empresa, onBack }: DespejoDashb
   }, [totalTempoGastoSec]);
 
   const totalTempoEsperadoSec = useMemo(() => {
-    const sum = filteredRows.reduce((sum, r) => {
+    return filteredRows.reduce((sum, r) => {
       const config = EMBALAGENS_CONFIG[r.embalagem];
       const unitMeta = config ? config.metaSec : 43;
       return sum + (unitMeta * (Number(r.quantidade) || 0));
     }, 0);
-    return sum > 0 ? sum : 12300;
   }, [filteredRows]);
 
   const eficienciaMedia = useMemo(() => {
@@ -509,7 +368,7 @@ export default function DespejoDashboard({ user, empresa, onBack }: DespejoDashb
         uniqueDays.add(r.data);
       }
     });
-    return uniqueDays.size > 0 ? uniqueDays.size : 1;
+    return uniqueDays.size;
   }, [filteredRows]);
 
   const mesesTrabalhadosFiltrados = useMemo(() => {
@@ -522,12 +381,12 @@ export default function DespejoDashboard({ user, empresa, onBack }: DespejoDashb
         }
       }
     });
-    return uniqueMonths.size > 0 ? uniqueMonths.size : 1;
+    return uniqueMonths.size;
   }, [filteredRows]);
 
   const produtividadeMetaHE = useMemo(() => {
     const totalHours = totalTempoGastoSec / 3600;
-    if (totalHours === 0) return 0;
+    if (totalHours === 0 || diasTrabalhadosFiltrados === 0 || mesesTrabalhadosFiltrados === 0) return 0;
     const realProd = totalHE / totalHours;
     return ((realProd / diasTrabalhadosFiltrados) / mesesTrabalhadosFiltrados) * 1.10;
   }, [totalHE, totalTempoGastoSec, diasTrabalhadosFiltrados, mesesTrabalhadosFiltrados]);
@@ -592,6 +451,18 @@ export default function DespejoDashboard({ user, empresa, onBack }: DespejoDashb
 
     const rowsToUse = currentMonthRows.length > 0 ? currentMonthRows : activeRows;
 
+    if (rowsToUse.length === 0) {
+      return {
+        diasTrabalhados: workingDaysInfo.elapsedWorkingDays,
+        totalHE: 0,
+        totalSKUs: 0,
+        mediaHE: 0,
+        mediaSKUs: 0,
+        defaultMetaHE: 0,
+        defaultMetaSKUs: 0
+      };
+    }
+
     // 1. Volume in HE and SKUs
     const totalSKUs = rowsToUse.reduce((sum, r) => sum + (Number(r.quantidade) || 0), 0);
 
@@ -615,24 +486,24 @@ export default function DespejoDashboard({ user, empresa, onBack }: DespejoDashb
     const totalHEVal = Math.round((totalLiters / 100) * 100) / 100;
 
     // Use elapsed working days from the current month
-    const elapsedDays = workingDaysInfo.elapsedWorkingDays;
+    const elapsedDays = Math.max(1, workingDaysInfo.elapsedWorkingDays);
 
     // 3. Daily averages
     const mediaHEVal = Math.round((totalHEVal / elapsedDays) * 100) / 100;
     const mediaSKUsVal = Math.round((totalSKUs / elapsedDays) * 10) / 10;
 
     // 4. Default meta (1.3x current month's trend)
-    const defaultMetaHEVal = Math.round(totalHEVal * 1.3) || 450;
-    const defaultMetaSKUsVal = Math.round(totalSKUs * 1.3) || 3500;
+    const defaultMetaHEVal = Math.round(totalHEVal * 1.3);
+    const defaultMetaSKUsVal = Math.round(totalSKUs * 1.3);
 
     return {
       diasTrabalhados: elapsedDays,
-      totalHE: totalHEVal > 0 ? totalHEVal : 185.4,
-      totalSKUs: totalSKUs > 0 ? totalSKUs : 2460,
-      mediaHE: mediaHEVal > 0 ? mediaHEVal : 12.36,
-      mediaSKUs: mediaSKUsVal > 0 ? mediaSKUsVal : 164,
-      defaultMetaHE: defaultMetaHEVal > 0 ? defaultMetaHEVal : 241,
-      defaultMetaSKUs: defaultMetaSKUsVal > 0 ? defaultMetaSKUsVal : 3200
+      totalHE: totalHEVal,
+      totalSKUs: totalSKUs,
+      mediaHE: mediaHEVal,
+      mediaSKUs: mediaSKUsVal,
+      defaultMetaHE: defaultMetaHEVal,
+      defaultMetaSKUs: defaultMetaSKUsVal
     };
   }, [activeRows, workingDaysInfo]);
 
@@ -679,6 +550,7 @@ export default function DespejoDashboard({ user, empresa, onBack }: DespejoDashb
 
   // Chart 1: Despejos por Hora
   const chartDespejosPorHora = useMemo(() => {
+    if (filteredRows.length === 0) return [];
     // Hour slots from 08 to 15
     const slots = ['08', '09', '10', '11', '12', '13', '14', '15'];
     const dataMap: Record<string, number> = {};
@@ -713,32 +585,16 @@ export default function DespejoDashboard({ user, empresa, onBack }: DespejoDashb
       }
     });
 
-    return slots.map(h => {
-      const hasRealData = filteredRows.some(r => r.inicio && r.inicio.split(':')[0] === h);
-      let val = dataMap[h];
-      if (!hasRealData) {
-        // Fallback default mock values scaled by unit
-        const defaultSku = h === '08' ? 45 : h === '09' ? 62 : h === '10' ? 88 : h === '11' ? 70 : h === '12' ? 25 : h === '13' ? 55 : h === '14' ? 40 : 20;
-        val = simUnidade === 'HE' ? Math.round((defaultSku * 8.4 / 100) * 100) / 100 : defaultSku;
-      } else {
-        val = Math.round(val * 100) / 100;
-      }
-      return {
-        name: `${h}h`,
-        'Quantidade': val
-      };
-    });
+    return slots.map(h => ({
+      name: `${h}h`,
+      'Quantidade': Math.round((dataMap[h] || 0) * 100) / 100
+    }));
   }, [filteredRows, simUnidade]);
 
   // Chart 2: Desempenho por Embalagem (Qty or HE dumped per packaging type)
   const chartDesempenhoPorEmbalagem = useMemo(() => {
-    const dataMap: Record<string, number> = {
-      'LATA 250': 0,
-      'PET 500': 0,
-      'PET 2L': 0,
-      'LATA 473': 0,
-      '300OW': 0
-    };
+    if (filteredRows.length === 0) return [];
+    const dataMap: Record<string, number> = {};
 
     const EMBALAGENS_VOLUME: Record<string, number> = {
       'LATA 250': 6.0,
@@ -754,76 +610,41 @@ export default function DespejoDashboard({ user, empresa, onBack }: DespejoDashb
     };
 
     filteredRows.forEach(r => {
-      const key = r.embalagem;
-      if (key in dataMap || key === 'LATA 250' || key === 'PET 500' || key === 'PET 2L' || key === 'LATA 473' || key === '300OW' || key === 'LONG NECK') {
-        const cleanKey = key === 'LONG NECK' ? '300OW' : key;
-        const qty = Number(r.quantidade) || 0;
-        if (simUnidade === 'HE') {
-          const factor = EMBALAGENS_VOLUME[key] || 10.0;
-          const hl = (factor * qty) / 100;
-          dataMap[cleanKey] = (dataMap[cleanKey] || 0) + hl;
-        } else {
-          dataMap[cleanKey] = (dataMap[cleanKey] || 0) + qty;
-        }
+      const key = r.embalagem || 'Outros';
+      const cleanKey = key === 'LONG NECK' ? '300OW' : key;
+      const qty = Number(r.quantidade) || 0;
+      if (simUnidade === 'HE') {
+        const factor = EMBALAGENS_VOLUME[key] || 10.0;
+        const hl = (factor * qty) / 100;
+        dataMap[cleanKey] = (dataMap[cleanKey] || 0) + hl;
+      } else {
+        dataMap[cleanKey] = (dataMap[cleanKey] || 0) + qty;
       }
     });
 
-    const defaultVals: Record<string, number> = {
-      'LATA 250': 112,
-      'PET 500': 78,
-      'PET 2L': 54,
-      'LATA 473': 32,
-      '300OW': 15
-    };
-
-    return Object.keys(dataMap).map(pkg => {
-      const hasRealData = filteredRows.some(r => r.embalagem === pkg || (pkg === '300OW' && r.embalagem === 'LONG NECK'));
-      let val = dataMap[pkg];
-      if (!hasRealData) {
-        const defaultSku = defaultVals[pkg];
-        const factor = EMBALAGENS_VOLUME[pkg] || 10.0;
-        val = simUnidade === 'HE' ? Math.round((defaultSku * factor / 100) * 100) / 100 : defaultSku;
-      } else {
-        val = Math.round(val * 100) / 100;
-      }
-      return {
-        name: pkg,
-        'SKUs': val
-      };
-    }).sort((a, b) => b.SKUs - a.SKUs);
+    return Object.keys(dataMap).map(pkg => ({
+      name: pkg,
+      'SKUs': Math.round((dataMap[pkg] || 0) * 100) / 100
+    })).sort((a, b) => b.SKUs - a.SKUs);
   }, [filteredRows, simUnidade]);
 
   // Chart 3: Tempo Médio por Embalagem
   const chartTempoMedioPorEmbalagem = useMemo(() => {
-    const dataMapSec: Record<string, number[]> = {
-      'LATA 250': [],
-      'PET 500': [],
-      'PET 2L': [],
-      'LATA 473': [],
-      '300OW': []
-    };
+    if (filteredRows.length === 0) return [];
+    const dataMapSec: Record<string, number[]> = {};
 
     filteredRows.forEach(r => {
-      const key = r.embalagem;
+      const key = r.embalagem || 'Outros';
       const cleanKey = key === 'LONG NECK' ? '300OW' : key;
-      if (cleanKey in dataMapSec) {
-        const spentSec = toSec(r.tempo);
-        const qty = Number(r.quantidade) || 1;
-        dataMapSec[cleanKey].push(spentSec / qty);
-      }
+      if (!dataMapSec[cleanKey]) dataMapSec[cleanKey] = [];
+      const spentSec = toSec(r.tempo);
+      const qty = Number(r.quantidade) || 1;
+      dataMapSec[cleanKey].push(spentSec / qty);
     });
-
-    const defaultValsSec: Record<string, number> = {
-      'LATA 250': 30,
-      'PET 500': 40,
-      'PET 2L': 45,
-      'LATA 473': 52,
-      '300OW': 70
-    };
 
     return Object.keys(dataMapSec).map(pkg => {
       const list = dataMapSec[pkg];
-      const avg = list.length > 0 ? list.reduce((a, b) => a + b, 0) / list.length : defaultValsSec[pkg];
+      const avg = list.length > 0 ? list.reduce((a, b) => a + b, 0) / list.length : 0;
       return {
         name: pkg,
         'Segundos': Math.round(avg),
@@ -834,33 +655,22 @@ export default function DespejoDashboard({ user, empresa, onBack }: DespejoDashb
 
   // Chart 4: Evolução da Eficiência
   const chartEvolucaoEficiencia = useMemo(() => {
-    // Dates mapping
-    const dates = ['12/05', '13/05', '14/05', '15/05', '16/05'];
+    if (filteredRows.length === 0) return [];
     const groupSec: Record<string, { meta: number; real: number }> = {};
-    dates.forEach(d => { groupSec[d] = { meta: 0, real: 0 }; });
 
     filteredRows.forEach(r => {
-      const datePart = r.data ? r.data.substring(0, 5) : '';
-      if (dates.includes(datePart)) {
-        const qty = Number(r.quantidade) || 0;
-        const config = EMBALAGENS_CONFIG[r.embalagem];
-        const unitMeta = config ? config.metaSec : 43;
-        groupSec[datePart].meta += unitMeta * qty;
-        groupSec[datePart].real += toSec(r.tempo);
-      }
+      const datePart = r.data ? r.data.substring(0, 5) : 'Geral';
+      if (!groupSec[datePart]) groupSec[datePart] = { meta: 0, real: 0 };
+      const qty = Number(r.quantidade) || 0;
+      const config = EMBALAGENS_CONFIG[r.embalagem];
+      const unitMeta = config ? config.metaSec : 43;
+      groupSec[datePart].meta += unitMeta * qty;
+      groupSec[datePart].real += toSec(r.tempo);
     });
 
-    const defaultEff: Record<string, number> = {
-      '12/05': 95,
-      '13/05': 100,
-      '14/05': 105,
-      '15/05': 110,
-      '16/05': 115
-    };
-
-    return dates.map(d => {
+    return Object.keys(groupSec).map(d => {
       const val = groupSec[d];
-      const efficiency = val.real > 0 ? Math.round((val.meta / val.real) * 100) : defaultEff[d];
+      const efficiency = val.real > 0 ? Math.round((val.meta / val.real) * 100) : 0;
       return {
         name: d,
         'Eficiência': efficiency
@@ -870,10 +680,8 @@ export default function DespejoDashboard({ user, empresa, onBack }: DespejoDashb
 
   // ── ANÁLISE DE QUEBRAS COM POSSIBILIDADE DE DESPEJO ──
   const allQuebras = useMemo(() => {
-    const companyId = empresa?.id || 'demo';
-    const mockQuebras = generateMockQuebras(companyId);
-    return [...(empresaData.quebras || []), ...mockQuebras];
-  }, [empresaData.quebras, empresa?.id]);
+    return empresaData.quebras || [];
+  }, [empresaData.quebras]);
 
   const quebrasAnalisadas = useMemo(() => {
     return allQuebras.map(q => ({
@@ -890,7 +698,7 @@ export default function DespejoDashboard({ user, empresa, onBack }: DespejoDashb
     const totalHlElegivel = quebrasElegiveisDespejo.reduce((s, i) => s + i.analise.volumeHl, 0);
     const totalSkusElegivel = quebrasElegiveisDespejo.reduce((s, i) => s + i.analise.skus, 0);
     const totalHlGeral = quebrasAnalisadas.reduce((s, i) => s + i.analise.volumeHl, 0);
-    const pctAproveitavel = totalHlGeral > 0 ? Math.round((totalHlElegivel / totalHlGeral) * 100) : 84;
+    const pctAproveitavel = totalHlGeral > 0 ? Math.round((totalHlElegivel / totalHlGeral) * 100) : 0;
 
     return {
       qtd: quebrasElegiveisDespejo.length,
@@ -902,6 +710,7 @@ export default function DespejoDashboard({ user, empresa, onBack }: DespejoDashb
 
   // Gráfico 5: Origem do Despejo por Embalagem (Despejo Direto vs Quebras Elegíveis)
   const chartQuebrasDespejoPorEmbalagem = useMemo(() => {
+    if (filteredRows.length === 0 && quebrasElegiveisDespejo.length === 0) return [];
     const pkgMap: Record<string, { diretoHL: number; quebraHL: number }> = {
       'LATA 250': { diretoHL: 0, quebraHL: 0 },
       'LATA 269': { diretoHL: 0, quebraHL: 0 },
@@ -929,30 +738,23 @@ export default function DespejoDashboard({ user, empresa, onBack }: DespejoDashb
       pkgMap[pkg].quebraHL += item.analise.volumeHl;
     });
 
-    return Object.entries(pkgMap).map(([name, vals]) => ({
-      name,
-      'Despejo Direto (HL)': Math.round(vals.diretoHL * 100) / 100 || Math.round(Math.random() * 15 + 5),
-      'Quebras Elegíveis (HL)': Math.round(vals.quebraHL * 100) / 100 || Math.round(Math.random() * 12 + 3)
-    }));
+    return Object.entries(pkgMap)
+      .map(([name, vals]) => ({
+        name,
+        'Despejo Direto (HL)': Math.round(vals.diretoHL * 100) / 100,
+        'Quebras Elegíveis (HL)': Math.round(vals.quebraHL * 100) / 100
+      }))
+      .filter(item => item['Despejo Direto (HL)'] > 0 || item['Quebras Elegíveis (HL)'] > 0);
   }, [filteredRows, quebrasElegiveisDespejo]);
 
   // Gráfico 6: Distribuição de Quebras Elegíveis por Causa/Motivo
   const chartQuebrasPorMotivo = useMemo(() => {
+    if (quebrasElegiveisDespejo.length === 0) return [];
     const counts: Record<string, number> = {};
     quebrasElegiveisDespejo.forEach(item => {
       const cat = item.analise.categoria;
       counts[cat] = (counts[cat] || 0) + item.analise.volumeHl;
     });
-
-    if (Object.keys(counts).length === 0) {
-      return [
-        { name: 'Avaria Pressurizada', 'HL': 18.5 },
-        { name: 'Vazamento Ativo', 'HL': 14.2 },
-        { name: 'Qualidade WQI', 'HL': 11.8 },
-        { name: 'Vencimento de Estoque', 'HL': 8.4 },
-        { name: 'Quebra Operacional', 'HL': 6.3 }
-      ];
-    }
 
     return Object.entries(counts).map(([name, hl]) => ({
       name,
@@ -1061,18 +863,18 @@ export default function DespejoDashboard({ user, empresa, onBack }: DespejoDashb
 
   // Handle row deletion
   const handleDeleteRow = async (docId: string) => {
-    if (!docId || !confirm('Deseja realmente excluir este registro de despejo do banco de dados?')) return;
+    if (!docId) return;
     try {
       if (db) {
         await deleteDoc(doc(db, 'despejo', docId));
-      } else {
-        const remaining = despejoRows.filter(r => r._docId !== docId);
-        setDespejoRows(remaining);
-        localStorage.setItem(`despejo_rows_${empresa?.id || 'demo'}`, JSON.stringify(remaining));
       }
-      setSelectedRowId(null);
     } catch (e) {
-      alert('Erro ao excluir registro: ' + e);
+      console.error(e);
+    } finally {
+      const remaining = despejoRows.filter(r => r._docId !== docId && (r as any).id !== docId);
+      setDespejoRows(remaining);
+      localStorage.setItem(`despejo_rows_${empresa?.id || 'demo'}`, JSON.stringify(remaining));
+      setSelectedRowId(null);
     }
   };
 
@@ -1114,6 +916,13 @@ export default function DespejoDashboard({ user, empresa, onBack }: DespejoDashb
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => setIsPopModalOpen(true)}
+            className="px-3.5 py-1.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-black text-xs rounded-lg shadow-xs uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer"
+          >
+            📋 Padrão Operacional (POP)
+          </button>
+
           <div className="flex items-center bg-gray-100 p-0.5 rounded-lg border border-gray-200/60">
             <button 
               onClick={() => setActiveSubTab('produtividade')}
@@ -1139,6 +948,24 @@ export default function DespejoDashboard({ user, empresa, onBack }: DespejoDashb
       {/* DESPEJO VIEW */}
       {activeSubTab === 'produtividade' && (
         <>
+          {/* MANUAL DE INSTRUÇÃO E METAS */}
+          <ManualInstrucaoCard
+            title="Manual de Instrução & Parâmetros de Meta — Operação de Despejo"
+            metrics={[
+              {
+                key: 'despejo_produtividade',
+                label: 'Produtividade Média de Despejo',
+                unit: 'cx/h',
+                comoCalcular: '(Total de Caixas Despejadas) ÷ (Soma de Horas Trabalhadas da Equipe no Processo de Despejo).'
+              },
+              {
+                key: 'acuracidade_despejo',
+                label: 'Acuracidade Físico vs Fiscal no Despejo',
+                unit: '%',
+                comoCalcular: '(Volume de Engarrafado/Lata Efetivamente Destruído com B.I. Validado) ÷ (Volume Solicitado para Despejo) × 100.'
+              }
+            ]}
+          />
           {/* ── SEÇÃO DE FILTROS INTERATIVOS ── */}
       <div id="despejo-filters-container" className="bg-white border border-gray-200 p-4 rounded-xl shadow-sm flex flex-col gap-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100 pb-2">
@@ -1492,8 +1319,21 @@ export default function DespejoDashboard({ user, empresa, onBack }: DespejoDashb
         </section>
       </div>
 
-      {/* ── SEÇÃO DE GRÁFICOS ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      {/* ── SEÇÃO DE GRÁFICOS OU ESTADO VAZIO ── */}
+      {filteredRows.length === 0 ? (
+        <div className="bg-slate-50 border-2 border-dashed border-slate-300 rounded-2xl p-8 text-center my-4 flex flex-col items-center justify-center shadow-xs">
+          <div className="w-12 h-12 rounded-full bg-slate-200/80 flex items-center justify-center text-slate-500 mb-3">
+            <BarChart2 className="w-6 h-6 text-slate-400" />
+          </div>
+          <h4 className="text-sm font-black text-slate-700 uppercase tracking-wide">
+            Nenhum dado importado para o período selecionado
+          </h4>
+          <p className="text-xs text-slate-500 max-w-md mt-1">
+            Não existem lançamentos ou registros de despejo para os filtros aplicados. As métricas em R$ e HL foram zeradas e nenhum gráfico fictício é gerado.
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         
         {/* Gráfico 1: Despejos por Hora */}
         <div className="bg-white border border-gray-200 p-4 rounded-xl shadow-sm flex flex-col justify-between">
@@ -1607,6 +1447,7 @@ export default function DespejoDashboard({ user, empresa, onBack }: DespejoDashb
         </div>
 
       </div>
+      )}
 
       {/* ── SEÇÃO DE INTEGRAÇÃO: QUEBRAS REGISTRADAS COM POSSIBILIDADE DE DESPEJO ── */}
       <section className="bg-gradient-to-br from-slate-900 via-slate-900 to-[#151b23] border border-amber-500/30 rounded-2xl p-6 text-white shadow-xl space-y-6">
@@ -1762,155 +1603,29 @@ export default function DespejoDashboard({ user, empresa, onBack }: DespejoDashb
         </div>
       </section>
 
-      {/* ── SEÇÃO DO SIMULADOR E MENSURAÇÃO DE HE (FECHAMENTO MENSAL) ── */}
-      <section className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm space-y-5">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-100 pb-4">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 bg-[#1e56f0]/10 rounded-lg text-[#1e56f0]">
-              <SlidersHorizontal className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="text-sm font-black text-[#032b5e] uppercase tracking-wider">Simulador & Mensuração de HE (Fechamento)</h3>
-              <p className="text-[10px] text-gray-400 font-bold uppercase mt-0.5">Visão matemática preditiva de batimento de metas do mês vigente</p>
-            </div>
-          </div>
-        </div>
+      {/* ── SEÇÃO DO SIMULADOR DE AGILIDADE & META (+10%) ── */}
+      <SimuladorAgilidadeMeta 
+        tipo="despejo"
+        totalHectolitros={totalHE}
+        totalCaixasUnidades={totalSkus}
+        tempoTotalMinutos={Math.round(totalTempoGastoSec / 60)}
+        metaHectolitrosMensal={simMeta}
+      />
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-          {/* Card Central do Status Predictor */}
-          <div className="lg:col-span-4 bg-gradient-to-br from-slate-50 to-slate-100/50 border border-slate-200/80 rounded-xl p-4 flex flex-col justify-between min-h-[220px]">
-            <div>
-              <span className="text-[9px] font-extrabold text-gray-400 uppercase tracking-widest block">Predição para o Mês</span>
-              <span className="text-[10px] font-bold text-slate-500 block mt-1 font-sans">
-                Mês vigente: <span className="text-[#032b5e] font-extrabold">{workingDaysInfo.monthName} / {workingDaysInfo.year}</span>
-              </span>
-              
-              <div className="mt-4">
-                <span className="text-xs text-slate-400 font-semibold uppercase block">Projeção de Fechamento</span>
-                <span className="text-3xl font-black text-[#032b5e] font-mono leading-none block mt-1">
-                  {projecaoFechamento.toLocaleString('pt-BR', { minimumFractionDigits: simUnidade === 'HE' ? 1 : 0, maximumFractionDigits: 2 })}
-                  <span className="text-xs font-bold text-gray-500 ml-1.5">{simUnidade === 'HE' ? 'HL' : 'unid.'}</span>
-                </span>
-              </div>
-            </div>
-
-            <div className="mt-4 pt-3 border-t border-slate-200/60">
-              <div className={`flex items-center gap-2 rounded-lg p-2.5 font-sans ${
-                atingiuMeta 
-                  ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-700' 
-                  : 'bg-rose-500/10 border border-rose-500/20 text-rose-700'
-              }`}>
-                {atingiuMeta ? (
-                  <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
-                ) : (
-                  <AlertTriangle className="w-5 h-5 flex-shrink-0" />
-                )}
-                <div className="min-w-0">
-                  <span className="text-xs font-black block leading-none">
-                    {atingiuMeta ? 'META ATINGIDA' : 'META EM RISCO'}
-                  </span>
-                  <span className="text-[9px] font-bold uppercase tracking-wider block mt-0.5">
-                    {atingiuMeta 
-                      ? `Fechamento estimado em ${atingimentoPercent}% da meta` 
-                      : `Falta ${Math.abs(deficit).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} ${simUnidade === 'HE' ? 'HL' : 'unid.'} para a meta`
-                    }
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Grid de Parâmetros do Simulador */}
-          <div className="lg:col-span-8 grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* Parâmetro 1: Volume Real Acumulado */}
-            <div className="bg-white border border-gray-200 rounded-xl p-3.5 flex flex-col justify-between shadow-xs">
-              <div>
-                <span className="text-[9px] font-extrabold text-gray-400 uppercase tracking-wider block">Volume Real Acumulado</span>
-                <span className="text-xl font-black text-[#032b5e] font-mono mt-1 block">
-                  {simVolumeAcumulado.toLocaleString('pt-BR', { minimumFractionDigits: simUnidade === 'HE' ? 1 : 0, maximumFractionDigits: 2 })}
-                  <span className="text-xs font-semibold text-gray-500 ml-1"> {simUnidade === 'HE' ? 'HL' : 'unid.'}</span>
-                </span>
-              </div>
-              <div className="text-[10px] text-gray-400 font-bold uppercase mt-3 pt-2 border-t border-gray-100 flex justify-between">
-                <span>Dias decorridos</span>
-                <span className="text-slate-800 font-extrabold font-mono">{workingDaysInfo.elapsedWorkingDays} / {workingDaysInfo.totalWorkingDays}</span>
-              </div>
-            </div>
-
-            {/* Parâmetro 2: Média Diária Atual */}
-            <div className="bg-white border border-gray-200 rounded-xl p-3.5 flex flex-col justify-between shadow-xs">
-              <div>
-                <span className="text-[9px] font-extrabold text-gray-400 uppercase tracking-wider block">Média Diária Atual</span>
-                <span className="text-xl font-black text-[#032b5e] font-mono mt-1 block">
-                  {simMediaAcumulada.toLocaleString('pt-BR', { minimumFractionDigits: simUnidade === 'HE' ? 1 : 0, maximumFractionDigits: 2 })}
-                  <span className="text-xs font-semibold text-gray-500 ml-1"> {simUnidade === 'HE' ? 'HL/dia' : 'unid./dia'}</span>
-                </span>
-              </div>
-              <div className="text-[10px] text-gray-400 font-bold uppercase mt-3 pt-2 border-t border-gray-100 flex justify-between">
-                <span>Rendimento diário</span>
-                <span className="text-[#1e56f0] font-extrabold font-sans">ESTÁVEL</span>
-              </div>
-            </div>
-
-            {/* Parâmetro 3: Meta de Despejo Estabelecida */}
-            <div className="bg-white border border-gray-200 rounded-xl p-3.5 flex flex-col justify-between shadow-xs">
-              <div>
-                <span className="text-[9px] font-extrabold text-gray-400 uppercase tracking-wider block">Meta do Mês (Target)</span>
-                <span className="text-xl font-black text-[#032b5e] font-mono mt-1 block">
-                  {simMeta.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                  <span className="text-xs font-semibold text-gray-500 ml-1"> {simUnidade === 'HE' ? 'HL' : 'unid.'}</span>
-                </span>
-              </div>
-              <div className="text-[10px] text-gray-400 font-bold uppercase mt-3 pt-2 border-t border-gray-100 flex justify-between">
-                <span>Status da Meta</span>
-                <span className="text-amber-600 font-extrabold font-sans">DINÂMICO</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Quadro Auxiliar de Próximos Passos (Action Plan) */}
-        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs">
-          <h4 className="font-extrabold text-[#032b5e] uppercase tracking-wider flex items-center gap-1.5 border-b border-slate-200/60 pb-2 mb-3.5">
-            <Info className="w-4 h-4 text-sky-500" /> Ações de Alinhamento e Próximos Passos Recomendados
-          </h4>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 font-sans text-slate-600 font-semibold">
-            {/* Recomendação 1 */}
-            <div className="bg-white border border-slate-200/50 rounded-lg p-3 space-y-1">
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Cenário e Tendência</span>
-              <p className="leading-relaxed">
-                {atingiuMeta 
-                  ? 'A tendência atual está saudável e o ritmo operacional de descarte em Hectolitros está dentro da projeção necessária para atingir o target.' 
-                  : `Há um déficit de ${Math.round(deficit).toLocaleString('pt-BR')} ${simUnidade === 'HE' ? 'HL' : 'unid.'} projetado. A média diária atual está abaixo do ideal para o fechamento.`
-                }
-              </p>
-            </div>
-
-            {/* Recomendação 2 */}
-            <div className="bg-white border border-slate-200/50 rounded-lg p-3 space-y-1">
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Requisito de Desempenho Diário</span>
-              <p className="leading-relaxed">
-                {atingiuMeta 
-                  ? `Para manter o nível de segurança, garanta uma média diária mínima de pelo menos ${simMediaAcumulada.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} ${simUnidade === 'HE' ? 'HL' : 'unid.'}.` 
-                  : `Necessário elevar a média operacional de ${simMediaAcumulada.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} para ${mediaNecessariaProximosDias.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} ${simUnidade === 'HE' ? 'HL' : 'unid.'} nos próximos ${simDiasRestantes} dias úteis.`
-                }
-              </p>
-            </div>
-
-            {/* Recomendação 3 */}
-            <div className="bg-white border border-slate-200/50 rounded-lg p-3 space-y-1">
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Plano de Mitigação</span>
-              <p className="leading-relaxed">
-                {atingiuMeta 
-                  ? 'Manter o fluxo operacional padrão e priorizar o processamento de lotes acumulados para evitar possíveis gargalos na última semana.' 
-                  : 'Sugerir remanejamento de operadores, revisar possíveis perdas nos processos, e programar o despejo de lotes volumosos acumulados nas próximas 48h.'
-                }
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
+      {/* MODAL DE PADRÃO OPERACIONAL (POP/SOP) */}
+      <PadraoOperacionalModal
+        moduleKey="despejo"
+        moduleName="Despejo de Produtos Avariados"
+        isOpen={isPopModalOpen}
+        onClose={() => setIsPopModalOpen(false)}
+        user={user}
+      />
+      <SopManagerModal
+        operation="despejo"
+        operationName="Despejo"
+        isOpen={isPopModalOpen}
+        onClose={() => setIsPopModalOpen(false)}
+      />
 
       {/* ── SEÇÃO DE ÚLTIMOS LANÇAMENTOS E AUDITORIA ── */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">

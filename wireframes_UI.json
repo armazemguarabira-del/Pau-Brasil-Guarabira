@@ -1,0 +1,333 @@
+{
+  "tokens": {
+    "cores_principais": {
+      "ambev_navy": "#002F6C",
+      "ambev_gold": "#F2A900",
+      "success_emerald": "#10B981",
+      "danger_red": "#EF4444",
+      "warning_amber": "#F59E0B",
+      "neutral_slate": "#1E293B",
+      "neutral_light": "#F8FAFC",
+      "card_border": "#E2E8F0"
+    },
+    "fonte_base": "Inter, Plus Jakarta Sans, system-ui, sans-serif",
+    "min_font_size": "13px (estritamente aplicado para dados numéricos, tabelas e registros)",
+    "typography": {
+      "h1": "font-bold text-2xl text-slate-900 tracking-tight",
+      "h2": "font-semibold text-lg text-slate-800",
+      "data_cell": "text-[13px] font-mono leading-tight text-slate-700",
+      "badge": "text-[12px] font-medium px-2.5 py-0.5 rounded-full"
+    },
+    "spacing_rules": {
+      "outer_padding": "p-6 md:p-8",
+      "card_padding": "p-5",
+      "gap": "gap-4 md:gap-6",
+      "nested_radius_math": "Radius Interno = Radius Externo (12px) - Padding (16px) = 4px"
+    }
+  },
+  "header_padrao": {
+    "component_id": "header_padrao_cco_v1",
+    "title": "Armazém Ambev Guarabira — Workstation CCO",
+    "seletor_calendarizado": {
+      "dia_a_dia": {
+        "type": "date-range-picker",
+        "format": "YYYY-MM-DD",
+        "placeholder": "Selecione o intervalo de dias"
+      },
+      "mes_a_mes": {
+        "type": "month-range-picker",
+        "format": "YYYY-MM",
+        "placeholder": "Selecione o intervalo de meses"
+      }
+    },
+    "quick_range": {
+      "type": "segmented-control",
+      "options": ["Hoje", "Últimos 7 dias", "Mês atual", "Ano até hoje"],
+      "default": "Últimos 7 dias"
+    },
+    "filtros": [
+      {
+        "id": "filter_local",
+        "label": "Local / Armazém",
+        "options": ["Todos", "Armazém Guarabira - Pátio Principal", "Depósito Cervejas", "Depósito RGB/Soft Drinks"],
+        "default": "Armazém Guarabira - Pátio Principal"
+      },
+      {
+        "id": "filter_area",
+        "label": "Área Operacional",
+        "options": ["Todas", "PICKING", "ÁREA DE CARREGAMENTO", "CENTRAL", "DESPEJO", "ÁREA MKT PLACE", "PNC", "RECICLÁVEIS", "REFUGO", "DEVOLUÇÃO", "REPACK", "EMPILHADEIRA 1", "EMPILHADEIRA 2", "FROTA DA ENTREGA"],
+        "default": "Todas"
+      },
+      {
+        "id": "filter_responsavel",
+        "label": "Responsável",
+        "options": ["Todos", "DEJEAN", "OZENILDO", "GLADSON", "PAULO", "RONILDO", "MARIVALDO", "DIOGENES"],
+        "default": "Todos"
+      }
+    ],
+    "toggle_unidade": {
+      "type": "persistent-toggle",
+      "storage_key": "cco_unit_toggle_preference",
+      "options": ["Caixas (cx)", "Hectolitro (HL)", "Reais (R$)"],
+      "default": "Caixas (cx)",
+      "behavior": "Converte instantaneamente os dados de caixas usando o fator hectolitro_por_unidade e valor_unitario do catálogo."
+    },
+    "cco_status_badge": {
+      "status": "OPERATIONAL",
+      "label": "CCO Guarabira On-line",
+      "last_sync": "2026-08-05T07:53:21-07:00"
+    }
+  },
+  "views": [
+    {
+      "id": "view_01_visao_geral",
+      "name": "Visão Geral",
+      "route": "/overview",
+      "description": "Painel executivo com KPIs em tempo real, farol de itens em recolhimento crítico e resumo da Matriz 5S das 13 operações.",
+      "components": [
+        "ExecutiveKPIGrid",
+        "WorkstationCriticosRecolhimentoTable",
+        "MatrizGeral13OperacoesCard",
+        "QuickActionDrawer"
+      ],
+      "interactions": [
+        "click_iniciar_jornada → abrir_modal_checklist_5s (bloqueia navegação até submissão)",
+        "toggle_unidade → recalcular_kpis_e_tabelas_cx_hl_rs",
+        "click_item_critico → abrir_drilldown_lote_recolhimento"
+      ]
+    },
+    {
+      "id": "view_02_desvios_acoes",
+      "name": "Desvios & Ações",
+      "route": "/desvios",
+      "description": "Módulo de identificação de desvios OCR de validade e formulação de Planos de Ação baseados nos 5 Porquês.",
+      "components": [
+        "DesviosOCRTable",
+        "PlanoAcao5PorquesForm",
+        "TimelineResolucaoDesvios",
+        "ConflictsReportAlert"
+      ],
+      "interactions": [
+        "filter_status_desvio → filtrar_desvios_pendentes_em_analise_concluidos",
+        "click_novo_plano_acao → abrir_modal_5_porques",
+        "submit_5_porques → atualizar_status_desvio_para_em_tratativa"
+      ]
+    },
+    {
+      "id": "view_03_agenda_executiva",
+      "name": "Agenda Executiva",
+      "route": "/agenda",
+      "description": "Calendário operacional DPO para agendamento de auditorias, pauta da reunião matinal e rotinas de supervisão.",
+      "components": [
+        "CalendarAuditoriasDPO",
+        "MorningMeetingPlanner",
+        "RoutineEventsList",
+        "AuditorAssignmentCard"
+      ],
+      "interactions": [
+        "click_data_calendario → filtrar_eventos_do_dia",
+        "click_nova_auditoria → agendar_auditoria_e_notificar_responsavel"
+      ]
+    },
+    {
+      "id": "view_04_diario_bordo",
+      "name": "Diário de Bordo (Colaborador e ADM)",
+      "route": "/diario",
+      "description": "Registro contínuo de passagem de turno, avarias de produtos no pátio e ocorrências operacionais por colaborador.",
+      "components": [
+        "PassagemTurnoForm",
+        "RegistroAvariasQuebrasCard",
+        "MuralOcorrenciasTimeline",
+        "FiltroVisaoColaboradorADM"
+      ],
+      "interactions": [
+        "toggle_visao_adm → exibir_logs_completos_e_editar_registros",
+        "submit_passagem_turno → registrar_assnatura_digital_e_fechar_turno"
+      ]
+    },
+    {
+      "id": "view_05_fluxograma_demandas",
+      "name": "Fluxograma de Demandas",
+      "route": "/fluxograma",
+      "description": "Quadro Kanban interativo para acompanhamento do fluxo de vida das demandas de vencimento e future shelf.",
+      "components": [
+        "KanbanBoardDemandas",
+        "CardDemandaGiro",
+        "KanbanStageColumnHeaders",
+        "ModalDetalharDemanda"
+      ],
+      "interactions": [
+        "drag_drop_card → mover_demanda_entre_estagios_entrada_triagem_em_acao_concluido",
+        "click_card → abrir_modal_detalhes_demanda_com_fator_conversao"
+      ]
+    },
+    {
+      "id": "view_06_reunioes_treinamentos",
+      "name": "Reuniões & Treinamentos",
+      "route": "/reunioes",
+      "description": "Central de gestão de Padrões Operacionais (POPs), lista de presença em treinamentos e atas de reuniões matinais.",
+      "components": [
+        "BibliotecaPOPsDPO",
+        "ListaPresencaDigitalForm",
+        "AtaReuniaoMatinalCard",
+        "TreinamentoStatusBadge"
+      ],
+      "interactions": [
+        "click_assinar_treinamento → registrar_presenca_colaborador",
+        "download_pop_pdf → abrir_visualizador_padrao_operacional"
+      ]
+    },
+    {
+      "id": "view_07_produtividade",
+      "name": "Produtividade (Repack / Despejo / Quebras)",
+      "route": "/produtividade",
+      "description": "Ranking de desempenho dos operadores, cronômetro de tempo de Repack e controle de hectolitros despejados.",
+      "components": [
+        "OperationsRankingMatrix",
+        "CronometroRepackCard",
+        "ModuloDespejoQuebrasCard",
+        "ModalDrilldownColaborador"
+      ],
+      "interactions": [
+        "click_colaborador_ranking → abrir_modal_drilldown_historico_produtividade",
+        "start_cronometro_repack → iniciar_contagem_tempo_e_caixas"
+      ]
+    },
+    {
+      "id": "view_08_gestao_escoamento",
+      "name": "Gestão de Escoamento",
+      "route": "/escoamento",
+      "description": "Tabela de giro FEFO, monitoramento da curva do Stock Age Index e disparo de promoções/desvios de lotes envelhecidos.",
+      "components": [
+        "FEFOGiroTable",
+        "CurvaStockAgeIndexChart",
+        "ModalRegistrarEscoamento",
+        "GiroAceleradoAlertCard"
+      ],
+      "interactions": [
+        "click_registrar_escoamento → abrir_modal_escoamento_com_qtd_lote",
+        "filter_prazo_45dias → alternar_exibicao_apenas_janela_critica"
+      ]
+    },
+    {
+      "id": "view_09_future_shelf_conferente",
+      "name": "Future Shelf / Conferente",
+      "route": "/future-shelf",
+      "description": "Painel operacional para conferentes realizarem contagem física no pátio e ajustarem saldos de estoque inline.",
+      "components": [
+        "FutureShelfTable",
+        "ConferenteInlineQtyInput",
+        "DivergenciaPatioBadge",
+        "BotaoLancamentoRapido"
+      ],
+      "interactions": [
+        "change_inline_qty → recalcular_dias_estoque_e_destacar_divergencia",
+        "click_salvar_conferencia → atualizar_saldo_fisico_com_audit_trail"
+      ]
+    },
+    {
+      "id": "view_10_5s_central",
+      "name": "5S Central",
+      "route": "/5s-central",
+      "description": "Matriz consolidada de auditorias de 5S para todas as 14 áreas do Armazém Ambev Guarabira com verificação de metas.",
+      "components": [
+        "Matriz14Areas5STable",
+        "GaugeAtingimentoMeta5S",
+        "AuditForm5SSensos",
+        "HistoricoAuditoriasCard"
+      ],
+      "interactions": [
+        "click_auditar_area → abrir_modal_checklist_5s_especifico_area",
+        "filter_status_meta → filtrar_áreas_atingido_vs_fora_da_meta"
+      ]
+    },
+    {
+      "id": "view_11_cadastros_acessos",
+      "name": "Cadastros / Controle de Acessos",
+      "route": "/cadastros-acessos",
+      "description": "Módulo administrativo para cadastro mestre de SKUs Ambev, tabela de conversão e matriz de permissões dos 4 perfis.",
+      "components": [
+        "CatálogoProdutosAmbevTable",
+        "MatrizPerfisPermissoesTable",
+        "ManualOverrideAuditPanel",
+        "ParametrosArmazemCard"
+      ],
+      "interactions": [
+        "edit_fator_sku → atualizar_conversao_cx_hl_globalmente",
+        "toggle_permissao_perfil → aplicar_subscricao_manual_de_acesso"
+      ]
+    }
+  ],
+  "components": {
+    "ChecklistModal5S": {
+      "type": "blocking-modal",
+      "props": {
+        "title": "Checklist de 5S e Início de Jornada - Armazém Ambev Guarabira",
+        "template_id": "5s_armazem_guarabira_v1",
+        "blocking": true
+      },
+      "campos": [
+        {"id": "1s_utilizacao", "label": "1S - Utilização (Seiri)", "required": true, "type": "boolean-checkbox"},
+        {"id": "2s_organizacao", "label": "2S - Organização (Seiton)", "required": true, "type": "boolean-checkbox"},
+        {"id": "3s_limpeza", "label": "3S - Limpeza (Seiso)", "required": true, "type": "boolean-checkbox"},
+        {"id": "4s_padronizacao", "label": "4S - Padronização (Seiketsu)", "required": true, "type": "boolean-checkbox"},
+        {"id": "5s_disciplina", "label": "5S - Disciplina (Shitsuke)", "required": true, "type": "boolean-checkbox"},
+        {"id": "observacao_auditoria", "label": "Observações do Auditor", "required": false, "type": "textarea"}
+      ],
+      "validacoes": "Todos os 5 sensos obrigatórios devem ser marcados 'Conforme' para liberar o botão de confirmação e desbloquear a workstation."
+    },
+    "WorkstationCriticosRecolhimentoTable": {
+      "type": "data-table",
+      "props": {
+        "columns": ["farol", "codigo", "produto_descricao", "qtd_total", "vencimento", "dias_p_vencer", "setor_origem", "valoracao_rs", "acoes"],
+        "min_font_size": "13px font-mono"
+      },
+      "campos": ["demanda_id", "produto_codigo", "lote", "quantidade", "dias_estoque"],
+      "validacoes": "Destaque visual em vermelho para itens com vencimento <= 30 dias e amarelo para 31-45 dias."
+    },
+    "PlanoAcao5PorquesForm": {
+      "type": "form-modal",
+      "props": {
+        "title": "Plano de Ação - Análise de Causa Raiz (5 Porquês)"
+      },
+      "campos": [
+        {"id": "desvio_id", "label": "Desvio Referência", "type": "select", "required": true},
+        {"id": "porque_1", "label": "1º Por quê? (Causa Imediata)", "type": "text", "required": true},
+        {"id": "porque_2", "label": "2º Por quê?", "type": "text", "required": true},
+        {"id": "porque_3", "label": "3º Por quê?", "type": "text", "required": true},
+        {"id": "porque_4", "label": "4º Por quê?", "type": "text", "required": true},
+        {"id": "porque_5", "label": "5º Por quê? (Causa Raiz)", "type": "text", "required": true},
+        {"id": "acao_corretiva", "label": "Ação Corretiva Proposta", "type": "textarea", "required": true},
+        {"id": "responsavel", "label": "Responsável", "type": "select", "required": true},
+        {"id": "prazo_conclusao", "label": "Prazo de Conclusão", "type": "date", "required": true}
+      ],
+      "validacoes": "Todos os 5 porquês e a ação corretiva devem ter no mínimo 10 caracteres preenchidos."
+    }
+  },
+  "interactions": [
+    {
+      "id": "int_01_toggle_unidade",
+      "trigger": "User clica no toggle de Unidade no Header (cx / HL / R$)",
+      "action": "Altera o estado global `unitToggle` e salva a preferência no localStorage.",
+      "effect": "Re-formata instantaneamente todas as séries temporais, colunas de tabelas e KPI cards convertendo quantidades em caixas para hectolitros (x hectolitro_por_unidade) ou Reais (x valor_unitario)."
+    },
+    {
+      "id": "int_02_iniciar_jornada_5s",
+      "trigger": "User clica no botão 'Iniciar Jornada' ou abre a aplicação no início do turno",
+      "action": "Dispara o modal 'ChecklistModal5S' com layout bloqueante.",
+      "effect": "Impede qualquer navegação ou edição no sistema até que o usuário responda os 5 itens do checklist 5S e envie o formulário."
+    },
+    {
+      "id": "int_03_filtro_calendarizado",
+      "trigger": "User altera o período no seletor calendarizado (dia-a-dia ou mês-a-mês) ou escolhe um Quick Range",
+      "action": "Executa re-fetch/filtragem local dos dados de demandas e auditorias.",
+      "effect": "Atualiza todos os gráficos e relatórios para refletirem exatamente o intervalo temporal selecionado."
+    },
+    {
+      "id": "int_04_edicao_inline_conferente",
+      "trigger": "Conferente altera o campo de quantidade física na view Future Shelf",
+      "action": "Recalcula dias_estoque e estoque_disponivel em tempo real.",
+      "effect": "Exibe badge de divergência se a contagem física for menor que a do WMS/OCR e registra log de auditoria."
+    }
+  ]
+}

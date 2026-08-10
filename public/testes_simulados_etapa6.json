@@ -1,0 +1,93 @@
+{
+  "version": "v1.0-TAPA_X",
+  "suite_title": "Cenários Simulados de Teste — Notificações, Triggers e Processamentos CCO",
+  "scenarios": [
+    {
+      "scenario_id": "scen_01_item_45dias",
+      "title": "Simulação de Disparo de Validade Crítica (item_45dias)",
+      "description": "Verifica se um lote com vencimento em <= 45 dias é capturado, atualiza a flag e dispara a notificação in-app + e-mail.",
+      "input_payload": {
+        "demanda_id": "dem-sim-001",
+        "produto_codigo": "838",
+        "produto_descricao": "CHOPP BRAHMA CLARO BARRIL KEG 50L",
+        "lote": "LOT-SIM-838",
+        "quantidade": 3,
+        "venda_media": 2.5,
+        "data_vencimento": "2026-08-06",
+        "shelf_life_days": 180,
+        "simulated_current_date": "2026-08-05"
+      },
+      "expected_outcome": {
+        "dias_para_vencer": 1,
+        "prazo_45dias_flag": true,
+        "destinoWorkstation": "Desvios",
+        "requires_manual_review": false,
+        "notification_generated": true,
+        "notification_channels_dispatched": [
+          "IN_APP_PUSH",
+          "EMAIL_SMTP"
+        ],
+        "recipients": [
+          "Conferente",
+          "Gestão Executiva"
+        ],
+        "in_app_title_rendered": "🚨 CRÍTICO RECOLHIMENTO 45D — CHOPP BRAHMA 50L",
+        "audit_log_created": true
+      }
+    },
+    {
+      "scenario_id": "scen_02_stock_age_alert",
+      "title": "Simulação de Alerta de Stock Age Index (< 60%)",
+      "description": "Avalia o recálculo do Stock Age Index para lote envelhecido e seu redirecionamento para o painel de Gestão de Escoamento.",
+      "input_payload": {
+        "demanda_id": "dem-sim-002",
+        "produto_codigo": "23269",
+        "produto_descricao": "SKOL BEATS GT LONG NECK 269ML SIX-PACK",
+        "lote": "LOT-SIM-23269",
+        "quantidade": 5,
+        "venda_media": 3.8,
+        "data_vencimento": "2026-10-30",
+        "shelf_life_days": 180,
+        "simulated_current_date": "2026-08-05"
+      },
+      "expected_outcome": {
+        "dias_restantes": 86,
+        "dias_decorridos": 94,
+        "stock_age_index": 0.52,
+        "stock_age_alert_triggered": true,
+        "destino_workstation": "Gestão de Escoamento",
+        "notification_channels_dispatched": [
+          "IN_APP_PUSH",
+          "EMAIL_SMTP"
+        ],
+        "recipients": [
+          "Gestão de Escoamento",
+          "Conferente"
+        ],
+        "in_app_title_rendered": "⚠️ ALERTA STOCK AGE (<60%) — SKOL BEATS GT"
+      }
+    },
+    {
+      "scenario_id": "scen_03_fechamento_acao_recalculo",
+      "title": "Simulação de Encerramento de Plano de Ação e Recálculo de Métrica",
+      "description": "Executa a homologação de encerramento do plano de ação Act-004 e valida a atualização do indicador percent_closed.",
+      "input_payload": {
+        "acao_id": "act-004",
+        "parecer_encerramento": "Treinamento executado com equipe de conferência. OCR recalibrado no pátio.",
+        "eficacia_comprovada": true,
+        "fechado_por": "GLADSON SUPERVISOR",
+        "colaborador_id": "colab-003",
+        "simulated_current_date": "2026-08-05T08:14:32-07:00"
+      },
+      "expected_outcome": {
+        "status_acao": "FECHADO",
+        "fechado_em": "2026-08-05T08:14:32-07:00",
+        "previous_percent_closed": 80,
+        "updated_percent_closed": 90,
+        "dpo_target_met": true,
+        "notification_dispatched": true,
+        "audit_trail_recorded": true
+      }
+    }
+  ]
+}

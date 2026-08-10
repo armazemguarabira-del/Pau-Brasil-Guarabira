@@ -208,7 +208,7 @@ export default function A3BoardComponent({ user, empresa, dashboard }: A3BoardCo
           padronizacao: 'Inclusão da auditoria visual de semáforo FEFO no checklist diário do Conferente Operacional.',
           resultadosDesc: 'Conformidade da rotação FEFO subiu para 98% e as perdas de estoque caíram a zero no último ciclo diário.',
           impactoNegocio: 'Prevenção de descarte que representava perdas de até R$ 3.100 por ocorrência operacional.',
-          proximosPassos: 'Replicar a gestão visual semáforo FEFO para a área de estoque aéreo vertical e câmaras frias.',
+          proximosPassos: 'Replicar a gestão visual semáforo FEFO para a área de estoque aéreo vertical e áreas de pulmão.',
           dataRevisao: '2026-07-22',
           actions: [
             { acao: 'Fabricar placas coloridas para sinalização FEFO', responsavel: 'Comunicação Visual', prazo: '08/07/2026', status: 'Concluído', pct: 100 },

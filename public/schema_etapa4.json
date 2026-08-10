@@ -1,0 +1,223 @@
+{
+  "tables": {
+    "colaboradores": {
+      "fields": {
+        "id": "UUID PRIMARY KEY",
+        "nome": "VARCHAR(255) NOT NULL",
+        "matricula": "VARCHAR(50) UNIQUE NOT NULL",
+        "cpf": "VARCHAR(14) UNIQUE NOT NULL",
+        "cargo": "VARCHAR(100) NOT NULL",
+        "funcao": "VARCHAR(100) NOT NULL",
+        "setor": "VARCHAR(100) NOT NULL",
+        "turno": "VARCHAR(20) NOT NULL",
+        "gestor_responsavel": "VARCHAR(255)",
+        "data_admissao": "DATE NOT NULL",
+        "status": "VARCHAR(20) DEFAULT 'ativo'"
+      },
+      "indexes": ["idx_colaboradores_matricula", "idx_colaboradores_status", "idx_colaboradores_setor"]
+    },
+    "produtos": {
+      "fields": {
+        "id": "UUID PRIMARY KEY",
+        "codigo": "VARCHAR(50) UNIQUE NOT NULL",
+        "descricao": "VARCHAR(255) NOT NULL",
+        "sku": "VARCHAR(50) NOT NULL",
+        "grupo": "VARCHAR(100)",
+        "curva": "VARCHAR(5)",
+        "embalagem": "VARCHAR(50)",
+        "fator": "NUMERIC(10,2) DEFAULT 1.0",
+        "hectolitro": "NUMERIC(10,4)",
+        "valor": "NUMERIC(12,2) NOT NULL",
+        "politica_estoque": "VARCHAR(100) DEFAULT '80% produtos com >= 6 dias de estoque'",
+        "shelf_life": "INTEGER NOT NULL",
+        "fefo": "BOOLEAN DEFAULT true"
+      },
+      "indexes": ["idx_produtos_codigo", "idx_produtos_sku"]
+    },
+    "logins": {
+      "fields": {
+        "id": "UUID PRIMARY KEY",
+        "colaborador_id": "UUID REFERENCES colaboradores(id)",
+        "login": "VARCHAR(100) UNIQUE NOT NULL",
+        "senha_hash": "VARCHAR(255) NOT NULL",
+        "tipo_acesso": "VARCHAR(50) NOT NULL",
+        "status": "VARCHAR(20) DEFAULT 'ativo'"
+      },
+      "indexes": ["idx_logins_login", "idx_logins_colaborador"]
+    },
+    "demand_items": {
+      "fields": {
+        "id": "UUID PRIMARY KEY",
+        "demanda_id": "UUID UNIQUE NOT NULL",
+        "produto_codigo": "VARCHAR(50) REFERENCES produtos(codigo)",
+        "produto_descricao": "VARCHAR(255)",
+        "lote": "VARCHAR(100) NOT NULL",
+        "quantidade": "INTEGER NOT NULL",
+        "venda_media": "NUMERIC(10,2)",
+        "dias_estoque": "NUMERIC(10,2)",
+        "data_vencimento": "DATE NOT NULL",
+        "ultima_data_recolhimento": "DATE",
+        "prazo_45dias_flag": "BOOLEAN DEFAULT false",
+        "stock_age_index": "NUMERIC(5,2)",
+        "previsao_escoamento": "DATE",
+        "tipo": "VARCHAR(50)",
+        "origem_imagem": "VARCHAR(255)",
+        "confidence": "NUMERIC(3,2)",
+        "requires_manual_review": "BOOLEAN DEFAULT false",
+        "destino_workstation": "VARCHAR(100)",
+        "conferente_ultima_afericao": "TIMESTAMP",
+        "conferente_nome": "VARCHAR(255)"
+      },
+      "indexes": ["idx_demand_items_vencimento", "idx_demand_items_45d", "idx_demand_items_tipo"]
+    },
+    "desvios": {
+      "fields": {
+        "id": "UUID PRIMARY KEY",
+        "demanda_id": "UUID REFERENCES demand_items(id)",
+        "tipo_desvio": "VARCHAR(100) NOT NULL",
+        "descricao": "TEXT NOT NULL",
+        "criticidade": "VARCHAR(20) DEFAULT 'ALTA'",
+        "responsavel_id": "UUID REFERENCES colaboradores(id)",
+        "status": "VARCHAR(50) DEFAULT 'ABERTO'",
+        "data_registro": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+      },
+      "indexes": ["idx_desvios_status", "idx_desvios_responsavel"]
+    },
+    "acoes": {
+      "fields": {
+        "id": "UUID PRIMARY KEY",
+        "desvio_id": "UUID REFERENCES desvios(id)",
+        "titulo": "VARCHAR(255) NOT NULL",
+        "plano_acao": "TEXT NOT NULL",
+        "responsavel_id": "UUID REFERENCES colaboradores(id)",
+        "prazo_dias": "INTEGER DEFAULT 7",
+        "data_limite": "DATE NOT NULL",
+        "status": "VARCHAR(50) DEFAULT 'PENDENTE'",
+        "concluido_em": "TIMESTAMP"
+      },
+      "indexes": ["idx_acoes_status", "idx_acoes_limite"]
+    },
+    "diario": {
+      "fields": {
+        "id": "UUID PRIMARY KEY",
+        "colaborador_id": "UUID REFERENCES colaboradores(id)",
+        "turno": "VARCHAR(20) NOT NULL",
+        "ocorrencia": "TEXT NOT NULL",
+        "setor": "VARCHAR(100) NOT NULL",
+        "criado_em": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+      },
+      "indexes": ["idx_diario_colaborador", "idx_diario_criado"]
+    },
+    "reunioes": {
+      "fields": {
+        "id": "UUID PRIMARY KEY",
+        "titulo": "VARCHAR(255) NOT NULL",
+        "tipo": "VARCHAR(100) NOT NULL",
+        "data_reuniao": "TIMESTAMP NOT NULL",
+        "pauta": "TEXT",
+        "ata": "TEXT",
+        "participantes": "JSONB"
+      },
+      "indexes": ["idx_reunioes_data"]
+    },
+    "uploads": {
+      "fields": {
+        "id": "UUID PRIMARY KEY",
+        "nome_arquivo": "VARCHAR(255) NOT NULL",
+        "caminho": "VARCHAR(500) NOT NULL",
+        "modulo_origem": "VARCHAR(100)",
+        "enviado_por": "UUID REFERENCES colaboradores(id)",
+        "criado_em": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+      },
+      "indexes": ["idx_uploads_modulo"]
+    },
+    "indicadores_repack": {
+      "fields": {
+        "id": "UUID PRIMARY KEY",
+        "data": "DATE NOT NULL",
+        "caixas_hora_meta": "NUMERIC(10,2) DEFAULT 80.0",
+        "caixas_hora_real": "NUMERIC(10,2) NOT NULL",
+        "variacao_pct": "NUMERIC(5,2)",
+        "colaborador_id": "UUID REFERENCES colaboradores(id)"
+      },
+      "indexes": ["idx_ind_repack_data"]
+    },
+    "indicadores_despejo": {
+      "fields": {
+        "id": "UUID PRIMARY KEY",
+        "data": "DATE NOT NULL",
+        "caixas_hora_meta": "NUMERIC(10,2) DEFAULT 40.0",
+        "caixas_hora_real": "NUMERIC(10,2) NOT NULL",
+        "variacao_pct": "NUMERIC(5,2)",
+        "colaborador_id": "UUID REFERENCES colaboradores(id)"
+      },
+      "indexes": ["idx_ind_despejo_data"]
+    },
+    "indicadores_quebras": {
+      "fields": {
+        "id": "UUID PRIMARY KEY",
+        "data": "DATE NOT NULL",
+        "percentual_meta": "NUMERIC(5,2) DEFAULT 0.15",
+        "percentual_real": "NUMERIC(5,2) NOT NULL",
+        "variacao_pct": "NUMERIC(5,2)",
+        "colaborador_id": "UUID REFERENCES colaboradores(id)"
+      },
+      "indexes": ["idx_ind_quebras_data"]
+    },
+    "escoamento_registros": {
+      "fields": {
+        "id": "UUID PRIMARY KEY",
+        "demanda_id": "UUID REFERENCES demand_items(id)",
+        "quantidade_escoada": "INTEGER NOT NULL",
+        "data_registro": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+        "registrado_por": "UUID REFERENCES colaboradores(id)",
+        "observacao": "TEXT"
+      },
+      "indexes": ["idx_escoamento_demanda"]
+    },
+    "checklists": {
+      "fields": {
+        "id": "UUID PRIMARY KEY",
+        "colaborador_id": "UUID REFERENCES colaboradores(id)",
+        "template_id": "VARCHAR(100) NOT NULL",
+        "respostas": "JSONB NOT NULL",
+        "concluido": "BOOLEAN DEFAULT false",
+        "criado_em": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+      },
+      "indexes": ["idx_checklists_colaborador", "idx_checklists_criado"]
+    },
+    "notifications": {
+      "fields": {
+        "id": "UUID PRIMARY KEY",
+        "destinatario_id": "UUID REFERENCES colaboradores(id)",
+        "titulo": "VARCHAR(255) NOT NULL",
+        "mensagem": "TEXT NOT NULL",
+        "lida": "BOOLEAN DEFAULT false",
+        "criado_em": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+      },
+      "indexes": ["idx_notifications_destinatario"]
+    },
+    "jobs": {
+      "fields": {
+        "id": "UUID PRIMARY KEY",
+        "nome_job": "VARCHAR(100) UNIQUE NOT NULL",
+        "cron_expression": "VARCHAR(50) NOT NULL",
+        "ultimo_executado": "TIMESTAMP",
+        "status": "VARCHAR(50) DEFAULT 'AGUARDANDO'",
+        "log_resultado": "TEXT"
+      },
+      "indexes": ["idx_jobs_nome"]
+    },
+    "logs": {
+      "fields": {
+        "id": "UUID PRIMARY KEY",
+        "usuario_id": "UUID REFERENCES colaboradores(id)",
+        "acao": "VARCHAR(100) NOT NULL",
+        "detalhes": "JSONB",
+        "ip": "VARCHAR(45)",
+        "criado_em": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+      },
+      "indexes": ["idx_logs_usuario", "idx_logs_criado"]
+    }
+  }
+}

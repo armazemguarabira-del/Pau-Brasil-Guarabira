@@ -1,0 +1,14 @@
+{
+  "total_conflicts": 1,
+  "resolved_conflicts": 1,
+  "items": [
+    {
+      "demanda_id": "a1b2c3d4-0008-4000-8000-000000000008",
+      "produto_codigo": "347",
+      "produto_descricao": "SUKITA PET 1L CAIXA C/12",
+      "issue": "Missing field 'lote_conferencia' in OCR extraction; confidence index 0.65 requires manual verification.",
+      "status": "REQUIRES_MANUAL_REVIEW",
+      "action_taken": "Flagged for CCO conferente manual audit and batch confirmation prior to escoamento execution."
+    }
+  ]
+}

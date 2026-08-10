@@ -1,0 +1,6 @@
+produto_codigo,produto_descricao,lote,quantidade_cx,venda_media_diaria,data_vencimento,origem_imagem,confidence
+"838","CHOPP BRAHMA CLARO BARRIL KEG 50L","LOT-838-20260806",3,2.5,"2026-08-06","ocr_patios_01.png",0.98
+"23269","SKOL BEATS GT LONG NECK 269ML SIX-PACK","L260801B",5,3.8,"2026-10-30","ocr_patios_02.png",0.95
+"21666","RED BULL TROPICAL BR LATA 250ML FOUR-PACK","L260802C",306,16.1,"2026-11-15","ocr_patios_03.png",0.99
+"31795","BRUTAL FRUIT LONG NECK 275ML SIX-PACK","L260803D",19,4.1,"2026-12-01","ocr_patios_04.png",0.94
+"9093","PEPSI TWIST LATA 350ML SH C/12 NPAL","L260804E",60,5.9,"2026-09-20","ocr_patios_05.png",0.97

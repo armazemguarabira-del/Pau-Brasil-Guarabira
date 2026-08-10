@@ -1,0 +1,252 @@
+{
+  "api_title": "Contratos REST API — Workstation CCO Armazém Ambev Guarabira",
+  "version": "v1.0-TAPA_X",
+  "authorization_matrix": {
+    "Ajudante": [
+      "GET /workstation",
+      "GET /demandas",
+      "POST /diario",
+      "POST /checklists/submit"
+    ],
+    "Operador Empilhadeira": [
+      "GET /workstation",
+      "GET /demandas",
+      "POST /diario",
+      "POST /checklists/submit",
+      "POST /produtividade/repack"
+    ],
+    "Conferente": [
+      "GET /workstation",
+      "GET /demandas",
+      "POST /demandas",
+      "PATCH /demandas/:id/atualizar-quantidade",
+      "POST /escoamento",
+      "POST /desvios",
+      "POST /acoes",
+      "POST /diario",
+      "POST /reunioes",
+      "POST /checklists/submit"
+    ],
+    "Administrativo": [
+      "ALL_ENDPOINTS",
+      "GET /access-control",
+      "POST /access-control",
+      "POST /users",
+      "POST /acoes/:id/fechar",
+      "DELETE /demandas/:id"
+    ]
+  },
+  "workflows": {
+    "assign_default_roles_on_create": "Ao criar um colaborador via POST /users sem especificar 'role', o sistema analisa o campo 'cargo_funcao': se contiver 'Operador', atribui 'Operador Empilhadeira'; se contiver 'Conferente', atribui 'Conferente'; se contiver 'Coordenador/Supervisor/Gerente/Analista', atribui 'Administrativo'; caso contrário, atribui 'Ajudante'."
+  },
+  "endpoints": [
+    {
+      "id": "ep_01_login",
+      "verb": "POST",
+      "path": "/auth/login",
+      "auth": "PUBLIC",
+      "description": "Autentica colaborador por matrícula e senha, retornando token JWT e perfil de acesso.",
+      "request_example": {
+        "matricula": "GBR-9042",
+        "password": "SenhaSeguraGuarabira2026!"
+      },
+      "response_example": {
+        "status": 200,
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+        "user": {
+          "id": "colab-003",
+          "matricula": "GBR-9042",
+          "nome": "GLADSON CONFERENTE",
+          "email": "gladson.conferente@ambev.com.br",
+          "role": "Conferente",
+          "turno": "Turno A (Manhã)"
+        }
+      }
+    },
+    {
+      "id": "ep_02_users",
+      "verb": "POST",
+      "path": "/users",
+      "auth": "Administrativo",
+      "description": "Cadastra novo colaborador executando a regra de auto-provisionamento de permissões (assign_default_roles_on_create).",
+      "request_example": {
+        "matricula": "GBR-1099",
+        "nome_completo": "MARCOS SILVA",
+        "email": "marcos.silva@ambev.com.br",
+        "cargo_funcao": "Conferente de Pátio",
+        "turno": "Turno B (Tarde)"
+      },
+      "response_example": {
+        "status": 201,
+        "message": "Colaborador cadastrado com sucesso. Função 'Conferente de Pátio' atribuiu automaticamente a role 'Conferente'.",
+        "user": {
+          "id": "colab-008",
+          "matricula": "GBR-1099",
+          "nome_completo": "MARCOS SILVA",
+          "role": "Conferente",
+          "status_ativo": true
+        }
+      }
+    },
+    {
+      "id": "ep_03_workstation",
+      "verb": "GET",
+      "path": "/workstation",
+      "auth": "AUTHENTICATED",
+      "params": [
+        {"name": "unidade", "type": "string", "enum": ["cx", "hl", "rs"], "default": "cx"},
+        {"name": "periodo", "type": "string", "enum": ["hoje", "7dias", "mes", "ano"], "default": "7dias"}
+      ],
+      "description": "Retorna os KPIs gerais, farol de itens críticos <=45 dias e matriz de 5S das 14 áreas operacionais.",
+      "request_example": null,
+      "response_example": {
+        "status": 200,
+        "unidade_ativa": "cx",
+        "kpis": {
+          "total_demandas_validade": 21,
+          "total_caixas_risco": 2132,
+          "total_hectolitros_risco": 185.340,
+          "valor_financeiro_risco_rs": 234520.00,
+          "meta_5s_atingimento_pct": 85.7
+        },
+        "itens_criticos_recolhimento": [
+          {
+            "demanda_id": "dem-001",
+            "produto_codigo": "1284",
+            "produto_descricao": "SKOL PILSNER 350ML CX",
+            "lote": "L260801",
+            "quantidade_cx": 450,
+            "vencimento": "2026-08-20",
+            "dias_estoque": 15,
+            "farol": "CRITICO_RED"
+          }
+        ]
+      }
+    },
+    {
+      "id": "ep_04_demandas_list_create",
+      "verb": "GET / POST",
+      "path": "/demandas",
+      "auth": "GET: ALL / POST: Conferente, Administrativo",
+      "description": "Lista demandas ativas de validade/future shelf ou realiza o lançamento de uma nova demanda identificada no pátio.",
+      "request_example": {
+        "produto_codigo": "7891",
+        "produto_descricao": "BRAHMA DUPLO MALTE 350ML LATA",
+        "lote": "L260805A",
+        "quantidade": 120,
+        "venda_media": 8.50,
+        "data_vencimento": "2026-09-10",
+        "tipo": "validade"
+      },
+      "response_example": {
+        "status": 201,
+        "demanda_id": "dem-022",
+        "prazo_45dias_flag": true,
+        "dias_estoque": 14.12,
+        "stock_age_index": 0.52,
+        "message": "Demanda criada e classificada com farol crítico de recolhimento."
+      }
+    },
+    {
+      "id": "ep_05_atualizar_quantidade",
+      "verb": "PATCH",
+      "path": "/demandas/:id/atualizar-quantidade",
+      "auth": "Conferente, Administrativo",
+      "validacoes": "Permitido estritamente de Segunda a Sábado. Exige role 'Conferente' ou 'Administrativo'. Grava registro na tabela de logs para auditoria.",
+      "request_example": {
+        "nova_quantidade_fisica": 380,
+        "motivo_ajuste": "Contagem física do picking divergente do OCR"
+      },
+      "response_example": {
+        "status": 200,
+        "demanda_id": "dem-001",
+        "quantidade_anterior": 450,
+        "quantidade_atualizada": 380,
+        "dias_estoque_recalculados": 12.6,
+        "audit_log_id": "log-9921",
+        "message": "Quantidade física atualizada com sucesso pelo Conferente."
+      }
+    },
+    {
+      "id": "ep_06_escoamento",
+      "verb": "POST",
+      "path": "/escoamento",
+      "auth": "Conferente, Administrativo",
+      "description": "Registra uma liberação promocional ou transferência de lote envelhecido para garantir o giro FEFO.",
+      "request_example": {
+        "demanda_id": "dem-001",
+        "quantidade_escoada_cx": 100,
+        "tipo_escoamento": "PROMOÇÃO_LOCAL",
+        "observacoes": "Desconto de 15% liberado para clientes VIPs de Guarabira"
+      },
+      "response_example": {
+        "status": 201,
+        "escoamento_id": "esc-104",
+        "quantidade_remanescente_demanda": 280,
+        "message": "Ação de escoamento registrada com sucesso."
+      }
+    },
+    {
+      "id": "ep_07_checklists_submit",
+      "verb": "POST",
+      "path": "/checklists/submit",
+      "auth": "AUTHENTICATED",
+      "description": "Submete o checklist de Início de Jornada / 5S. Desbloqueia a navegação do usuário na workstation.",
+      "request_example": {
+        "template_id": "5s_armazem_guarabira_v1",
+        "area": "PICKING",
+        "respostas": {
+          "1s_utilizacao": true,
+          "2s_organizacao": true,
+          "3s_limpeza": true,
+          "4s_padronizacao": true,
+          "5s_disciplina": true
+        },
+        "observacao": "Pátio organizado e pronto para início do turno A."
+      },
+      "response_example": {
+        "status": 201,
+        "checklist_id": "chk-8831",
+        "status_aprovacao": true,
+        "message": "Checklist 5S aprovado com sucesso. Jornada liberada."
+      }
+    },
+    {
+      "id": "ep_08_access_control",
+      "verb": "GET / POST",
+      "path": "/access-control",
+      "auth": "Administrativo",
+      "description": "Consulta a matriz de permissões ou realiza a subscrição/override manual de acessos de um perfil.",
+      "request_example": {
+        "role": "Conferente",
+        "permissao_override": "EDITAR_CADASTRO_SKU",
+        "concedido": true,
+        "justificativa": "Cobertura temporária de férias da supervisão"
+      },
+      "response_example": {
+        "status": 200,
+        "role": "Conferente",
+        "override_aplicado": "EDITAR_CADASTRO_SKU",
+        "audit_trail": "Registrado por ADMIN em 2026-08-05T07:56:38-07:00"
+      }
+    },
+    {
+      "id": "ep_09_acoes_fechar",
+      "verb": "POST",
+      "path": "/acoes/:id/fechar",
+      "auth": "Administrativo",
+      "description": "Homologa e encerra um Plano de Ação dos 5 Porquês após verificação de eficácia no pátio.",
+      "request_example": {
+        "parecer_encerramento": "Causa raiz tratada com novo padrão operacional no picking.",
+        "eficacia_comprovada": true
+      },
+      "response_example": {
+        "status": 200,
+        "acao_id": "act-004",
+        "status": "FECHADO",
+        "fechado_em": "2026-08-05T07:56:38-07:00",
+        "message": "Plano de ação encerrado com sucesso."
+      }
+    }
+  ]
+}

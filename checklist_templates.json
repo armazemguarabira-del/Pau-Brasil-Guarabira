@@ -1,0 +1,38 @@
+[
+  {
+    "template_id": "5s_armazem_guarabira_v1",
+    "title": "Checklist de 5S e Início de Jornada - Armazém Ambev Guarabira",
+    "items": [
+      {
+        "id": "1s_utilizacao",
+        "senso": "1S - Utilização (Seiri)",
+        "pergunta": "Área de trabalho está livre de materiais desnecessários, paletes danificados soltos e embalagens vazias?",
+        "obrigatorio": true
+      },
+      {
+        "id": "2s_organizacao",
+        "senso": "2S - Organização (Seiton)",
+        "pergunta": "Paletes, SKUs e carrinhos de movimentação estão alinhados dentro das faixas demarcadas e etiquetados?",
+        "obrigatorio": true
+      },
+      {
+        "id": "3s_limpeza",
+        "senso": "3S - Limpeza (Seiso)",
+        "pergunta": "Piso limpo, sem cacos de vidro, vazamento de líquidos, poeira excessiva ou resíduos de empacotamento?",
+        "obrigatorio": true
+      },
+      {
+        "id": "4s_padronizacao",
+        "senso": "4S - Padronização (Seiketsu)",
+        "pergunta": "Padrões operacionais POP (Repack, Despejo, Fast Picking) e sinalizações de segurança visíveis e respeitados?",
+        "obrigatorio": true
+      },
+      {
+        "id": "5s_disciplina",
+        "senso": "5S - Disciplina (Shitsuke)",
+        "pergunta": "Equipe vestindo EPIs completos (bota, colete, luva) e comprometida com a rotina de auditoria diária?",
+        "obrigatorio": true
+      }
+    ]
+  }
+]

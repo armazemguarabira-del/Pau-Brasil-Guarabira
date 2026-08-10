@@ -3,7 +3,9 @@ import LandingPage from './components/LandingPage';
 import LoginAuth from './components/LoginAuth';
 import Sidebar from './components/Sidebar';
 import { BrandLogo } from './components/BrandLogo';
+import { isPanelAllowedForUser, getUserOperationPanel, getUserRoleType } from './utils/permissions';
 import DashboardOverview from './components/DashboardOverview';
+import AjudantePanel from './components/AjudantePanel';
 import RepackPanel from './components/RepackPanel';
 import DespejoPanel from './components/DespejoPanel';
 import ArmazemPanel from './components/ArmazemPanel';
@@ -21,16 +23,49 @@ import LogisticaDashboard from './components/LogisticaDashboard';
 import QuebrasDashboard from './components/QuebrasDashboard';
 import FefoDashboard from './components/FefoDashboard';
 import PickingDashboard from './components/PickingDashboard';
+import GestaoCapacidadeDashboard from './components/GestaoCapacidadeDashboard';
+import TmrDashboard from './components/TmrDashboard';
 import RegistrosPanel from './components/RegistrosPanel';
 import AcessosPanel from './components/AcessosPanel';
-import { EmpresaDataProvider } from './context/EmpresaDataContext';
+import EstoqueHub from './components/EstoqueHub';
+import PadraoOperacionalPanel from './components/PadraoOperacionalPanel';
+import SimulacaoAcoesPanel from './components/SimulacaoAcoesPanel';
+import DadosRetroativosPanel from './components/DadosRetroativosPanel';
+import SimuladorRessuprimentoPanel from './components/SimuladorRessuprimentoPanel';
+import RankingModule from './components/RankingModule';
+import EficienciaMontagemPanel from './components/EficienciaMontagemPanel';
+import TreeKpiViewer from './components/TreeKpiViewer';
+import CadastrosPanel from './components/CadastrosPanel';
+import QualidadePanel from './components/QualidadePanel';
+import DnSwotPanel from './components/DnSwotPanel';
+import AuditoriaDpoPanel from './components/AuditoriaDpoPanel';
+import CategoryIndexPanel from './components/CategoryIndexPanel';
+import PlataformasExternasPanel from './components/PlataformasExternasPanel';
+import { 
+  TreinamentosQualidadePanel, 
+  BloqueioArmazemPanel, 
+  DevolucaoPanel, 
+  ContagemInventarioPanel, 
+  GestaoAtivosPanel, 
+  QualidadePuxadaPanel, 
+  GestaoWlpPanel, 
+  CicloCarretasPanel 
+} from './components/NovosProcessosDpoPanels';
+import { AgenteDpoModal } from './components/AgenteDpoModal';
+import { AgendaExecutivoComponent } from './components/AgendaExecutivoComponent';
+import { DiarioBordoComponent } from './components/DiarioBordoComponent';
+import { ReunioesComponent } from './components/ReunioesComponent';
+import { WlpDashboard } from './components/WlpDashboard';
+import { OperationalNotificationBell } from './components/OperationalNotificationBell';
+import { EmpresaDataProvider, useEmpresaData } from './context/EmpresaDataContext';
+import { safeSetLocalStorage, safeGetLocalStorage } from './utils/safeLocalStorage';
 
 import { auth, db, isCustomFirebaseConnected } from './firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { doc, getDoc, collection, query, where, onSnapshot } from 'firebase/firestore';
 import { Usuario, Empresa } from './types';
 import { motion, AnimatePresence } from 'motion/react';
-import { Sun, Moon } from 'lucide-react';
+import { Sun, Moon, Zap, PanelLeftOpen, PanelLeftClose, ArrowLeft, ArrowRight } from 'lucide-react';
 
 function HeaderClock({ theme }: { theme: 'light' | 'dark' }) {
   const [timeStr, setTimeStr] = useState('');
@@ -53,6 +88,39 @@ function HeaderClock({ theme }: { theme: 'light' | 'dark' }) {
         {timeStr}
       </div>
     </>
+  );
+}
+
+function GlobalUnitSelector({ theme }: { theme: 'light' | 'dark' }) {
+  const { viewUnitMode, setViewUnitMode } = useEmpresaData();
+  return (
+    <div className={`flex items-center p-0.5 rounded-lg border font-black text-[9px] uppercase tracking-wider ${
+      theme === 'dark' ? 'bg-[#151b23] border-[#222d3a] text-slate-300' : 'bg-slate-100 border-slate-200 text-slate-700'
+    }`}>
+      <span className="px-1.5 text-[8px] text-slate-400 font-black hidden lg:inline">MODO:</span>
+      <button
+        type="button"
+        onClick={() => setViewUnitMode('R$')}
+        className={`px-2 py-0.5 rounded transition-all cursor-pointer border-none font-black ${
+          viewUnitMode === 'R$'
+            ? 'bg-emerald-600 text-white shadow-xs'
+            : (theme === 'dark' ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900')
+        }`}
+      >
+        R$ (Real)
+      </button>
+      <button
+        type="button"
+        onClick={() => setViewUnitMode('HL')}
+        className={`px-2 py-0.5 rounded transition-all cursor-pointer border-none font-black ${
+          viewUnitMode === 'HL'
+            ? 'bg-cyan-600 text-white shadow-xs'
+            : (theme === 'dark' ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900')
+        }`}
+      >
+        HL (Hecto)
+      </button>
+    </div>
   );
 }
 
@@ -79,8 +147,6 @@ export default function App() {
     try {
       const savedUser = localStorage.getItem('af_logged_user');
       if (savedUser) {
-        const savedPanel = localStorage.getItem('af_logged_panel');
-        if (savedPanel && savedPanel !== 'landing') return savedPanel;
         return 'visao-geral';
       }
     } catch (e) {
@@ -88,6 +154,50 @@ export default function App() {
     }
     return 'landing';
   });
+
+  // Navigation History Stack (Back / Forward)
+  const [history, setHistory] = useState<string[]>(() => {
+    try {
+      const savedUser = localStorage.getItem('af_logged_user');
+      if (savedUser) {
+        return ['visao-geral'];
+      }
+    } catch (e) {
+      // fallback
+    }
+    return ['landing'];
+  });
+  const [historyIndex, setHistoryIndex] = useState<number>(0);
+
+  const navigateToPanel = (panel: string) => {
+    if (!panel || panel === activePanel) return;
+    setHistory(prev => {
+      const nextHistory = prev.slice(0, historyIndex + 1);
+      nextHistory.push(panel);
+      return nextHistory;
+    });
+    setHistoryIndex(prev => prev + 1);
+    setActivePanel(panel);
+  };
+
+  const canGoBack = historyIndex > 0;
+  const canGoForward = historyIndex < history.length - 1;
+
+  const handleGoBack = () => {
+    if (canGoBack) {
+      const prevIdx = historyIndex - 1;
+      setHistoryIndex(prevIdx);
+      setActivePanel(history[prevIdx]);
+    }
+  };
+
+  const handleGoForward = () => {
+    if (canGoForward) {
+      const nextIdx = historyIndex + 1;
+      setHistoryIndex(nextIdx);
+      setActivePanel(history[nextIdx]);
+    }
+  };
 
   const [showAuthGate, setShowAuthGate] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -98,9 +208,11 @@ export default function App() {
     } catch (e) {
       // ignore
     }
-    return 'light';
+    return 'dark';
   });
   const [activeActions, setActiveActions] = useState<any[]>([]);
+  const [isDpoAgentOpen, setIsDpoAgentOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   // Sync user, empresa, and activePanel to localStorage for session persistence
   useEffect(() => {
@@ -147,7 +259,7 @@ export default function App() {
     }
     const companyId = user.empresaId || 'demo';
     
-    // Listen to pending actions for this specific collaborator (limited to 10 active items)
+    // Notificações ativas por usuário: limitado a no máximo 10 alertas pendentes simultâneos para evitar sobrecarga visual de popups na tela
     import('firebase/firestore').then(({ limit }) => {
       const q = query(
         collection(db, 'acoes'),
@@ -236,17 +348,17 @@ export default function App() {
             // Fallback locally
             currentSessionId = 'local_' + Date.now();
             sessionStorage.setItem(sessionKey, currentSessionId);
-            const localSessions = JSON.parse(localStorage.getItem(`local_acessos_${empresaId}`) || '[]');
+            const localSessions = JSON.parse(safeGetLocalStorage(`local_acessos_${empresaId}`, '[]') || '[]');
             localSessions.unshift({ id: currentSessionId, ...newSession });
-            localStorage.setItem(`local_acessos_${empresaId}`, JSON.stringify(localSessions.slice(0, 100)));
+            safeSetLocalStorage(`local_acessos_${empresaId}`, JSON.stringify(localSessions.slice(0, 50)));
           }
         } else {
           // No DB, handle locally
           currentSessionId = 'local_' + Date.now();
           sessionStorage.setItem(sessionKey, currentSessionId);
-          const localSessions = JSON.parse(localStorage.getItem(`local_acessos_${empresaId}`) || '[]');
+          const localSessions = JSON.parse(safeGetLocalStorage(`local_acessos_${empresaId}`, '[]') || '[]');
           localSessions.unshift({ id: currentSessionId, ...newSession });
-          localStorage.setItem(`local_acessos_${empresaId}`, JSON.stringify(localSessions.slice(0, 100)));
+          safeSetLocalStorage(`local_acessos_${empresaId}`, JSON.stringify(localSessions.slice(0, 50)));
         }
       } else {
         // Update existing session without performing a getDoc read
@@ -264,7 +376,7 @@ export default function App() {
           }
         } else {
           // Local fallback update
-          const localSessions = JSON.parse(localStorage.getItem(`local_acessos_${empresaId}`) || '[]');
+          const localSessions = JSON.parse(safeGetLocalStorage(`local_acessos_${empresaId}`, '[]') || '[]');
           const idx = localSessions.findIndex((s: any) => s.id === currentSessionId);
           if (idx !== -1) {
             const sess = localSessions[idx];
@@ -275,7 +387,7 @@ export default function App() {
               sess.atividades.push(activityItem);
             }
             sess.ultimoAcesso = nowStr;
-            localStorage.setItem(`local_acessos_${empresaId}`, JSON.stringify(localSessions));
+            safeSetLocalStorage(`local_acessos_${empresaId}`, JSON.stringify(localSessions.slice(0, 50)));
           }
         }
       }
@@ -413,7 +525,7 @@ export default function App() {
     }
 
     setShowAuthGate(false);
-    setActivePanel(prev => (prev === 'landing' || !prev ? 'visao-geral' : prev));
+    setActivePanel('visao-geral');
   };
 
   const handleLogout = async () => {
@@ -439,7 +551,7 @@ export default function App() {
           if (idx !== -1) {
             localSessions[idx].logoutEm = nowStr;
             localSessions[idx].ativo = false;
-            localStorage.setItem(`local_acessos_${empresaId}`, JSON.stringify(localSessions));
+            safeSetLocalStorage(`local_acessos_${empresaId}`, JSON.stringify(localSessions.slice(0, 50)));
           }
         }
         sessionStorage.removeItem(sessionKey);
@@ -455,7 +567,7 @@ export default function App() {
     }
     setUser(null);
     setEmpresa(null);
-    setActivePanel('landing');
+    setActivePanel('visao-geral');
     setShowAuthGate(false);
   };
 
@@ -465,17 +577,7 @@ export default function App() {
       return null;
     }
 
-    const isNixon = user?.email?.toLowerCase()?.trim() === 'nixon.a.a100.nh@gmail.com';
-    const userRoles = (user?.papel || '').split(',').map((s: string) => s.trim());
-    const isSupervisorOrAdmin = user?.isControle || userRoles.includes('admin') || userRoles.includes('controle') || isNixon || user?.uid === 'bypass_g1009';
-
-    const adminPanels = [
-      'acessos', 'controle', 'exportar', 'firebase', 'registros', 'acoes',
-      'repack-dashboard', 'despejo-dashboard', 'logistica-dashboard',
-      'quebras-dashboard', 'fefo-dashboard', 'picking-dashboard'
-    ];
-
-    if (adminPanels.includes(activePanel) && !isSupervisorOrAdmin) {
+    if (!isPanelAllowedForUser(activePanel, user)) {
       return (
         <div className="flex flex-col items-center justify-center p-8 bg-white rounded-2xl shadow-sm border border-gray-100 max-w-md mx-auto my-12 text-center" id="acesso-restrito-container">
           <div className="w-16 h-16 bg-rose-50 text-rose-500 rounded-full flex items-center justify-center mb-4" id="acesso-restrito-icon">
@@ -484,7 +586,7 @@ export default function App() {
             </svg>
           </div>
           <h2 className="text-xl font-bold text-gray-900 mb-2" id="acesso-restrito-title">Acesso Restrito</h2>
-          <p className="text-sm text-gray-500 mb-6" id="acesso-restrito-desc">Sua conta não possui privilégios de supervisor ou administrador para acessar esta tela.</p>
+          <p className="text-sm text-gray-500 mb-6" id="acesso-restrito-desc">Seu cargo ({user?.cargo || user?.papel || 'Operador'}) não possui privilégios para acessar esta área da plataforma.</p>
           <button 
             id="acesso-restrito-btn-voltar"
             onClick={() => setActivePanel('visao-geral')} 
@@ -559,6 +661,19 @@ export default function App() {
     }
 
     switch (activePanel) {
+      case 'cat-produtividade':
+      case 'cat-dashboards':
+      case 'cat-ferramentas-gestao':
+      case 'cat-cadastros':
+      case 'cat-dados-acoes':
+        return (
+          <CategoryIndexPanel
+            categoryKey={activePanel}
+            user={user}
+            onNavigate={setActivePanel}
+            theme={theme}
+          />
+        );
       case 'dashboard':
       case 'visao-geral':
         return (
@@ -575,28 +690,35 @@ export default function App() {
             }}
           />
         );
+      case 'dn-swot':
+        return <DnSwotPanel user={user} onNavigate={setActivePanel} />;
+      case 'ajudante':
       case 'repack':
-        return <RepackPanel user={user} empresa={empresa} theme={theme} />;
+        return <AjudantePanel user={user} empresa={empresa} theme={theme} />;
       case 'repack-dashboard':
         return <RepackDashboard user={user} empresa={empresa} theme={theme} onBack={() => setActivePanel('visao-geral')} />;
       case 'despejo-dashboard':
         return <DespejoDashboard user={user} empresa={empresa} theme={theme} onBack={() => setActivePanel('visao-geral')} />;
       case 'logistica-dashboard':
-        return <LogisticaDashboard user={user} empresa={empresa} theme={theme} onBack={() => setActivePanel('visao-geral')} />;
+        return <PickingDashboard user={user} empresa={empresa} theme={theme} initialModule="efc_efd" onBack={() => setActivePanel('visao-geral')} />;
       case 'quebras-dashboard':
         return <QuebrasDashboard user={user} empresa={empresa} theme={theme} onBack={() => setActivePanel('visao-geral')} />;
       case 'fefo-dashboard':
         return <FefoDashboard user={user} empresa={empresa} theme={theme} onBack={() => setActivePanel('visao-geral')} />;
       case 'picking-dashboard':
-        return <PickingDashboard user={user} empresa={empresa} theme={theme} onBack={() => setActivePanel('visao-geral')} />;
+        return <PickingDashboard user={user} empresa={empresa} theme={theme} initialModule="operadores" onBack={() => setActivePanel('visao-geral')} />;
+      case 'gestao-capacidade':
+        return <GestaoCapacidadeDashboard user={user} empresa={empresa} theme={theme} onBack={() => setActivePanel('visao-geral')} />;
+      case 'tmr-dashboard':
+        return <PickingDashboard user={user} empresa={empresa} theme={theme} initialModule="tmr" onBack={() => setActivePanel('visao-geral')} />;
       case 'despejo':
         return <DespejoPanel user={user} empresa={empresa} theme={theme} />;
       case 'armazem':
-        return <ArmazemPanel user={user} empresa={empresa} theme={theme} />;
+        return <EmpilhadorPanel user={user} empresa={empresa} theme={theme} />;
       case 'quebras':
         return <QuebrasPanel user={user} empresa={empresa} theme={theme} />;
       case 'validades':
-        return <ValidadesPanel user={user} empresa={empresa} theme={theme} />;
+        return <ConferentePanel user={user} empresa={empresa} theme={theme} initialTab="validade" />;
       case 'refugo':
         return <RefugoPanel user={user} empresa={empresa} theme={theme} />;
       case 'empilhador':
@@ -604,17 +726,112 @@ export default function App() {
       case 'conferente':
         return <ConferentePanel user={user} empresa={empresa} theme={theme} />;
       case 'registros':
-        return <RegistrosPanel user={user} empresa={empresa} theme={theme} onNavigate={setActivePanel} />;
+        return <SimulacaoAcoesPanel user={user} empresa={empresa} onNavigate={setActivePanel} initialTab="governanca" />;
       case 'acessos':
-        return <AcessosPanel user={user} empresa={empresa} theme={theme} />;
+        return <SimulacaoAcoesPanel user={user} empresa={empresa} onNavigate={setActivePanel} initialTab="acoes" />;
+      case 'cadastros':
+        return <CadastrosPanel user={user} empresa={empresa} theme={theme} />;
       case 'controle':
         return <ControlePanel user={user} empresa={empresa} theme={theme} />;
       case 'acoes':
-        return <ControlePanel user={user} empresa={empresa} theme={theme} initialSection="acoes" />;
+        return <SimulacaoAcoesPanel user={user} empresa={empresa} onNavigate={setActivePanel} initialTab="acoes" />;
       case 'firebase':
         return <FirebasePanel theme={theme} />;
       case 'exportar':
         return <ExportarPanel user={user} empresa={empresa} theme={theme} />;
+      case 'politica-estoque':
+        return <GestaoCapacidadeDashboard user={user} empresa={empresa} theme={theme} initialTab="politica-estoque" onBack={() => setActivePanel('visao-geral')} />;
+      case 'importacao-contagens':
+        return <EstoqueHub user={user} initialTab="importacao-contagens" />;
+      case 'area-contingencia':
+        return <EstoqueHub user={user} initialTab="area-contingencia" />;
+      case 'venda-media':
+        return <EstoqueHub user={user} initialTab="venda-media" />;
+      case 'plataformas-externas':
+        return <PlataformasExternasPanel user={user} theme={theme} />;
+      case 'auditoria-dpo':
+        return <AuditoriaDpoPanel user={user} empresa={empresa} theme={theme} onNavigate={setActivePanel} />;
+      case 'treinamentos-qualidade':
+        return <TreinamentosQualidadePanel user={user} empresa={empresa} theme={theme} />;
+      case 'bloqueio-armazem':
+        return <BloqueioArmazemPanel user={user} empresa={empresa} theme={theme} />;
+      case 'devolucao':
+        return <DevolucaoPanel user={user} empresa={empresa} theme={theme} />;
+      case 'contagem-inventario':
+        return <ContagemInventarioPanel user={user} empresa={empresa} theme={theme} />;
+      case 'gestao-ativos':
+        return <GestaoAtivosPanel user={user} empresa={empresa} theme={theme} />;
+      case 'qualidade-puxada':
+        return <QualidadePuxadaPanel user={user} empresa={empresa} theme={theme} />;
+      case 'gestao-wlp':
+      case 'wlp-dashboard':
+        return <WlpDashboard user={user} empresaId={empresa?.id || 'demo'} />;
+      case 'ciclo-carretas':
+        return <CicloCarretasPanel user={user} empresa={empresa} theme={theme} />;
+      case 'padronizacao-processos':
+        return <PadraoOperacionalPanel user={user} theme={theme} />;
+      case 'simulacao-acoes':
+        return <SimulacaoAcoesPanel user={user} />;
+      case 'dados-retroativos':
+        return <DadosRetroativosPanel user={user} />;
+      case 'simulador-ressuprimento':
+        return <SimuladorRessuprimentoPanel user={user} />;
+      case 'ranking-produtividade':
+        return <RankingModule user={user} />;
+      case 'qualidade':
+        return <QualidadePanel user={user} empresa={empresa} theme={theme} />;
+      case 'eficiencia-montagem':
+        return <EficienciaMontagemPanel user={user} />;
+      case 'kpi-arvore':
+        return <TreeKpiViewer user={user} />;
+      case 'agenda-executiva':
+        return (
+          <DashboardOverview 
+            user={user} 
+            empresa={empresa} 
+            onNavigate={setActivePanel} 
+            theme={theme}
+            initialTab="agenda"
+            kpiStats={{
+              usuarios: 3,
+              modulos: empresa?.modulos ? empresa.modulos.length : 6,
+              docsHoje: 12,
+              alertasFefo: 4
+            }}
+          />
+        );
+      case 'diario-bordo':
+        return (
+          <DashboardOverview 
+            user={user} 
+            empresa={empresa} 
+            onNavigate={setActivePanel} 
+            theme={theme}
+            initialTab="diario_bordo"
+            kpiStats={{
+              usuarios: 3,
+              modulos: empresa?.modulos ? empresa.modulos.length : 6,
+              docsHoje: 12,
+              alertasFefo: 4
+            }}
+          />
+        );
+      case 'reunioes':
+        return (
+          <DashboardOverview 
+            user={user} 
+            empresa={empresa} 
+            onNavigate={setActivePanel} 
+            theme={theme}
+            initialTab="reunioes"
+            kpiStats={{
+              usuarios: 3,
+              modulos: empresa?.modulos ? empresa.modulos.length : 6,
+              docsHoje: 12,
+              alertasFefo: 4
+            }}
+          />
+        );
       default:
         return (
           <DashboardOverview 
@@ -642,12 +859,54 @@ export default function App() {
     };
     
     switch (panel) {
+      case 'cat-produtividade':
+        return {
+          breadcrumbs: ['Início', 'Produtividade'],
+          title: 'Produtividade',
+          subtitle: 'Visão geral e índice de módulos de apontamento operacional.',
+          color: 'from-amber-500/10 to-transparent'
+        };
+      case 'cat-dashboards':
+        return {
+          breadcrumbs: ['Início', 'Dashboards'],
+          title: 'Dashboards & BI',
+          subtitle: 'Visão geral e índice de painéis executivos e estatísticas.',
+          color: 'from-sky-500/10 to-transparent'
+        };
+      case 'cat-ferramentas-gestao':
+        return {
+          breadcrumbs: ['Início', 'Ferramentas de Gestão'],
+          title: 'Ferramentas de Gestão',
+          subtitle: 'Mecanismos de governança, DPO, inventário e planejamento.',
+          color: 'from-purple-500/10 to-transparent'
+        };
+      case 'cat-cadastros':
+        return {
+          breadcrumbs: ['Início', 'Cadastros'],
+          title: 'Cadastros Unificados',
+          subtitle: 'Base mestre de produtos, colaboradores e permissões.',
+          color: 'from-emerald-500/10 to-transparent'
+        };
+      case 'cat-dados-acoes':
+        return {
+          breadcrumbs: ['Início', 'Dados e Ações'],
+          title: 'Dados e Ações',
+          subtitle: 'Base de dados central, expurgo/importação e planos de ação.',
+          color: 'from-indigo-500/10 to-transparent'
+        };
       case 'visao-geral':
         return {
-          breadcrumbs: ['Início', 'Visão Geral'],
-          title: 'Visão Geral do Pátio',
+          breadcrumbs: ['Início', 'Workstation'],
+          title: 'Workstation (Centro de Controle)',
           subtitle: 'Acompanhamento em tempo real das movimentações, alertas de vencimento e produtividade do pátio.',
           color: 'from-[#1e56f0]/10 to-transparent'
+        };
+      case 'qualidade':
+        return {
+          breadcrumbs: ['Controle de Qualidade', 'Qualidade Armazém'],
+          title: 'QUALIDADE - 5S, Temperatura & Pragas',
+          subtitle: 'Gestão integrada do Controle de Temperatura do Armazém, Programa 5S de 14 Setores e Laudos Quinzenais de Pragas (PDF).',
+          color: 'from-amber-500/10 to-transparent'
         };
       case 'repack-dashboard':
         return {
@@ -655,6 +914,14 @@ export default function App() {
           title: 'Dashboard Repack',
           subtitle: 'Análise de performance, produtividade de operadores e eficiência de reembalagem.',
           color: 'from-purple-500/10 to-transparent'
+        };
+      case 'wlp-dashboard':
+      case 'gestao-wlp':
+        return {
+          breadcrumbs: ['Dashboard', 'Dashboard WLP'],
+          title: 'Dashboard WLP (HL/HH) & Apontamento de Jornadas',
+          subtitle: 'Workload Planning (HL/HH), horas médias trabalhadas, fechamento de faturamento (21h) e controle DPO de horas extras.',
+          color: 'from-amber-500/10 to-transparent'
         };
       case 'despejo-dashboard':
         return {
@@ -665,10 +932,10 @@ export default function App() {
         };
       case 'logistica-dashboard':
         return {
-          breadcrumbs: ['Dashboard', 'Dashboard EFC EFD'],
-          title: 'Dashboard EFC EFD',
-          subtitle: 'Análise de tempos de carregamento, janelas logísticas e fluxo de caminhões.',
-          color: 'from-sky-500/10 to-transparent'
+          breadcrumbs: ['Dashboard', 'Dashboard Operadores'],
+          title: 'Dashboard Operadores (Unificado)',
+          subtitle: 'Visão unificada: Empilhadores & Picking, EFC / EFD, TMR e Planos de Ação Corretiva.',
+          color: 'from-amber-500/10 to-transparent'
         };
       case 'quebras-dashboard':
         return {
@@ -682,6 +949,13 @@ export default function App() {
           breadcrumbs: ['Dashboard', 'Dashboard FEFO'],
           title: 'Dashboard FEFO (Validades)',
           subtitle: 'Indicadores de produtos próximos ao vencimento, lotes em risco e perdas evitadas.',
+          color: 'from-emerald-500/10 to-transparent'
+        };
+      case 'gestao-capacidade':
+        return {
+          breadcrumbs: ['Dashboard', 'Gestão de Capacidade'],
+          title: 'Gestão de Capacidade do Armazém',
+          subtitle: 'Monitoramento de ocupação (Central, Picking, Marketplace) com inteligência de transbordo.',
           color: 'from-emerald-500/10 to-transparent'
         };
       case 'picking-dashboard':
@@ -707,10 +981,10 @@ export default function App() {
         };
       case 'armazem':
         return {
-          breadcrumbs: ['Setores de Operação', 'Operação EFC / EFD'],
-          title: 'Operação EFC / EFD',
-          subtitle: 'Controle de fluxo de carretas, carregamento e janelas logísticas de faturamento.',
-          color: 'from-sky-500/10 to-transparent'
+          breadcrumbs: ['Setores de Operação', 'Operação Empilhador'],
+          title: 'Operação Empilhador',
+          subtitle: 'Atendimento de demandas unificadas (EFC/EFD, R&R e TMR) para operadores de empilhadeira.',
+          color: 'from-amber-500/10 to-transparent'
         };
       case 'quebras':
         return {
@@ -735,16 +1009,23 @@ export default function App() {
         };
       case 'empilhador':
         return {
-          breadcrumbs: ['Setores de Operação', 'Operação Picking'],
-          title: 'Operação Picking',
-          subtitle: 'Atribuição and acompanhamento de tarefas para operadores de empilhadeira.',
-          color: 'from-sky-500/10 to-transparent'
+          breadcrumbs: ['Setores de Operação', 'Operação Empilhador'],
+          title: 'Operação Empilhador',
+          subtitle: 'Atendimento de demandas unificadas (EFC/EFD, R&R e TMR) para operadores de empilhadeira.',
+          color: 'from-amber-500/10 to-transparent'
+        };
+      case 'tmr-dashboard':
+        return {
+          breadcrumbs: ['Dashboard', 'Dashboard TMR'],
+          title: 'Dashboard TMR — Tempo Médio de Revenda',
+          subtitle: 'Métricas de tempo médio de permanência na revenda para carretas (meta 1h10) e recargas (meta 40min).',
+          color: 'from-amber-500/10 to-transparent'
         };
       case 'conferente':
         return {
-          breadcrumbs: ['Setores de Operação', 'Operação Conferênte'],
-          title: 'Operação Conferênte',
-          subtitle: 'Validação de volumes expedidos, recebimentos e auditoria de pallets.',
+          breadcrumbs: ['Setores de Operação', 'Conferente/ADM'],
+          title: 'Conferente/ADM',
+          subtitle: 'Ecossistema Conferente/ADM — Importação EFC/EFD (03.11.49.02), classificação de pátio e atribuição de colaboradores.',
           color: 'from-teal-500/10 to-transparent'
         };
       case 'registros':
@@ -760,6 +1041,13 @@ export default function App() {
           title: 'Controle de Acessos e Segurança',
           subtitle: 'Auditoria de logins, sessões ativas, horários de entrada/saída e navegação de abas.',
           color: 'from-indigo-500/10 to-transparent'
+        };
+      case 'cadastros':
+        return {
+          breadcrumbs: ['Administração & Gestão', 'Cadastros Gerais'],
+          title: 'Cadastros Centralizados (Produtos, Colaboradores & Acessos)',
+          subtitle: 'Single Source of Truth para o cadastro mestre da unidade.',
+          color: 'from-emerald-500/10 to-transparent'
         };
       case 'controle':
         return {
@@ -777,10 +1065,66 @@ export default function App() {
         };
       case 'exportar':
         return {
-          breadcrumbs: ['Sistemas', 'Exportador de Dados'],
-          title: 'Exportar Base',
-          subtitle: 'Extração unificada de relatórios operacionais em formato CSV e planilhas.',
-          color: 'from-gray-500/10 to-transparent'
+          breadcrumbs: ['Sistemas', 'Base de Dados Central'],
+          title: 'Base de Dados',
+          subtitle: 'Gerenciamento de colaboradores por processo, produtos mestre, metas por operação, importação/expurgo e relatórios.',
+          color: 'from-sky-500/10 to-transparent'
+        };
+      case 'politica-estoque':
+        return {
+          breadcrumbs: ['Gestão de Estoque', 'Política de Estoque'],
+          title: 'Dashboard Política de Estoque (6 Dias)',
+          subtitle: 'Aderência à política oficial, alertas de overstock e faltas teóricas.',
+          color: 'from-[#1e56f0]/10 to-transparent'
+        };
+      case 'importacao-contagens':
+        return {
+          breadcrumbs: ['Gestão de Estoque', 'Importação de Contagens'],
+          title: 'Importação de Contagens Físicas',
+          subtitle: 'Ambiente exclusivo Drag & Drop para Central, Picking e Marketplace.',
+          color: 'from-sky-500/10 to-transparent'
+        };
+      case 'area-contingencia':
+        return {
+          breadcrumbs: ['Gestão de Estoque', 'Área de Contingência'],
+          title: 'Gestão de Estoque em Contingência',
+          subtitle: 'Alocação manual de itens e rastreamento de histórico com observações.',
+          color: 'from-amber-500/10 to-transparent'
+        };
+      case 'venda-media':
+        return {
+          breadcrumbs: ['Gestão de Estoque', 'Importação Venda Média'],
+          title: 'Importação de Venda Média Diária',
+          subtitle: 'Carga dos dados de saída diária para cálculo do estoque ideal.',
+          color: 'from-teal-500/10 to-transparent'
+        };
+      case 'plataformas-externas':
+        return {
+          breadcrumbs: ['Ferramentas de Gestão', 'Plataformas Externas'],
+          title: 'Plataforma Retorno de Rota, Trocas & Reposições',
+          subtitle: 'Ferramentas de Gestão com links de redirecionamento para Plataforma de Retorno de Rota e Plataforma de Trocas e Reposições.',
+          color: 'from-amber-500/10 to-transparent'
+        };
+      case 'agenda-executiva':
+        return {
+          breadcrumbs: ['Ferramentas de Gestão', 'Agenda Executiva'],
+          title: 'Agenda Executiva & Compromissos',
+          subtitle: 'Compromissos do dia, semana e mês no Workstation Executivo.',
+          color: 'from-blue-500/10 to-transparent'
+        };
+      case 'diario-bordo':
+        return {
+          breadcrumbs: ['Ferramentas de Gestão', 'Diário de Bordo'],
+          title: 'Diário de Bordo do Colaborador',
+          subtitle: 'Anotações diárias, treinamentos e lembretes individuais.',
+          color: 'from-amber-500/10 to-transparent'
+        };
+      case 'reunioes':
+        return {
+          breadcrumbs: ['Ferramentas de Gestão', 'Reuniões e Treinamentos'],
+          title: 'Reuniões e Treinamentos',
+          subtitle: 'Frequência, materiais, atas em PDF, alertas diários, Team Room e troca de turno.',
+          color: 'from-indigo-500/10 to-transparent'
         };
       case 'firebase':
         return {
@@ -812,46 +1156,16 @@ export default function App() {
     );
   }
 
-  // Active view layout branches
+  // Active view layout branches: DIRECT LOGIN SCREEN (No intermediate landing page)
   if (!user) {
     return (
-      <div className={`min-h-screen ${showAuthGate ? 'bg-gradient-to-b from-[#eef2f7] to-[#ffffff]' : 'bg-[#07090d]'} text-[#1f2937] overflow-x-hidden transition-colors duration-300`}>
-        <AnimatePresence mode="wait">
-          {showAuthGate ? (
-            <motion.div 
-              key="auth-gate"
-              initial={{ opacity: 0, y: 15 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -15 }}
-              transition={{ duration: 0.3, ease: 'easeOut' }}
-              className="relative min-h-screen py-12 px-4 sm:px-6 lg:px-8 flex items-center justify-center bg-transparent"
-            >
-              {/* Absolute close button */}
-              <button 
-                onClick={() => setShowAuthGate(false)} 
-                className="absolute top-6 right-6 p-2.5 rounded-xl border border-slate-300 hover:bg-slate-100 text-xs font-bold text-slate-600 hover:text-slate-900 cursor-pointer tracking-wider uppercase transition-all"
-              >
-                ✕ Voltar ao Início
-              </button>
-              <div className="w-full max-w-lg">
-                <LoginAuth 
-                  onAuthSuccess={handleAuthSuccess} 
-                  onBackToLanding={() => setShowAuthGate(false)} 
-                />
-              </div>
-            </motion.div>
-          ) : (
-            <motion.div 
-              key="landing-page"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.3 }}
-            >
-              <LandingPage onEnterApp={() => setShowAuthGate(true)} />
-            </motion.div>
-          )}
-        </AnimatePresence>
+      <div className="min-h-screen bg-gradient-to-b from-[#0b0e14] via-[#0e131d] to-[#07090d] text-[#1f2937] overflow-x-hidden flex items-center justify-center p-4">
+        <div className="w-full max-w-lg">
+          <LoginAuth 
+            onAuthSuccess={handleAuthSuccess} 
+            onBackToLanding={() => {}} 
+          />
+        </div>
         <div id="toast" className="toast">Notificação do Co-pilot</div>
       </div>
     );
@@ -870,11 +1184,13 @@ export default function App() {
           user={user} 
           empresa={empresa} 
           activeTab={activePanel} 
-          onSelectTab={setActivePanel} 
+          onSelectTab={navigateToPanel} 
           onLogout={handleLogout}
           isFbOnline={isCustomFirebaseConnected()}
           theme={theme}
           onToggleTheme={() => setTheme(prev => prev === 'dark' ? 'light' : 'dark')}
+          isCollapsed={isSidebarCollapsed}
+          onToggleCollapse={() => setIsSidebarCollapsed(prev => !prev)}
         />
 
         {/* Main workspace arena with smooth tab switching */}
@@ -888,7 +1204,55 @@ export default function App() {
               ? 'bg-[#07090d]/85 border-[#1c2530]' 
               : 'bg-white/95 border-slate-200 shadow-sm'
           }`}>
-            <div className="flex items-center gap-3 min-w-0">
+            <div className="flex items-center gap-2.5 min-w-0">
+              {/* Back & Forward History Navigation Buttons */}
+              <div className="flex items-center gap-1 flex-shrink-0">
+                <button
+                  type="button"
+                  onClick={handleGoBack}
+                  disabled={!canGoBack}
+                  className={`p-1.5 rounded-lg border transition-all flex items-center justify-center ${
+                    canGoBack
+                      ? theme === 'dark'
+                        ? 'bg-[#151b23] border-[#222d3a] text-amber-400 hover:text-amber-300 hover:bg-slate-800 hover:border-amber-500/40 cursor-pointer shadow-xs'
+                        : 'bg-slate-100 border-slate-300 text-slate-800 hover:bg-slate-200 shadow-xs cursor-pointer'
+                      : 'opacity-30 cursor-not-allowed bg-transparent border-slate-700/30 text-slate-500'
+                  }`}
+                  title={canGoBack ? "Retornar para a tela anterior (Voltar)" : "Sem histórico anterior"}
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={handleGoForward}
+                  disabled={!canGoForward}
+                  className={`p-1.5 rounded-lg border transition-all flex items-center justify-center ${
+                    canGoForward
+                      ? theme === 'dark'
+                        ? 'bg-[#151b23] border-[#222d3a] text-amber-400 hover:text-amber-300 hover:bg-slate-800 hover:border-amber-500/40 cursor-pointer shadow-xs'
+                        : 'bg-slate-100 border-slate-300 text-slate-800 hover:bg-slate-200 shadow-xs cursor-pointer'
+                      : 'opacity-30 cursor-not-allowed bg-transparent border-slate-700/30 text-slate-500'
+                  }`}
+                  title={canGoForward ? "Avançar para a próxima tela" : "Sem histórico posterior"}
+                >
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Sidebar toggle button (visible when collapsed or for quick toggle) */}
+              <button
+                type="button"
+                onClick={() => setIsSidebarCollapsed(prev => !prev)}
+                className={`hidden md:flex items-center justify-center p-1.5 rounded-lg border transition-all cursor-pointer ${
+                  theme === 'dark'
+                    ? 'bg-[#151b23] border-[#222d3a] text-slate-300 hover:text-white hover:border-slate-600'
+                    : 'bg-slate-100 border-slate-200 text-slate-700 hover:text-slate-900 hover:bg-slate-200'
+                }`}
+                title={isSidebarCollapsed ? "Mostrar Menu Lateral" : "Ocultar Menu Lateral (Maximizar Tela)"}
+              >
+                {isSidebarCollapsed ? <PanelLeftOpen className="w-4 h-4 text-amber-400" /> : <PanelLeftClose className="w-4 h-4 text-slate-400" />}
+              </button>
+
               {/* Brand Logo icon on mobile */}
               <div className="md:hidden flex items-center flex-shrink-0">
                 <BrandLogo variant="icon-only" size="sm" iconSize="sm" />
@@ -920,7 +1284,26 @@ export default function App() {
             </div>
 
             {/* Quick Stats / System Health widget aligned horizontally */}
-            <div className="flex items-center gap-2.5 sm:gap-3 flex-shrink-0">
+            <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+              {/* OPERATIONAL NOTIFICATION BELL */}
+              <OperationalNotificationBell user={user} onNavigate={navigateToPanel} />
+
+              {/* YELLOW "IR PARA OPERAÇÃO" BUTTON - Visible for all logged users */}
+              {user && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const targetOp = getUserOperationPanel(user);
+                    navigateToPanel(targetOp);
+                  }}
+                  className="bg-amber-400 hover:bg-amber-300 text-slate-950 px-2.5 py-1 md:px-3 md:py-1 rounded-lg font-black text-[10px] md:text-[11px] uppercase tracking-wider shadow-md hover:scale-105 transition-all cursor-pointer flex items-center gap-1 border border-amber-300"
+                  title="Ir diretamente para a tela da operação vinculada ao seu perfil"
+                >
+                  <Zap className="w-3.5 h-3.5 fill-slate-950 text-slate-950" />
+                  <span className="whitespace-nowrap font-black">Ir para Operação</span>
+                </button>
+              )}
+
               {/* Theme Toggle Button */}
               <button
                 type="button"
@@ -981,6 +1364,33 @@ export default function App() {
 
         {/* Floating dynamic status toaster */}
         <div id="toast" className="toast">Notificação de Pátio</div>
+
+        {/* FLOATING BUTTON FOR DPO AI AGENT */}
+        <button
+          onClick={() => setIsDpoAgentOpen(true)}
+          className="fixed bottom-5 right-5 z-40 bg-gradient-to-r from-emerald-600 to-blue-600 hover:from-emerald-500 hover:to-blue-500 text-white p-3.5 rounded-full shadow-2xl flex items-center gap-2 font-black text-xs cursor-pointer border-2 border-white/20 hover:scale-105 transition-all group"
+          title="Consultar Agente de IA DPO"
+        >
+          <span className="w-3 h-3 rounded-full bg-emerald-400 animate-ping absolute -top-0.5 -right-0.5" />
+          <span className="w-3 h-3 rounded-full bg-emerald-400 absolute -top-0.5 -right-0.5" />
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+          </svg>
+          <span className="hidden sm:inline font-mono tracking-wider uppercase text-[11px]">Agente DPO IA</span>
+        </button>
+
+        {/* AGENTE DPO MODAL */}
+        {user && (
+          <AgenteDpoModal
+            user={user}
+            isOpen={isDpoAgentOpen}
+            onClose={() => setIsDpoAgentOpen(false)}
+            onNavigateToActions={() => {
+              setIsDpoAgentOpen(false);
+              setActivePanel('simulacao-acoes');
+            }}
+          />
+        )}
       </div>
     </EmpresaDataProvider>
   );

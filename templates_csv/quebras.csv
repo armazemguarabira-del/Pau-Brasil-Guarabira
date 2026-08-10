@@ -1,0 +1,3 @@
+data_ocorrencia,colaborador_matricula,area_origem,produto_codigo,lote,quantidade_cx,valor_impacto_reais,motivo_quebra
+"2026-08-05","GBR-1099","PICKING","21666","L260801B",2,170.00,"Queda de caixa no tombamento da paleteira"
+"2026-08-05","GBR-9042","DOCAS DE CARGA","31795","LOT-31795-A",1,85.00,"Garrafa quebrada durante carregamento de rota"

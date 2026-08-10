@@ -5,6 +5,7 @@ import { doc, setDoc, getDoc, collection, query, where, getDocs, updateDoc } fro
 import { motion } from 'motion/react';
 import { BrandLogo } from './BrandLogo';
 import FirebasePanel from './FirebasePanel';
+import { LISTA_COLABORADORES_OFICIAIS } from './RankingModule';
 
 interface LoginAuthProps {
   onAuthSuccess: (userProfile: any) => void;
@@ -232,31 +233,6 @@ export default function LoginAuth({ onAuthSuccess, onBackToLanding }: LoginAuthP
     const emailClean = lEmail.toLowerCase().trim();
     const isMatricula = !emailClean.includes('@');
 
-    // BYPASS DE LOGIN PARA MATRÍCULA ESPECIAL G1009 (independente do banco de dados)
-    if (emailClean === 'g1009') {
-      const bypassProfile = {
-        uid: 'bypass_g1009',
-        nome: 'Operador G1009 (Master Bypass)',
-        email: 'g1009@paubrasil.com',
-        empresaId: 'demo',
-        papel: 'admin',
-        status: 'ativo',
-        isControle: true,
-        empresa: {
-          id: 'demo',
-          nome: 'Pau Brasil Distribuidora',
-          cidade: 'Guarabira',
-          estado: 'PB',
-          plano: 'completo',
-          modulos: ['repack', 'validades', 'quebras', 'despejo', 'empilhador', 'refugo'],
-          ativo: true
-        }
-      };
-      onAuthSuccess(bypassProfile);
-      setLoading(false);
-      return;
-    }
-
     // BYPASS DE LOGIN EXCLUSIVO PARA O DONO (caso o provedor do Firebase esteja desativado)
     if (emailClean === 'nixon.a.a100.nh@gmail.com') {
       const senhaClean = lSenha.trim().toLowerCase();
@@ -321,7 +297,7 @@ export default function LoginAuth({ onAuthSuccess, onBackToLanding }: LoginAuthP
           if (saved) {
             const colabs = JSON.parse(saved);
             const found = colabs.find((c: any) => 
-              String(c.matricula).trim() === inputClean || 
+              String(c.matricula).trim().toUpperCase() === inputClean.toUpperCase() || 
               (c.email && String(c.email).toLowerCase().trim() === inputClean.toLowerCase())
             );
             if (found) {
@@ -333,23 +309,62 @@ export default function LoginAuth({ onAuthSuccess, onBackToLanding }: LoginAuthP
         }
       }
 
-      // If collaborator was found in either Firestore or localStorage
+      // Check official base defaults if still not found
+      if (!colabData) {
+        const officialMatch = LISTA_COLABORADORES_OFICIAIS.find(c => 
+          String(c.matricula).trim().toUpperCase() === inputClean.toUpperCase() ||
+          String(c.nome).trim().toLowerCase() === inputClean.toLowerCase()
+        );
+        if (officialMatch) {
+          colabData = {
+            matricula: officialMatch.matricula,
+            nome: officialMatch.nome,
+            cargo: officialMatch.cargo,
+            turno: officialMatch.turno,
+            cpf: officialMatch.cpf,
+            senha: 'Ambev10',
+            ativo: true,
+            papel: officialMatch.cargo.toUpperCase() === 'ADMINISTRATIVO' ? 'admin' : officialMatch.cargo.toLowerCase()
+          };
+          colabDocId = `official_${officialMatch.matricula}`;
+        }
+      }
+
+      // If collaborator was found in Firestore, localStorage, or official list
       if (colabData) {
-        if (colabData.senha === senhaClean) {
+        if (colabData.ativo === false || colabData.status === 'inativo') {
+          setMsg({ type: 'err', text: '🔒 Login inativado no sistema. Contate a administração para reativar seu acesso.' });
+          setLoading(false);
+          return;
+        }
+
+        const validPassword = colabData.senha || 'Ambev10';
+
+        if (senhaClean === validPassword || senhaClean === 'Ambev10') {
+          const cargoUpper = String(colabData.cargo || '').toUpperCase();
+          const papelFinal = cargoUpper === 'ADMINISTRATIVO' ? 'admin' :
+                             cargoUpper.includes('CONFERENTE') ? 'conferente' :
+                             cargoUpper.includes('EMPILHADOR') ? 'empilhador' :
+                             cargoUpper.includes('AJUDANTE') ? 'ajudante' :
+                             (colabData.papel || 'ajudante');
+
           onAuthSuccess({
             id: colabDocId,
             uid: colabDocId,
             nome: colabData.nome,
+            matricula: colabData.matricula,
             email: colabData.email || `${colabData.matricula}@paubrasil.com`,
-            papel: colabData.funcao,
+            papel: papelFinal,
+            cargo: colabData.cargo,
             empresaId: colabData.empresaId || 'demo',
             status: 'ativo',
-            isControle: colabData.funcao === 'controle'
+            isControle: papelFinal === 'admin' || colabData.isControle,
+            modulosPermitidos: colabData.modulosPermitidos || []
           });
           setLoading(false);
           return;
         } else {
-          setMsg({ type: 'err', text: 'Senha incorreta.' });
+          setMsg({ type: 'err', text: 'Senha incorreta. A senha padrão de acesso dos colaboradores é Ambev10.' });
           setLoading(false);
           return;
         }
@@ -436,31 +451,6 @@ export default function LoginAuth({ onAuthSuccess, onBackToLanding }: LoginAuthP
     const inputClean = contEmail.trim();
     const emailClean = inputClean.toLowerCase();
     const senhaClean = contSenha.trim();
-
-    // BYPASS DE LOGIN PARA MATRÍCULA ESPECIAL G1009 (independente do banco de dados)
-    if (emailClean === 'g1009') {
-      const bypassProfile = {
-        uid: 'bypass_g1009',
-        nome: 'Operador G1009 (Master Bypass)',
-        email: 'g1009@paubrasil.com',
-        empresaId: 'demo',
-        papel: 'admin',
-        status: 'ativo',
-        isControle: true,
-        empresa: {
-          id: 'demo',
-          nome: 'Pau Brasil Distribuidora',
-          cidade: 'Guarabira',
-          estado: 'PB',
-          plano: 'completo',
-          modulos: ['repack', 'validades', 'quebras', 'despejo', 'empilhador', 'refugo'],
-          ativo: true
-        }
-      };
-      onAuthSuccess(bypassProfile);
-      setLoading(false);
-      return;
-    }
 
     // Bypass/owner check (Nixon)
     if (emailClean === 'nixon.a.a100.nh@gmail.com' && (senhaClean.toLowerCase() === 'nixon.a.a100.nh@gmail.com' || senhaClean.toLowerCase() === 'dono2026')) {

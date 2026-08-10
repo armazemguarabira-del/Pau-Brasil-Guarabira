@@ -75,18 +75,19 @@ export default function AcessosPanel({ user, empresa }: AcessosPanelProps) {
       'quebras-dashboard': 'Dashboard Quebras',
       'fefo-dashboard': 'Dashboard FEFO (Validades)',
       'blitz-dashboard': 'Dashboard Blitz',
-      'picking-dashboard': 'Dashboard Picking',
+      'picking-dashboard': 'Dashboard Operadores',
+      'ajudante': 'Operação Ajudante',
       'repack': 'Operação Repack',
       'despejo': 'Operação Despejo',
-      'armazem': 'Operação EFC / EFD',
+      'armazem': 'Operação Empilhador',
       'quebras': 'Operação Quebras',
       'validades': 'Operação Validade',
       'refugo': 'Operação Retorno de Rota',
-      'empilhador': 'Operação Picking',
+      'empilhador': 'Operação Empilhador',
       'conferente': 'Operação Conferênte',
       'registros': 'Registros de Setores',
       'controle': 'Painel de Controle',
-      'exportar': 'Exportar Base',
+      'exportar': 'Base de Dados',
       'firebase': 'Status Firestore',
       'acessos': 'Controle de Acessos',
       'landing': 'Tela Inicial / Landing'
@@ -105,30 +106,7 @@ export default function AcessosPanel({ user, empresa }: AcessosPanelProps) {
       if (saved) {
         setSessions(JSON.parse(saved));
       } else {
-        // Generate mock data for first view if completely empty
-        const now = new Date();
-        const firstSession: AcessoSession = {
-          id: 'mock-1',
-          empresaId,
-          userId: user.uid,
-          nome: user.nome,
-          email: user.email,
-          papel: user.papel || 'admin',
-          loginEm: new Date(now.getTime() - 10 * 60 * 1000).toISOString(),
-          loginData: now.toLocaleDateString('pt-BR'),
-          loginHora: new Date(now.getTime() - 10 * 60 * 1000).toLocaleTimeString('pt-BR', { hour12: false }),
-          logoutEm: null,
-          ultimoAcesso: now.toISOString(),
-          abasAcessadas: ['visao-geral', 'acessos'],
-          atividades: [
-            { aba: 'visao-geral', hora: new Date(now.getTime() - 10 * 60 * 1000).toLocaleTimeString('pt-BR', { hour12: false }), timestamp: new Date(now.getTime() - 10 * 60 * 1000).toISOString() },
-            { aba: 'acessos', hora: now.toLocaleTimeString('pt-BR', { hour12: false }), timestamp: now.toISOString() }
-          ],
-          ativo: true
-        };
-        const defaultList = [firstSession];
-        setSessions(defaultList);
-        localStorage.setItem(`local_acessos_${empresaId}`, JSON.stringify(defaultList));
+        setSessions([]);
       }
       setLoading(false);
       return;
@@ -142,20 +120,19 @@ export default function AcessosPanel({ user, empresa }: AcessosPanelProps) {
 
   // Clean a session log safely
   const handleDeleteSession = async (sessId: string) => {
-    if (!confirm('Deseja realmente remover este registro de acesso?')) return;
     try {
       if (db && !sessId.startsWith('local_') && !sessId.startsWith('mock-')) {
         await deleteDoc(doc(db, 'acessos', sessId));
-      } else {
-        const remaining = sessions.filter(s => s.id !== sessId);
-        setSessions(remaining);
-        localStorage.setItem(`local_acessos_${empresaId}`, JSON.stringify(remaining));
-      }
-      if (selectedSession?.id === sessId) {
-        setSelectedSession(null);
       }
     } catch (e: any) {
-      alert('Erro ao excluir sessão de acesso: ' + e.message);
+      console.error(e);
+    } finally {
+      const remaining = sessions.filter(s => s.id !== sessId && (s as any)._docId !== sessId);
+      setSessions(remaining);
+      localStorage.setItem(`local_acessos_${empresaId}`, JSON.stringify(remaining));
+      if (selectedSession?.id === sessId || (selectedSession as any)?._docId === sessId) {
+        setSelectedSession(null);
+      }
     }
   };
 

@@ -1,0 +1,26 @@
+{
+  "version": "v1.0-TAPA_X",
+  "total_pendencias": 3,
+  "items_requires_manual_review": [
+    {
+      "demanda_id": "a1b2c3d4-0010-4000-8000-000000000010",
+      "produto_codigo": "18267",
+      "produto_descricao": "SODA LIMONADA ANTARCTICA PET 200ML",
+      "lote": "L260805F",
+      "motivo_pendencia": "Leitura OCR no pátio capturou validade com baixa confiança (confidence < 0.90). Requer confirmação visual do mapa de rua pelo Conferente.",
+      "acao_recomendada": "Acessar o painel de Desvios na Workstation e validar a data física gravada na garrafa."
+    }
+  ],
+  "duvidas_operacionais_supervisao": [
+    {
+      "topico": "Janela de Recolhimento de Chope em Barril (Keg 50L)",
+      "pergunta": "Confirmar se o parâmetro de fábrica para recolhimento de chopp não pasteurizado permanece em 15 dias em vez de 45 dias no CCO de Guarabira.",
+      "impacto": "Ajuste na flag prazo_45dias_flag para SKUs de chopp em barril."
+    },
+    {
+      "topico": "Integração do Sistema de Reconhecimento OCR de Placas e Caixas",
+      "pergunta": "Definir se o expurgo de imagens do bucket de uploads deve ocorrer em 30 dias (padrão) ou 60 dias para auditorias externas de DPO.",
+      "impacto": "Ajuste no tempo do Cron job_saneamento_ocr_uploads."
+    }
+  ]
+}

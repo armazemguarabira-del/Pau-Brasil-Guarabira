@@ -63,6 +63,8 @@ export default function LandingPage({ onEnterApp }: LandingPageProps) {
         validadesAlertas: dbKpis.validadesAlertas,
       };
 
+      // Consultas de amostragem pública para estatísticas demonstrativas na Landing Page (usuários não autenticados).
+      // Mantido limit(15) propositalmente por ser uma prévia pública leve sem isolamento por empresaId.
       try {
         const qRepack = query(collection(db, 'repack'), limit(15));
         const snapRepack = await getDocs(qRepack);

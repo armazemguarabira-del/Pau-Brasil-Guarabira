@@ -1,0 +1,88 @@
+{
+  "package_name": "pacote_final.zip",
+  "project": "DPO Guarabira-PB Logística & Gestão de Armazém",
+  "generated_at": "2026-08-05T06:20:00Z",
+  "artifacts": [
+    {
+      "filename": "spec.json",
+      "description": "Especificação técnica consolidada (Views, DB Schema, REST APIs, Cron Jobs, Triggers, Matriz RBAC, Sprints e Acceptance Tests)"
+    },
+    {
+      "filename": "demandas_etapa2.json",
+      "description": "Mapeamento e ingestão estruturada das 10 demandas operacionais da Etapa 2"
+    },
+    {
+      "filename": "mapeamento_destinos_etapa2.json",
+      "description": "Regras de direcionamento para as Workstations de Pátio e Prazos Critical (45D)"
+    },
+    {
+      "filename": "wireframes_etapa3.json",
+      "description": "Especificação dos wireframes e rotas para as 11 telas operacionais e executivas"
+    },
+    {
+      "filename": "checklist_templates.json",
+      "description": "Templates JSON dos checklists operacionais (5S Ajudante)"
+    },
+    {
+      "filename": "resumo_etapa3.md",
+      "description": "Resumo técnico da arquitetura de navegação e componentes"
+    },
+    {
+      "filename": "schema_etapa4.json",
+      "description": "Schema relacional do banco de dados (17 tabelas, chaves e índices)"
+    },
+    {
+      "filename": "api_etapa4.json",
+      "description": "Especificação OpenApi/REST dos endpoints críticos, regras auth e payloads"
+    },
+    {
+      "filename": "jobs_etapa4.md",
+      "description": "Especificação de Background Jobs e expressões cron (45D, Stock Age, Repack/Despejo)"
+    },
+    {
+      "filename": "notifications_etapa5.json",
+      "description": "Triggers de notificação, canais, destinatários e políticas de retry"
+    },
+    {
+      "filename": "cron_etapa5.md",
+      "description": "Mapeamento detalhado dos agendadores e fórmulas matemáticas de disparo"
+    },
+    {
+      "filename": "testes_simulados_etapa5.json",
+      "description": "4 Cenários de teste simulados com payloads de entrada e saídas esperadas"
+    },
+    {
+      "filename": "backlog_etapa6.md",
+      "description": "Planejamento incremental de Sprints (MVP até Sprint 6, incluindo TAPA X)"
+    },
+    {
+      "filename": "acceptance_tests_etapa6.md",
+      "description": "Suite de testes de aceite com critérios mensuráveis e passos formais"
+    },
+    {
+      "filename": "backlog_final.md",
+      "description": "Backlog consolidado final com plano de rollout e rollback"
+    },
+    {
+      "filename": "acceptance_tests_final.md",
+      "description": "Suite final de testes de aceite E2E e regras de negócio"
+    },
+    {
+      "filename": "deployment_guide.md",
+      "description": "Guia de infraestrutura, variáveis de ambiente, execução e monitoramento"
+    },
+    {
+      "filename": "resumo_final.md",
+      "description": "Resumo executivo final com próximos passos e análise de riscos prioritários"
+    }
+  ],
+  "requires_manual_review_items": [
+    {
+      "demanda_id": "a1b2c3d4-0004-4000-8000-000000000004",
+      "produto_codigo": "347",
+      "produto_descricao": "SUKITA PET 1L CAIXA C/12",
+      "confidence": 0.58,
+      "motivo": "Baixa confiança no OCR da nota fiscal (58% < threshold de 80%). Requer validação manual do lote e quantidade no CCO."
+    }
+  ]
+}

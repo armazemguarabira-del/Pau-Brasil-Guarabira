@@ -1,36 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import { Usuario, Empresa } from '../types';
 import { BrandLogo } from './BrandLogo';
+import { isPanelAllowedForUser } from '../utils/permissions';
+import { CATEGORY_DEFINITIONS } from './CategoryIndexPanel';
 import { 
-  LayoutDashboard, 
-  RefreshCw, 
-  Trash2, 
-  Truck, 
-  AlertTriangle, 
-  Calendar, 
+  Zap, 
+  BarChart2, 
+  Sliders, 
+  Database, 
+  ListChecks, 
+  LogOut, 
+  Sun, 
+  Moon, 
+  Clock, 
   Search, 
-  Package, 
-  ClipboardCheck, 
-  Download, 
-  ListChecks,
-  LogOut,
-  ChevronDown,
   ChevronRight,
-  Sparkles,
-  Building2,
-  Database,
-  BarChart2,
-  Sun,
-  Moon,
-  Sliders,
-  Terminal,
-  Activity,
-  Layers,
-  SearchCode,
-  Shield,
   HelpCircle,
-  Clock,
-  ClipboardList
+  Layers,
+  LayoutDashboard,
+  PanelLeftClose,
+  PanelLeft
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -42,6 +31,8 @@ interface SidebarProps {
   isFbOnline: boolean;
   theme: 'dark' | 'light';
   onToggleTheme: () => void;
+  isCollapsed?: boolean;
+  onToggleCollapse?: () => void;
 }
 
 function SidebarClock({ theme, collapsed }: { theme?: 'light' | 'dark'; collapsed: boolean }) {
@@ -75,247 +66,86 @@ export default function Sidebar({
   onLogout,
   isFbOnline,
   theme,
-  onToggleTheme
+  onToggleTheme,
+  isCollapsed = false,
+  onToggleCollapse
 }: SidebarProps) {
   const collapsed = false;
-  const isNixon = user.email.toLowerCase().trim() === 'nixon.a.a100.nh@gmail.com';
-  const userRoles = (user.papel || '').split(',').map((s: string) => s.trim());
-  const hasRole = (role: string) => userRoles.includes(role);
-  const isControleOuSupervisor = user.isControle || hasRole('controle');
-  const isSupervisorOrAdmin = user.isControle || hasRole('admin') || hasRole('controle') || isNixon;
-
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({
-    'DASHBOARD': isControleOuSupervisor ? true : false,
-    'SETORES DE OPERAÇÃO': !isControleOuSupervisor ? true : false,
-    'ADMINISTRAÇÃO & GESTÃO': false
-  });
 
-  const handleNavClick = (tabId: string) => {
-    onSelectTab(tabId);
-    setMobileOpen(false);
-  };
-
-
-
-  // Let's model all potential navigation items with category tags
-  const navItems = [
-    // General
-    {
-      id: 'visao-geral',
-      label: 'Visão Geral',
-      icon: <LayoutDashboard className="w-4 h-4" />,
-      category: 'GERAL',
-      visible: true
-    },
-    
-    // BI & Analytics
-    {
-      id: 'repack-dashboard',
-      label: 'Dashboard Repack',
-      icon: <BarChart2 className="w-4 h-4 text-purple-400" />,
-      category: 'DASHBOARD',
-      visible: isSupervisorOrAdmin
-    },
-    {
-      id: 'despejo-dashboard',
-      label: 'Dashboard Despejo',
-      icon: <BarChart2 className="w-4 h-4 text-rose-500" />,
-      category: 'DASHBOARD',
-      visible: isSupervisorOrAdmin
-    },
-    {
-      id: 'logistica-dashboard',
-      label: 'Dashboard EFC EFD',
-      icon: <BarChart2 className="w-4 h-4 text-sky-400" />,
-      category: 'DASHBOARD',
-      visible: isSupervisorOrAdmin
-    },
-    {
-      id: 'quebras-dashboard',
-      label: 'Dashboard Quebras',
-      icon: <BarChart2 className="w-4 h-4 text-amber-500" />,
-      category: 'DASHBOARD',
-      visible: isSupervisorOrAdmin
-    },
-    {
-      id: 'fefo-dashboard',
-      label: 'Dashboard FEFO (Validades)',
-      icon: <BarChart2 className="w-4 h-4 text-emerald-500" />,
-      category: 'DASHBOARD',
-      visible: isSupervisorOrAdmin
-    },
-    {
-      id: 'picking-dashboard',
-      label: 'Dashboard Picking',
-      icon: <BarChart2 className="w-4 h-4 text-amber-500" />,
-      category: 'DASHBOARD',
-      visible: isSupervisorOrAdmin
-    },
-
-    // Operations / Sectores
-    {
-      id: 'repack',
-      label: 'Operação Repack',
-      icon: <RefreshCw className="w-4 h-4 text-purple-400 animate-spin-hover" />,
-      category: 'SETORES DE OPERAÇÃO',
-      visible: !isControleOuSupervisor && (isSupervisorOrAdmin || hasRole('repack') || hasRole('admin'))
-    },
-    {
-      id: 'despejo',
-      label: 'Operação Despejo',
-      icon: <Trash2 className="w-4 h-4 text-rose-500" />,
-      category: 'SETORES DE OPERAÇÃO',
-      visible: !isControleOuSupervisor && (isSupervisorOrAdmin || hasRole('despejo') || hasRole('admin'))
-    },
-    {
-      id: 'armazem',
-      label: 'Operação EFC / EFD',
-      icon: <Truck className="w-4 h-4 text-sky-400" />,
-      category: 'SETORES DE OPERAÇÃO',
-      visible: !isControleOuSupervisor && (isSupervisorOrAdmin || hasRole('armazem') || hasRole('admin'))
-    },
-    {
-      id: 'quebras',
-      label: 'Operação Quebras',
-      icon: <AlertTriangle className="w-4 h-4 text-red-500" />,
-      category: 'SETORES DE OPERAÇÃO',
-      visible: !isControleOuSupervisor && (isSupervisorOrAdmin || hasRole('quebras') || hasRole('admin'))
-    },
-    {
-      id: 'validades',
-      label: 'Operação Validade',
-      icon: <Calendar className="w-4 h-4 text-emerald-500" />,
-      category: 'SETORES DE OPERAÇÃO',
-      visible: !isControleOuSupervisor && (isSupervisorOrAdmin || hasRole('validades') || hasRole('admin'))
-    },
-
-    {
-      id: 'empilhador',
-      label: 'Operação Picking',
-      icon: <Package className="w-4 h-4 text-amber-500" />,
-      category: 'SETORES DE OPERAÇÃO',
-      visible: !isControleOuSupervisor && (isSupervisorOrAdmin || hasRole('empilhador') || hasRole('admin'))
-    },
-    {
-      id: 'conferente',
-      label: 'Operação Conferênte',
-      icon: <ClipboardCheck className="w-4 h-4 text-teal-400" />,
-      category: 'SETORES DE OPERAÇÃO',
-      visible: !isControleOuSupervisor && (isSupervisorOrAdmin || hasRole('conferente') || hasRole('admin'))
-    },
-
-    // Administrative / Core
-    {
-      id: 'registros',
-      label: 'Registros de Setores',
-      icon: <ClipboardList className="w-4 h-4 text-emerald-500" />,
-      category: 'ADMINISTRAÇÃO & GESTÃO',
-      visible: isSupervisorOrAdmin
-    },
-    {
-      id: 'acessos',
-      label: 'Controle de Acessos',
-      icon: <Shield className="w-4 h-4 text-indigo-400" />,
-      category: 'ADMINISTRAÇÃO & GESTÃO',
-      visible: isSupervisorOrAdmin
-    },
-    {
-      id: 'controle',
-      label: 'Painel Controle',
-      icon: <Sliders className="w-4 h-4 text-amber-500" />,
-      category: 'ADMINISTRAÇÃO & GESTÃO',
-      visible: isSupervisorOrAdmin
-    },
-    {
-      id: 'acoes',
-      label: 'Gestão de Ações',
-      icon: <ListChecks className="w-4 h-4 text-emerald-400" />,
-      category: 'ADMINISTRAÇÃO & GESTÃO',
-      visible: isSupervisorOrAdmin
-    },
-    {
-      id: 'exportar',
-      label: 'Exportar Base',
-      icon: <Download className="w-4 h-4 text-gray-400" />,
-      category: 'ADMINISTRAÇÃO & GESTÃO',
-      visible: isSupervisorOrAdmin
-    },
-    {
-      id: 'firebase',
-      label: 'Status Firestore',
-      icon: <Database className="w-4 h-4 text-amber-500" />,
-      category: 'ADMINISTRAÇÃO & GESTÃO',
-      visible: isSupervisorOrAdmin
-    }
-  ];
-
-  // Filtering based on visibility and search query
-  const filteredNavItems = navItems.filter(item => {
-    if (!item.visible) return false;
-    if (searchQuery.trim() === '') return true;
-    return (
-      item.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.category.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-  });
-
-  // Unique categories left after search
-  const activeCategories = Array.from(new Set(filteredNavItems.map(item => item.category)));
-
-  const isCategoryActive = (category: string) => {
-    const items = filteredNavItems.filter(item => item.category === category);
-    return items.some(item => item.id === activeTab);
-  };
-
-  useEffect(() => {
-    // Auto-expand category containing active tab
-    const activeItem = navItems.find(item => item.id === activeTab);
-    if (activeItem && activeItem.category) {
-      setExpandedCategories(prev => ({
-        ...prev,
-        [activeItem.category]: true
-      }));
-    }
-  }, [activeTab]);
-
-  const renderNavItem = (item: typeof navItems[0]) => {
-    const isActive = activeTab === item.id;
-    const isRepack = item.id === 'repack';
-
-    return (
-      <div key={item.id} className="w-full flex flex-col gap-0.5">
-        <button
-          onClick={() => handleNavClick(item.id)}
-          className={`w-full flex items-center px-3 py-2 rounded-lg border-none text-left cursor-pointer transition-all relative overflow-hidden group ${
-            isActive 
-              ? 'bg-[#1e56f0]/10 text-[#1e56f0] border border-[#1e56f0]/15 font-bold' 
-              : 'text-slate-600 dark:text-[#8a9db2] hover:text-[#1e56f0] dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#151b23]'
-          }`}
-          title={item.label}
-        >
-          {isActive && (
-            <span className="absolute left-0 top-1.5 bottom-1.5 w-[3.5px] bg-[#1e56f0] rounded-r" />
-          )}
-          <span className="mr-2.5 flex-shrink-0 opacity-85 group-hover:opacity-100 transition-opacity [&_svg]:w-4 [&_svg]:h-4 flex items-center justify-center">
-            {item.icon}
-          </span>
-          <span className="font-sans font-semibold text-xs sm:text-[12.5px] uppercase tracking-wider flex-1 truncate transition-colors duration-200">
-            {item.label}
-          </span>
-        </button>
-      </div>
-    );
-  };
-
-  // Get user short name for badge / avatar
   const getInitials = (name: string) => {
     if (!name) return 'OP';
     const split = name.trim().split(' ');
     if (split.length === 1) return split[0].substring(0, 2).toUpperCase();
     return (split[0][0] + split[split.length - 1][0]).toUpperCase();
   };
+
+  // ── THE 5 EXACT CATEGORIES ──
+  const mainCategories = [
+    {
+      id: 'cat-produtividade',
+      label: 'Produtividade',
+      subtitle: 'Apontamento & Operações',
+      icon: <Zap className="w-5 h-5 text-amber-400" />,
+      subItems: ['ajudante', 'empilhador', 'conferente', 'wlp-dashboard']
+    },
+    {
+      id: 'cat-dashboards',
+      label: 'Dashboards',
+      subtitle: 'Indicadores, BI & Gráficos',
+      icon: <BarChart2 className="w-5 h-5 text-sky-400" />,
+      subItems: [
+        'visao-geral', 'wlp-dashboard', 'repack-dashboard', 'despejo-dashboard', 'quebras-dashboard', 
+        'fefo-dashboard', 'picking-dashboard', 'gestao-capacidade', 'ranking-produtividade', 
+        'qualidade', 'eficiencia-montagem', 'kpi-arvore'
+      ]
+    },
+    {
+      id: 'cat-ferramentas-gestao',
+      label: 'Ferramentas de Gestão',
+      subtitle: 'Governança, DPO & Inventários',
+      icon: <Sliders className="w-5 h-5 text-purple-400" />,
+      subItems: [
+        'plataformas-externas', 'auditoria-dpo', 'treinamentos-qualidade', 'bloqueio-armazem', 'devolucao', 
+        'contagem-inventario', 'gestao-ativos', 'qualidade-puxada', 'gestao-wlp', 
+        'ciclo-carretas', 'politica-estoque', 'simulador-ressuprimento', 'importacao-contagens', 
+        'venda-media', 'area-contingencia', 'padronizacao-processos', 'simulacao-acoes', 
+        'dn-swot', 'controle', 'dados-retroativos', 'agenda-executiva', 'diario-bordo', 'reunioes', 'semana-qualidade'
+      ]
+    },
+    {
+      id: 'cat-cadastros',
+      label: 'Cadastros & Governança',
+      subtitle: 'Base Central, Planos, Colaboradores & Ações',
+      icon: <Database className="w-5 h-5 text-emerald-400" />,
+      subItems: ['cadastros', 'exportar', 'acoes', 'firebase']
+    }
+  ];
+
+  const handleCategoryClick = (catId: string) => {
+    onSelectTab(catId);
+    setMobileOpen(false);
+  };
+
+  const isCategoryActive = (cat: typeof mainCategories[0]) => {
+    return activeTab === cat.id || cat.subItems.includes(activeTab);
+  };
+
+  // Direct module items matching global search
+  const allModulesList = Object.entries(CATEGORY_DEFINITIONS).flatMap(([catKey, catDef]) => {
+    return catDef.items.map(item => ({
+      ...item,
+      catKey
+    }));
+  });
+
+  const matchingSearchModules = searchQuery.trim()
+    ? allModulesList.filter(m => 
+        isPanelAllowedForUser(m.id, user) &&
+        (m.label.toLowerCase().includes(searchQuery.toLowerCase()) || m.description.toLowerCase().includes(searchQuery.toLowerCase()))
+      )
+    : [];
 
   return (
     <>
@@ -331,33 +161,50 @@ export default function Sidebar({
       {!mobileOpen && (
         <button 
           onClick={() => setMobileOpen(true)}
-          className={`fixed top-1.5 left-3 z-40 w-8 h-8 rounded-lg backdrop-blur-md text-sm flex items-center justify-center md:hidden cursor-pointer shadow-xs transition-all border ${
+          className={`fixed top-2 left-3 z-40 w-9 h-9 rounded-xl backdrop-blur-md text-sm flex items-center justify-center md:hidden cursor-pointer shadow-md transition-all border ${
             theme === 'dark'
-              ? 'bg-[#11151c]/90 border-[#222d3a] text-[#1e56f0]'
+              ? 'bg-[#11151c]/90 border-[#222d3a] text-sky-400'
               : 'bg-white/90 border-slate-200 text-[#1e56f0] hover:bg-slate-50'
           }`}
-          title="Abrir Menu"
+          title="Abrir Menu Lateral"
         >
           ☰
         </button>
       )}
+
       {/* Sidebar Layout */}
       <aside className={`fixed md:sticky top-0 h-screen border-r flex flex-col z-50 transition-all duration-300 ${
         theme === 'dark'
           ? 'bg-[#0b0e14] border-[#1c2530]'
           : 'bg-white border-slate-200'
       } ${
-        collapsed ? 'w-[68px]' : 'w-[230px] lg:w-[250px]'
-      } ${mobileOpen ? 'left-0 shadow-2xl' : '-left-[250px] md:left-0'}`}>
+        isCollapsed ? '-left-[250px] md:-left-[250px] md:w-0 md:hidden overflow-hidden' : 'w-[230px] lg:w-[250px]'
+      } ${mobileOpen ? 'left-0 shadow-2xl !w-[250px] !block' : '-left-[250px] md:left-0'}`}>
         
-        {/* Brand Logo Header at top-left of sidebar */}
+        {/* Brand Logo Header with Collapse Toggle */}
         {!collapsed && (
-          <div className="p-4 flex items-center justify-center border-b border-slate-200 dark:border-[#1c2530]/40 flex-shrink-0">
-            <BrandLogo variant="header" theme={theme} />
+          <div className="p-3.5 flex items-center justify-between border-b border-slate-200 dark:border-[#1c2530]/40 flex-shrink-0">
+            <div className="flex-1 flex justify-center pl-4">
+              <BrandLogo variant="header" theme={theme} />
+            </div>
+            {onToggleCollapse && (
+              <button
+                type="button"
+                onClick={onToggleCollapse}
+                className={`p-1.5 rounded-lg border transition-all cursor-pointer hidden md:flex items-center justify-center ${
+                  theme === 'dark'
+                    ? 'bg-[#151b23] border-[#222d3a] text-slate-400 hover:text-white hover:bg-slate-800'
+                    : 'bg-slate-100 border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-200'
+                }`}
+                title="Ocultar Menu Lateral (Maximizar Tela de Operação)"
+              >
+                <PanelLeftClose className="w-4 h-4 text-amber-400" />
+              </button>
+            )}
           </div>
         )}
 
-        {/* Mobile close toggle (positioned absolutely at top right) */}
+        {/* Mobile close button */}
         {mobileOpen && (
           <div className="absolute top-3 right-3 z-50 md:hidden">
             <button 
@@ -374,16 +221,13 @@ export default function Sidebar({
           </div>
         )}
 
-        {/* Dynamic SaaS Tenant User Profile Card */}
-        {!collapsed ? (
+        {/* User Card */}
+        {!collapsed && (
           <div className={`p-3 mx-2 mt-2 rounded-xl border transition-all duration-300 relative overflow-hidden group ${
             theme === 'dark' 
               ? 'bg-[#11151c]/60 border-[#1c2530] hover:border-[#1e56f0]/25' 
               : 'bg-gradient-to-br from-blue-50/30 to-white border-slate-200/80 shadow-[0_4px_20px_rgba(30,86,240,0.03)] hover:border-slate-300'
           }`}>
-            {theme === 'dark' && (
-              <div className="absolute top-0 right-0 w-16 h-16 bg-[#1e56f0]/5 rounded-full blur-xl -mr-6 -mt-6" />
-            )}
             <div className="flex items-center gap-2.5 relative z-10">
               <div className={`w-9 h-9 rounded-full border flex items-center justify-center font-black text-xs sm:text-sm shadow-xs flex-shrink-0 transition-all ${
                 theme === 'dark'
@@ -428,7 +272,7 @@ export default function Sidebar({
                       ? 'bg-[#151b23] border-[#222d3a] text-amber-400 hover:text-amber-300'
                       : 'bg-slate-100 border-slate-200 text-slate-700 hover:text-[#1e56f0]'
                   }`}
-                  title={theme === 'dark' ? 'Mudar para Tema Claro' : 'Mudar para Tema Escuro'}
+                  title={theme === 'dark' ? 'Tema Claro' : 'Tema Escuro'}
                 >
                   {theme === 'dark' ? <Sun className="w-3.5 h-3.5 text-amber-400" /> : <Moon className="w-3.5 h-3.5 text-slate-700" />}
                 </button>
@@ -447,32 +291,18 @@ export default function Sidebar({
               </div>
             </div>
           </div>
-        ) : (
-          <div className="my-2 flex justify-center">
-            <div 
-              className={`w-8 h-8 rounded-full border flex items-center justify-center font-black text-xs cursor-pointer transition-colors ${
-                theme === 'dark'
-                  ? 'bg-[#11151c] border-[#1c2530] text-blue-400 hover:border-[#1e56f0]/40'
-                  : 'bg-slate-50 border-slate-200 text-[#1e56f0] hover:border-[#1e56f0]/40'
-              }`}
-              title={`${user.nome} - Sair`}
-              onClick={onLogout}
-            >
-              {getInitials(user.nome)}
-            </div>
-          </div>
         )}
 
-        {/* Real-time search filter */}
+        {/* Global Search Input in Sidebar */}
         {!collapsed && (
-          <div className="px-2.5 pt-2.5">
+          <div className="px-2.5 pt-3">
             <div className="relative">
               <Search className={`absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 ${
                 theme === 'dark' ? 'text-[#6a7d92]' : 'text-slate-400'
               }`} />
               <input 
                 type="text"
-                placeholder="Ir para setor..."
+                placeholder="Buscar módulo..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className={`w-full border rounded-lg pl-8 pr-6 py-1.5 font-sans text-xs outline-none transition-all ${
@@ -495,62 +325,131 @@ export default function Sidebar({
           </div>
         )}
 
-        {/* Navigation list */}
-        <nav className="flex-1 overflow-y-auto px-1.5 py-2 space-y-1.5 scrollbar-thin">
-          {activeCategories.map(category => {
-            const items = filteredNavItems.filter(item => item.category === category);
-            if (items.length === 0) return null;
-
-            const isGeral = category === 'GERAL';
-            const isExpanded = isGeral || expandedCategories[category] !== false;
-
-            return (
-              <div key={category} className="space-y-0.5">
-                {/* Category Header (collapsible) */}
-                {!isGeral && (
-                  <button
-                    type="button"
-                    onClick={() => setExpandedCategories(prev => ({ ...prev, [category]: !isExpanded }))}
-                    className="w-full flex items-center justify-between text-[10px] sm:text-[10.5px] uppercase tracking-widest font-black text-slate-500 dark:text-[#8a9db2] hover:text-[#1e56f0] dark:hover:text-white px-2.5 py-1 bg-transparent border-none cursor-pointer transition-colors"
-                  >
-                    <span>{category}</span>
-                    <span>
-                      {isExpanded ? (
-                        <ChevronDown className="w-3 h-3 stroke-[2.5]" />
-                      ) : (
-                        <ChevronRight className="w-3 h-3 stroke-[2.5]" />
-                      )}
-                    </span>
-                  </button>
-                )}
-                
-                {isGeral && (
-                  <div className="text-[10px] sm:text-[10.5px] uppercase tracking-widest font-black text-slate-500 dark:text-[#8a9db2]/80 px-2.5 py-1 flex items-center justify-between">
-                    <span>{category}</span>
-                    <span className="w-1.5 h-1.5 rounded-full bg-slate-300 dark:bg-[#1c2530]" />
-                  </div>
-                )}
-
-                {isExpanded && (
-                  <div className="space-y-[1px]">
-                    {items.map(renderNavItem)}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-
-          {filteredNavItems.length === 0 && (
-            <div className="p-3 text-center">
-              <HelpCircle className="w-6 h-6 text-[#6a7d92]/40 mx-auto mb-1.5" />
-              <span className="text-[10px] text-[#6a7d92] uppercase font-bold tracking-wider block">
-                Nenhum setor encontrado
+        {/* Main 5 Category Navigation List */}
+        <nav className="flex-1 overflow-y-auto px-2 py-3 space-y-2 scrollbar-thin">
+          {searchQuery.trim() !== '' ? (
+            /* Search results view */
+            <div className="space-y-1">
+              <span className="text-[10px] font-black uppercase text-slate-400 px-2 block">
+                Resultados ({matchingSearchModules.length}):
               </span>
+              {matchingSearchModules.map(m => (
+                <button
+                  key={m.id}
+                  onClick={() => {
+                    onSelectTab(m.id);
+                    setMobileOpen(false);
+                  }}
+                  className="w-full text-left p-2 rounded-lg bg-[#11151c] hover:bg-sky-600/20 border border-slate-800 hover:border-sky-500/40 text-xs font-bold text-white flex items-center justify-between cursor-pointer"
+                >
+                  <span className="truncate">{m.label}</span>
+                  <ChevronRight className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+                </button>
+              ))}
+              {matchingSearchModules.length === 0 && (
+                <div className="p-4 text-center text-xs text-slate-500">
+                  Nenhum módulo encontrado.
+                </div>
+              )}
             </div>
+          ) : (
+            <div className="space-y-2">
+              {/* ROOT NAVIGATION TAB: WORKSTATION */}
+              <button
+                onClick={() => handleCategoryClick('visao-geral')}
+                className={`w-full text-left p-3 rounded-xl border transition-all duration-200 cursor-pointer flex items-center gap-3 relative overflow-hidden group mb-2.5 ${
+                  activeTab === 'visao-geral' || activeTab === 'dashboard'
+                    ? theme === 'dark'
+                      ? 'bg-gradient-to-r from-[#1e56f0]/30 to-[#1e56f0]/10 border-[#1e56f0] text-white shadow-lg'
+                      : 'bg-[#1e56f0] text-white border-[#1e56f0] shadow-md font-bold'
+                    : theme === 'dark'
+                      ? 'bg-[#11151c]/70 border-[#1c2530] text-slate-200 hover:bg-[#151b23] hover:border-slate-600'
+                      : 'bg-slate-100 border-slate-200 text-slate-800 hover:bg-slate-200/80'
+                }`}
+              >
+                {(activeTab === 'visao-geral' || activeTab === 'dashboard') && (
+                  <span className="absolute left-0 top-0 bottom-0 w-1.5 bg-amber-400 rounded-r" />
+                )}
+
+                <div className={`p-2 rounded-lg flex-shrink-0 transition-transform duration-200 group-hover:scale-110 ${
+                  activeTab === 'visao-geral' || activeTab === 'dashboard'
+                    ? 'bg-amber-400 text-slate-950 font-black'
+                    : theme === 'dark' ? 'bg-[#0b1222] text-amber-400' : 'bg-white text-[#1e56f0] shadow-xs'
+                }`}>
+                  <LayoutDashboard className="w-5 h-5" />
+                </div>
+
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs font-black uppercase tracking-wider truncate leading-snug">
+                    Workstation
+                  </div>
+                  <div className={`text-[9.5px] truncate font-bold ${
+                    activeTab === 'visao-geral' || activeTab === 'dashboard'
+                      ? 'text-amber-300'
+                      : 'text-slate-400'
+                  }`}>
+                    Centro de Controle (Raiz)
+                  </div>
+                </div>
+
+                <ChevronRight className={`w-4 h-4 flex-shrink-0 transition-transform ${
+                  activeTab === 'visao-geral' || activeTab === 'dashboard' ? 'text-amber-400 translate-x-0.5' : 'text-slate-500 group-hover:translate-x-0.5'
+                }`} />
+              </button>
+
+              <div className="w-full h-[1px] bg-slate-200 dark:bg-[#1c2530] my-2" />
+
+              {/* The 5 Categories List */}
+              {mainCategories.map((cat) => {
+              const active = isCategoryActive(cat);
+              return (
+                <button
+                  key={cat.id}
+                  onClick={() => handleCategoryClick(cat.id)}
+                  className={`w-full text-left p-3 rounded-xl border transition-all duration-200 cursor-pointer flex items-center gap-3 relative overflow-hidden group ${
+                    active
+                      ? theme === 'dark'
+                        ? 'bg-sky-500/15 border-sky-500/40 text-white shadow-md'
+                        : 'bg-blue-50 border-blue-200 text-[#1e56f0] shadow-sm font-bold'
+                      : theme === 'dark'
+                        ? 'bg-[#11151c]/40 border-[#1c2530] text-slate-300 hover:bg-[#151b23] hover:border-slate-700 hover:text-white'
+                        : 'bg-slate-50/60 border-slate-200/80 text-slate-700 hover:bg-slate-100 hover:text-slate-900'
+                  }`}
+                >
+                  {active && (
+                    <span className="absolute left-0 top-0 bottom-0 w-1 bg-sky-500 rounded-r" />
+                  )}
+
+                  <div className={`p-2 rounded-lg flex-shrink-0 transition-transform duration-200 group-hover:scale-110 ${
+                    active 
+                      ? 'bg-sky-500/20 text-sky-400' 
+                      : theme === 'dark' ? 'bg-[#0b1222] text-slate-400' : 'bg-white text-slate-600 shadow-xs'
+                  }`}>
+                    {cat.icon}
+                  </div>
+
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-black uppercase tracking-wider truncate leading-snug">
+                      {cat.label}
+                    </div>
+                    <div className={`text-[10px] truncate font-medium ${
+                      active ? 'text-sky-300 font-semibold' : 'text-slate-400'
+                    }`}>
+                      {cat.subtitle}
+                    </div>
+                  </div>
+
+                  <ChevronRight className={`w-4 h-4 flex-shrink-0 transition-transform ${
+                    active ? 'text-sky-400 translate-x-0.5' : 'text-slate-500 group-hover:translate-x-0.5'
+                  }`} />
+                </button>
+              );
+            })}
+          </div>
           )}
         </nav>
 
-        {/* Sidebar Footer block: Network indicators / Clock time */}
+        {/* Footer info & clock */}
         <div className={`p-2.5 border-t flex flex-col gap-1.5 items-center text-center ${
           theme === 'dark'
             ? 'border-[#1c2530] bg-[#07090d]/40'

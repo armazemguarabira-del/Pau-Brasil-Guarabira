@@ -18,6 +18,16 @@ export interface CrossFilterContextType {
   isFiltered: (field: string, value?: string | number) => boolean;
   /** Number of active filters */
   filterCount: number;
+  /** Global measurement unit filter: 'HL' (Hectolitros) or 'RS' (Reais R$) */
+  unidadeMedida: 'HL' | 'RS';
+  /** Set the global unit of measurement */
+  setUnidadeMedida: (unit: 'HL' | 'RS') => void;
+  /** Active start date filter (ISO YYYY-MM-DD) */
+  startDate: string;
+  /** Active end date filter (ISO YYYY-MM-DD) */
+  endDate: string;
+  /** Set active date range */
+  setDateRange: (start: string, end: string) => void;
   /** Utility to filter any dataset using active filters (optionally excluding a dimension) */
   filterData: <T>(
     data: T[],
@@ -77,6 +87,32 @@ const CrossFilterContext = createContext<CrossFilterContextType | null>(null);
 export const CrossFilterProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [filters, setFilters] = useState<Record<string, string | number>>({});
   const [fieldLabels, setFieldLabels] = useState<Record<string, string>>({});
+  const [unidadeMedida, setUnidadeMedidaState] = useState<'HL' | 'RS'>('HL');
+  const [startDate, setStartDateState] = useState<string>('');
+  const [endDate, setEndDateState] = useState<string>('');
+
+  const setUnidadeMedida = useCallback((unit: 'HL' | 'RS') => {
+    setUnidadeMedidaState(unit);
+    setFilters(prev => ({ ...prev, unidadeMedida: unit }));
+    setFieldLabels(prev => ({ ...prev, unidadeMedida: 'Unidade de Medida' }));
+  }, []);
+
+  const setDateRange = useCallback((start: string, end: string) => {
+    setStartDateState(start);
+    setEndDateState(end);
+    setFilters(prev => {
+      const next = { ...prev };
+      if (start) next.dataInicio = start;
+      else delete next.dataInicio;
+
+      if (end) next.dataFim = end;
+      else delete next.dataFim;
+      return next;
+    });
+
+    if (start) setFieldLabels(prev => ({ ...prev, dataInicio: 'Data Início' }));
+    if (end) setFieldLabels(prev => ({ ...prev, dataFim: 'Data Fim' }));
+  }, []);
 
   const toggleFilter = useCallback((field: string, value: string | number, fieldLabel?: string) => {
     if (value === undefined || value === null || value === '') return;
@@ -112,10 +148,14 @@ export const CrossFilterProvider: React.FC<{ children: React.ReactNode }> = ({ c
       delete next[field];
       return next;
     });
+    if (field === 'dataInicio') setStartDateState('');
+    if (field === 'dataFim') setEndDateState('');
   }, []);
 
   const clearAllFilters = useCallback(() => {
     setFilters({});
+    setStartDateState('');
+    setEndDateState('');
   }, []);
 
   const isFiltered = useCallback((field: string, value?: string | number) => {
@@ -133,13 +173,42 @@ export const CrossFilterProvider: React.FC<{ children: React.ReactNode }> = ({ c
     excludeField?: string
   ): T[] => {
     if (!data || data.length === 0) return [];
-    const activeKeys = Object.keys(filters).filter(k => k !== excludeField);
+    const activeKeys = Object.keys(filters).filter(k => k !== excludeField && k !== 'unidadeMedida');
     if (activeKeys.length === 0) return data;
+
+    const toISODate = (val: any): string => {
+      if (!val) return '';
+      const str = String(val).trim().split('T')[0].split(' ')[0];
+      if (str.includes('/')) {
+        const parts = str.split('/');
+        if (parts.length === 3) {
+          const dd = parts[0].padStart(2, '0');
+          const mm = parts[1].padStart(2, '0');
+          const yyyy = parts[2].length === 2 ? `20${parts[2]}` : parts[2];
+          return `${yyyy}-${mm}-${dd}`;
+        }
+      }
+      return str;
+    };
 
     return data.filter(item => {
       return activeKeys.every(field => {
         const targetVal = filters[field];
         if (targetVal === undefined || targetVal === null || targetVal === 'todos' || targetVal === 'TODOS') {
+          return true;
+        }
+
+        const obj = item as Record<string, any>;
+
+        if (field === 'dataInicio') {
+          const itemDate = toISODate(obj.dataISO || obj.data || obj.criadoEm || obj.validade || obj.dataConclusao);
+          if (itemDate && itemDate < String(targetVal)) return false;
+          return true;
+        }
+
+        if (field === 'dataFim') {
+          const itemDate = toISODate(obj.dataISO || obj.data || obj.criadoEm || obj.validade || obj.dataConclusao);
+          if (itemDate && itemDate > String(targetVal)) return false;
           return true;
         }
 
@@ -149,8 +218,6 @@ export const CrossFilterProvider: React.FC<{ children: React.ReactNode }> = ({ c
         }
 
         if (actualVal === undefined) {
-          const obj = item as Record<string, any>;
-
           // Special domain field matching logic
           if (field === 'motivo' || field === 'codQuebra') {
             const cod = String(obj.codQuebra || '').trim().toLowerCase();
@@ -252,7 +319,10 @@ export const CrossFilterProvider: React.FC<{ children: React.ReactNode }> = ({ c
             const pDesc = String(obj.descricao || obj.produto || '').trim().toLowerCase();
             const pCod = String(obj.codProduto || '').trim().toLowerCase();
             const tgt = String(targetVal).trim().toLowerCase();
-            return pDesc === tgt || pCod === tgt || pDesc.includes(tgt) || tgt.includes(pDesc);
+            if (!tgt) return true;
+            if (pCod && (pCod === tgt || tgt.startsWith(pCod + ' ') || tgt.includes('sku ' + pCod) || tgt.includes(pCod + ' -'))) return true;
+            if (pDesc && (pDesc === tgt || pDesc.includes(tgt) || tgt.includes(pDesc))) return true;
+            return false;
           }
 
           // Fallback property access
@@ -277,8 +347,13 @@ export const CrossFilterProvider: React.FC<{ children: React.ReactNode }> = ({ c
     clearAllFilters,
     isFiltered,
     filterCount,
+    unidadeMedida,
+    setUnidadeMedida,
+    startDate,
+    endDate,
+    setDateRange,
     filterData
-  }), [filters, fieldLabels, toggleFilter, setFilter, removeFilter, clearAllFilters, isFiltered, filterCount, filterData]);
+  }), [filters, fieldLabels, toggleFilter, setFilter, removeFilter, clearAllFilters, isFiltered, filterCount, unidadeMedida, setUnidadeMedida, startDate, endDate, setDateRange, filterData]);
 
   return (
     <CrossFilterContext.Provider value={value}>
@@ -300,6 +375,11 @@ export const useCrossFilter = (): CrossFilterContextType => {
       clearAllFilters: () => {},
       isFiltered: () => false,
       filterCount: 0,
+      unidadeMedida: 'HL',
+      setUnidadeMedida: () => {},
+      startDate: '',
+      endDate: '',
+      setDateRange: () => {},
       filterData: (data) => data
     };
   }
@@ -307,10 +387,17 @@ export const useCrossFilter = (): CrossFilterContextType => {
 };
 
 /** Visual toolbar component to render active cross-filters */
-export const ActiveCrossFiltersBar: React.FC<{ className?: string }> = ({ className = '' }) => {
+export const ActiveCrossFiltersBar: React.FC<{ className?: string; onClearAll?: () => void }> = ({ className = '', onClearAll }) => {
   const { filters, fieldLabels, removeFilter, clearAllFilters, filterCount } = useCrossFilter();
 
   if (filterCount === 0) return null;
+
+  const handleClear = () => {
+    clearAllFilters();
+    if (onClearAll) {
+      onClearAll();
+    }
+  };
 
   return (
     <div className={`bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200/80 rounded-xl p-3.5 shadow-sm transition-all animate-fadeIn ${className}`}>
@@ -356,8 +443,8 @@ export const ActiveCrossFiltersBar: React.FC<{ className?: string }> = ({ classN
           })}
 
           <button
-            onClick={clearAllFilters}
-            className="inline-flex items-center gap-1.5 bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white px-3 py-1 rounded-lg text-xs font-bold transition-all shadow-xs ml-1"
+            onClick={handleClear}
+            className="inline-flex items-center gap-1.5 bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white px-3 py-1 rounded-lg text-xs font-bold transition-all shadow-xs ml-1 cursor-pointer"
           >
             <RotateCcw className="w-3.5 h-3.5" />
             Limpar Filtros

@@ -1,0 +1,72 @@
+[
+  {
+    "demanda_id": "a1b2c3d4-0001-4000-8000-000000000001",
+    "produto_codigo": "838",
+    "produto_descricao": "CHOPP BRAHMA CLARO BARRIL KEG 50L",
+    "destinoWorkstation": "Desvios",
+    "justificativa": "Item crítico de validade em janela de recolhimento <= 45 dias demandando plano de ação urgente no CCO."
+  },
+  {
+    "demanda_id": "a1b2c3d4-0002-4000-8000-000000000002",
+    "produto_codigo": "23269",
+    "produto_descricao": "SKOL BEATS GT LONG NECK 269ML SIX-PACK",
+    "destinoWorkstation": "Desvios",
+    "justificativa": "Item com 13 dias para vencer, direcionado para ação de escoamento/desvio prioritário."
+  },
+  {
+    "demanda_id": "a1b2c3d4-0003-4000-8000-000000000003",
+    "produto_codigo": "21666",
+    "produto_descricao": "RED BULL TROPICAL BR LATA 250ML FOUR-PACK",
+    "destinoWorkstation": "Desvios",
+    "justificativa": "Alto volume financeiro (R$ 26k) com vencimento em 19 dias em janela crítica de recolhimento."
+  },
+  {
+    "demanda_id": "a1b2c3d4-0004-4000-8000-000000000004",
+    "produto_codigo": "31795",
+    "produto_descricao": "BRUTAL FRUIT LONG NECK 275ML SIX-PACK",
+    "destinoWorkstation": "Fluxograma",
+    "justificativa": "Item em janela de alerta (31-45d), mapeado para acompanhamento visual no fluxograma de demandas."
+  },
+  {
+    "demanda_id": "a1b2c3d4-0005-4000-8000-000000000005",
+    "produto_codigo": "31795",
+    "produto_descricao": "BRUTAL FRUIT LONG NECK 275ML SIX-PACK",
+    "destinoWorkstation": "Future Shelf / Conferente",
+    "justificativa": "Lote em monitoramento de prateleira futura com 0.7 dias de estoque e conferência no pátio."
+  },
+  {
+    "demanda_id": "a1b2c3d4-0006-4000-8000-000000000006",
+    "produto_codigo": "31795",
+    "produto_descricao": "BRUTAL FRUIT LONG NECK 275ML SIX-PACK",
+    "destinoWorkstation": "Future Shelf / Conferente",
+    "justificativa": "Saldo físico de picking de 36 caixas para atualização diária de contagem pelo conferente."
+  },
+  {
+    "demanda_id": "a1b2c3d4-0007-4000-8000-000000000007",
+    "produto_codigo": "9093",
+    "produto_descricao": "PEPSI TWIST LATA 350ML SH C/12 NPAL",
+    "destinoWorkstation": "Gestão de Escoamento",
+    "justificativa": "Item com Stock Age Index = 0.58 (< 0.60), enquadrado no alerta de giro acelerado para escoamento."
+  },
+  {
+    "demanda_id": "a1b2c3d4-0008-4000-8000-000000000008",
+    "produto_codigo": "347",
+    "produto_descricao": "SUKITA PET 1L CAIXA C/12",
+    "destinoWorkstation": "Gestão de Escoamento",
+    "justificativa": "Item envelhecido (Stock Age 0.58) necessitando de auditoria manual de OCR para confirmação de lote no CCO."
+  },
+  {
+    "demanda_id": "a1b2c3d4-0009-4000-8000-000000000009",
+    "produto_codigo": "9093",
+    "produto_descricao": "PEPSI TWIST LATA 350ML SH C/12 NPAL",
+    "destinoWorkstation": "Future Shelf / Conferente",
+    "justificativa": "Lote secundário de Pepsi Twist alocado para recontagem diária e liberação FEFO."
+  },
+  {
+    "demanda_id": "a1b2c3d4-0010-4000-8000-000000000010",
+    "produto_codigo": "18267",
+    "produto_descricao": "SODA LIMONADA ANTARCTICA PET 200ML",
+    "destinoWorkstation": "Gestão de Escoamento",
+    "justificativa": "Item com menor Stock Age Index (0.57) e alto giro diário (11.3 cx/dia) demandando prioridade total de escoamento."
+  }
+]

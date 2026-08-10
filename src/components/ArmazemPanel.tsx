@@ -5,6 +5,7 @@ import { Usuario, Empresa, ArmazemRow } from '../types';
 import { useEmpresaData } from '../context/EmpresaDataContext';
 import { TrendingUp, CheckCircle, Clock, Award, BarChart2, Pencil } from 'lucide-react';
 import SugerirMelhoriaCard from './SugerirMelhoriaCard';
+import { SopBannerViewer } from './SopBannerViewer';
 
 interface ArmazemPanelProps {
   user: Usuario;
@@ -367,18 +368,18 @@ export default function ArmazemPanel({ user, empresa }: ArmazemPanelProps) {
   const handleDelete = async (docId?: string) => {
     setErrorMsg(null);
     setSuccessMsg(null);
-    if (!docId || !confirm('Excluir este lançamento de pátio?')) return;
+    if (!docId) return;
     try {
       if (db) {
         await deleteDoc(doc(db, 'armazem', docId));
-      } else {
-        const remaining = armazemRows.filter(r => r._docId !== docId);
-        setArmazemRows(remaining);
-        localStorage.setItem(`armazem_rows_${empresaId}`, JSON.stringify(remaining));
       }
-      setSuccessMsg('Registro excluído com sucesso!');
     } catch (e) {
-      setErrorMsg('Erro ao excluir: ' + e);
+      console.error(e);
+    } finally {
+      const remaining = armazemRows.filter(r => r._docId !== docId && (r as any).id !== docId);
+      setArmazemRows(remaining);
+      localStorage.setItem(`armazem_rows_${empresaId}`, JSON.stringify(remaining));
+      setSuccessMsg('Lançamento excluído com sucesso!');
     }
   };
 
@@ -460,6 +461,8 @@ export default function ArmazemPanel({ user, empresa }: ArmazemPanelProps) {
       <div className="flex items-center justify-between p-4 bg-[#11151c] border-b border-[#222d3a] rounded-t-xl -mx-6 md:-mx-12 -mt-6">
         <span className="font-sans font-black text-sm tracking-widest text-[#7cc6ff] uppercase">🚛 CARREGAMENTO / DESCARREGAMENTO</span>
       </div>
+
+      <SopBannerViewer operation="armazem" operationName="EFC / EFD" />
 
       <div className="ptabs border-b border-[#222d3a] flex gap-2">
         <button 

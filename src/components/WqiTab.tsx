@@ -40,18 +40,18 @@ import {
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 import { QuebraRow } from '../types';
-import { generateMockQuebras } from '../mockDataGenerator';
 import CalendarFilter from './CalendarFilter';
 import { PRODUCTS } from '../planosData';
 import { useEmpresaData } from '../context/EmpresaDataContext';
 import { COLABORADORES_QUEBRA } from './QuebrasPanel';
+import { normalizeCollaboratorName } from '../utils/colaboradorUtils';
 
 interface WqiTabProps {
   empresaId: string;
   startDate: string;
   endDate: string;
   onDateChange: (start: string, end: string) => void;
-  viewUnit: 'cx' | 'he';
+  viewUnit: 'rs' | 'hl' | 'sku';
   theme?: 'light' | 'dark';
 }
 
@@ -160,6 +160,51 @@ export const getItemHlInfo = (r: Partial<QuebraRow>) => {
   };
 };
 
+// Helper to get real monetary value (in R$) for a item based on row or product catalog
+export function getItemValorReal(q: Partial<QuebraRow>): number {
+  const qty = Number(q.quantidade) || 0;
+  if (q.valorTotal && Number(q.valorTotal) > 0) {
+    return Number(q.valorTotal);
+  }
+  if (q.valorUnitario && Number(q.valorUnitario) > 0) {
+    return Number(q.valorUnitario) * qty;
+  }
+  // Lookup in PRODUCTS catalog by codProduto
+  if (q.codProduto) {
+    const codeStr = String(q.codProduto).trim();
+    const codeClean = codeStr.replace(/^0+/, '');
+    const match = PRODUCTS.find(p => String(p.codigo) === codeClean || String(p.codigo) === codeStr);
+    if (match) {
+      const p = match as any;
+      const unitPrice = p.precoUnitario || p.preco || p.valorUnidade || p.valorUnitario;
+      if (unitPrice && Number(unitPrice) > 0) {
+        return Number(unitPrice) * qty;
+      }
+    }
+  }
+  // Lookup in PRODUCTS catalog by description
+  if (q.descricao) {
+    const descUpper = String(q.descricao).toUpperCase().trim();
+    const matchDesc = PRODUCTS.find(p => p.descricao && p.descricao.toUpperCase().trim() === descUpper);
+    if (matchDesc) {
+      const p = matchDesc as any;
+      const unitPrice = p.precoUnitario || p.preco || p.valorUnidade || p.valorUnitario;
+      if (unitPrice && Number(unitPrice) > 0) {
+        return Number(unitPrice) * qty;
+      }
+    }
+  }
+  // Default estimate per box/unit if not present in product catalog
+  return qty * 45.0;
+}
+
+// 3-way unit value getter
+export function getValorPorUnidade(q: Partial<QuebraRow>, viewUnit: 'rs' | 'hl' | 'sku'): number {
+  if (viewUnit === 'sku') return Number(q.quantidade) || 0;
+  if (viewUnit === 'hl') return getItemHlInfo(q).totalHl;
+  return getItemValorReal(q);
+}
+
 // Helper to classify Quebra por Movimentação
 export const isQuebraMovimentacao = (q: QuebraRow): boolean => {
   const cod = String(q.codQuebra || '').trim();
@@ -234,7 +279,7 @@ export default function WqiTab({
       if (localSaved) {
         setData(JSON.parse(localSaved));
       } else {
-        setData(generateMockQuebras(empresaId || 'demo'));
+        setData([]);
       }
     }
     setLoading(false);
@@ -273,12 +318,12 @@ export default function WqiTab({
     const set = new Set<string>();
     if (Array.isArray(COLABORADORES_QUEBRA)) {
       COLABORADORES_QUEBRA.forEach(c => {
-        if (c && c.trim()) set.add(c.trim());
+        if (c && c.trim()) set.add(normalizeCollaboratorName(c));
       });
     }
     data.forEach(q => {
-      const colab = (q.colaboradorQuebrou || q.responsavel || q.ajudante || '').trim();
-      if (colab) set.add(colab);
+      const colab = (q.colaboradorQuebrou || q.responsavel || (q as any).ajudante || '').trim();
+      if (colab) set.add(normalizeCollaboratorName(colab));
     });
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [data]);
@@ -306,10 +351,12 @@ export default function WqiTab({
         if (!match) return false;
       }
 
-      // Ajudante / Colaborador filter
+      // Ajudante / Colaborador filter with normalization
       if (filterAjudante !== 'TODOS') {
-        const colab = (q.colaboradorQuebrou || q.responsavel || q.ajudante || '').trim().toUpperCase();
-        if (colab !== filterAjudante.trim().toUpperCase()) return false;
+        const colabRaw = (q.colaboradorQuebrou || q.responsavel || (q as any).ajudante || '').trim();
+        const colabNormalized = normalizeCollaboratorName(colabRaw);
+        const filterNormalized = normalizeCollaboratorName(filterAjudante);
+        if (colabNormalized !== filterNormalized && colabRaw.toUpperCase() !== filterAjudante.trim().toUpperCase()) return false;
       }
 
       // Date range filter
@@ -352,21 +399,52 @@ export default function WqiTab({
   }, [filteredData, recordsFilterProduto, recordsFilterEmbalagem, recordsSearchQuery]);
 
   // States for editable WQI matrix
-  const [hlPerdidoMap, setHlPerdidoMap] = useState<Record<number, number | null>>({});
-  const [hlEntregueMap, setHlEntregueMap] = useState<Record<number, number | null>>({
-    0: 16335.56,
-    1: 12485.25,
-    2: 13813.48,
-    3: 12981.13
+  const [hlFaturadoMap, setHlFaturadoMap] = useState<Record<number, number | null>>(() => {
+    try {
+      const saved = localStorage.getItem('wqi_hl_faturado_map');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return {};
   });
-  const [real2026ManualMap, setReal2026ManualMap] = useState<Record<number, number | null>>({});
+
+  // REAL 2025 segmented structure (Armazém, Entrega, Puxada)
+  const [real2025Data, setReal2025Data] = useState<{
+    armazem: (number | null)[];
+    entrega: (number | null)[];
+    puxada: (number | null)[];
+  }>(() => {
+    try {
+      const saved = localStorage.getItem('wqi_real2025_data');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return {
+      armazem: Array(12).fill(null),
+      entrega: Array(12).fill(null),
+      puxada: Array(12).fill(null)
+    };
+  });
+
+  const [area2025Filter, setArea2025Filter] = useState<'TODOS' | 'ARMAZEM' | 'ENTREGA' | 'PUXADA'>('TODOS');
+
+  // Save WQI matrix to localStorage whenever updated
+  useEffect(() => {
+    try {
+      localStorage.setItem('wqi_hl_faturado_map', JSON.stringify(hlFaturadoMap));
+    } catch (e) {}
+  }, [hlFaturadoMap]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('wqi_real2025_data', JSON.stringify(real2025Data));
+    } catch (e) {}
+  }, [real2025Data]);
 
   // Inline cell edit states
-  const [editingCell, setEditingCell] = useState<{ rowKey: 'hlPerdido' | 'hlEntregue' | 'real2026'; monthIdx: number } | null>(null);
+  const [editingCell, setEditingCell] = useState<{ rowKey: 'hlFaturado' | 'real2025'; monthIdx: number } | null>(null);
   const [editInputValue, setEditInputValue] = useState<string>('');
   const [isMatrixModalOpen, setIsMatrixModalOpen] = useState<boolean>(false);
 
-  const handleStartCellEdit = (rowKey: 'hlPerdido' | 'hlEntregue' | 'real2026', monthIdx: number, val: number | null) => {
+  const handleStartCellEdit = (rowKey: 'hlFaturado' | 'real2025', monthIdx: number, val: number | null) => {
     setEditingCell({ rowKey, monthIdx });
     setEditInputValue(val !== null && val !== undefined ? String(val) : '');
   };
@@ -377,15 +455,27 @@ export default function WqiTab({
     const raw = editInputValue.trim();
 
     if (raw === '' || raw === '-') {
-      if (rowKey === 'hlPerdido') setHlPerdidoMap(prev => ({ ...prev, [monthIdx]: null }));
-      if (rowKey === 'hlEntregue') setHlEntregueMap(prev => ({ ...prev, [monthIdx]: null }));
-      if (rowKey === 'real2026') setReal2026ManualMap(prev => { const copy = { ...prev }; delete copy[monthIdx]; return copy; });
+      if (rowKey === 'hlFaturado') setHlFaturadoMap(prev => ({ ...prev, [monthIdx]: null }));
+      if (rowKey === 'real2025') {
+        setReal2025Data(prev => {
+          const areaKey = area2025Filter === 'TODOS' ? 'armazem' : (area2025Filter.toLowerCase() as 'armazem' | 'entrega' | 'puxada');
+          const newArr = [...prev[areaKey]];
+          newArr[monthIdx] = null;
+          return { ...prev, [areaKey]: newArr };
+        });
+      }
     } else {
       const num = parseFloat(raw.replace(/\./g, '').replace(',', '.'));
       if (!isNaN(num)) {
-        if (rowKey === 'hlPerdido') setHlPerdidoMap(prev => ({ ...prev, [monthIdx]: num }));
-        if (rowKey === 'hlEntregue') setHlEntregueMap(prev => ({ ...prev, [monthIdx]: num }));
-        if (rowKey === 'real2026') setReal2026ManualMap(prev => ({ ...prev, [monthIdx]: num }));
+        if (rowKey === 'hlFaturado') setHlFaturadoMap(prev => ({ ...prev, [monthIdx]: num }));
+        if (rowKey === 'real2025') {
+          setReal2025Data(prev => {
+            const areaKey = area2025Filter === 'TODOS' ? 'armazem' : (area2025Filter.toLowerCase() as 'armazem' | 'entrega' | 'puxada');
+            const newArr = [...prev[areaKey]];
+            newArr[monthIdx] = num;
+            return { ...prev, [areaKey]: newArr };
+          });
+        }
       }
     }
     setEditingCell(null);
@@ -394,26 +484,20 @@ export default function WqiTab({
   // 12-Month Annual Comparative Data (2025 vs 2026) for WQI
   const annualComparisonData = useMemo(() => {
     const months = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
-    
-    // Fixed baseline values for 2025
-    const base2025 = [26, 26, 12, 25, 6, 20, 53, 20, 19, 69, 29, 35];
-    
-    // Default baseline values for HL PERDIDO 2026 matching reference image
-    const defaultHlPerdido2026: (number | null)[] = [0.11, 0.12, 0.47, 0.03, null, 2.44, 0.00, null, null, null, null, null];
-    
-    // Default baseline values for HL ENTREGUE 2026 matching reference image
-    const defaultHlEntregue2026: (number | null)[] = [16335.56, 12485.25, 13813.48, 12981.13, null, null, null, null, null, null, null, null];
-
     const realHlPerdidoMap2026: Record<number, number> = {};
-    let count2026 = 0;
 
     data.forEach(q => {
       if (!isQuebraMovimentacao(q)) return;
 
-      // Strictly Armazém WQI occurrences (excluding Entrega, Rota, Mercado, Puxada)
+      // Filter by area if specific area is selected in main filter or calculate for Armazém WQI
       const rawArea = (q.area || '').toUpperCase();
-      if (rawArea.includes('ENTREGA') || rawArea.includes('ROTA') || rawArea.includes('MERCADO') || rawArea.includes('PUXADA') || rawArea.includes('TRANSF') || rawArea.includes('TRANS')) {
-        return;
+      if (filterArea !== 'TODAS') {
+        if (q.area !== filterArea) return;
+      } else {
+        // Default WQI Armazém filter
+        if (rawArea.includes('ENTREGA') || rawArea.includes('ROTA') || rawArea.includes('MERCADO') || rawArea.includes('PUXADA') || rawArea.includes('TRANSF') || rawArea.includes('TRANS')) {
+          return;
+        }
       }
 
       let y = 0;
@@ -435,51 +519,59 @@ export default function WqiTab({
       if (m >= 0 && m < 12 && y === 2026) {
         const hl = getItemHlInfo(q).totalHl;
         realHlPerdidoMap2026[m] = (realHlPerdidoMap2026[m] || 0) + hl;
-        count2026++;
       }
     });
 
     return months.map((month, i) => {
-      const val2025 = base2025[i];
-
-      // 1. HL PERDIDO for 2026
-      let hlPerdido: number | null = null;
-      if (hlPerdidoMap[i] !== undefined) {
-        hlPerdido = hlPerdidoMap[i];
-      } else if (count2026 > 0 && realHlPerdidoMap2026[i] !== undefined) {
-        hlPerdido = Math.round(realHlPerdidoMap2026[i] * 100) / 100;
+      // 1. Calculate REAL 2025 based on selected Area Filter (Armazém, Entrega, Puxada or Consolidated Sum)
+      let val2025: number | null = null;
+      if (area2025Filter === 'ARMAZEM') {
+        val2025 = real2025Data.armazem[i];
+      } else if (area2025Filter === 'ENTREGA') {
+        val2025 = real2025Data.entrega[i];
+      } else if (area2025Filter === 'PUXADA') {
+        val2025 = real2025Data.puxada[i];
       } else {
-        hlPerdido = defaultHlPerdido2026[i];
+        // TODOS / CONSOLIDADO: sum non-null area values
+        const a = real2025Data.armazem[i];
+        const e = real2025Data.entrega[i];
+        const p = real2025Data.puxada[i];
+        if (a === null && e === null && p === null) {
+          val2025 = null;
+        } else {
+          val2025 = (a || 0) + (e || 0) + (p || 0);
+        }
       }
 
-      // 2. HL ENTREGUE for 2026
-      const hlEntregue = hlEntregueMap[i] !== undefined 
-        ? hlEntregueMap[i] 
-        : defaultHlEntregue2026[i];
+      // 2. HL PERDIDO for 2026: 100% Automatic from real platform breakage records
+      let hlPerdido: number | null = null;
+      if (realHlPerdidoMap2026[i] !== undefined && realHlPerdidoMap2026[i] > 0) {
+        hlPerdido = Math.round(realHlPerdidoMap2026[i] * 100) / 100;
+      }
 
-      // 3. REAL 2026: Manual override OR automatic calculation (HL PERDIDO / HL ENTREGUE) * 1.000.000
+      // 3. HL FATURADO DO MÊS for 2026: Manual input only
+      const hlFaturado = hlFaturadoMap[i] !== undefined ? hlFaturadoMap[i] : null;
+
+      // 4. REAL 2026 (PPM): Formula: (HL Perdido ÷ HL Faturado) * 1.000.000
       let real2026: number | null = null;
-      if (real2026ManualMap[i] !== undefined) {
-        real2026 = real2026ManualMap[i];
-      } else if (hlPerdido !== null && hlEntregue !== null && hlEntregue > 0) {
-        real2026 = Math.round((hlPerdido / hlEntregue) * 1000000);
-      } else if (i === 1 && hlPerdido === 0.12 && hlEntregue === 12485.25) {
-        real2026 = 10;
+      if (hlPerdido !== null && hlFaturado !== null && hlFaturado > 0) {
+        real2026 = Math.round((hlPerdido / hlFaturado) * 1000000);
       }
 
       return {
         month,
         monthIdx: i,
         real2025: val2025,
-        real2026: real2026,
-        val2026Display: real2026 !== null ? real2026 : '-',
+        real2025Str: val2025 !== null ? String(val2025) : '—',
+        real2026,
+        val2026Display: real2026 !== null ? real2026 : '—',
         hlPerdido,
-        hlPerdidoStr: hlPerdido !== null ? hlPerdido.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-',
-        hlEntregue,
-        hlEntregueStr: hlEntregue !== null ? hlEntregue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-'
+        hlPerdidoStr: hlPerdido !== null ? hlPerdido.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—',
+        hlEntregue: hlFaturado,
+        hlEntregueStr: hlFaturado !== null ? hlFaturado.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'
       };
     });
-  }, [data, hlPerdidoMap, hlEntregueMap, real2026ManualMap]);
+  }, [data, hlFaturadoMap, real2025Data, area2025Filter, filterArea]);
 
   const { totalRecordsVolume, totalRecordsHl } = useMemo(() => {
     let vol = 0;
@@ -548,14 +640,14 @@ export default function WqiTab({
       };
     }
     monthlyOccurrencesMap[yearMonth].count += 1;
-    monthlyOccurrencesMap[yearMonth].volume += (q.quantidade || 0);
+    monthlyOccurrencesMap[yearMonth].volume += getValorPorUnidade(q, viewUnit);
   });
 
   const monthlyChartData = Object.values(monthlyOccurrencesMap)
     .sort((a, b) => a.monthKey.localeCompare(b.monthKey));
 
   const totalOcorrencias = filteredData.length;
-  const totalVolume = filteredData.reduce((acc, curr) => acc + (curr.quantidade || 0), 0);
+  const totalVolume = filteredData.reduce((acc, curr) => acc + getValorPorUnidade(curr, viewUnit), 0);
 
   // -------------------------------------------------------------
   // CHART 2: Ocorrências por Ajudantes
@@ -572,7 +664,7 @@ export default function WqiTab({
                       (!q.funcao && (areaUpper === 'ENTREGA' || areaUpper === 'ROTA' || resp.includes('AJUDANTE')));
 
     if (isAjudante) {
-      const name = resp || 'Não Informado';
+      const name = resp ? normalizeCollaboratorName(resp) : 'Não Informado';
       ajudantesMap[name] = (ajudantesMap[name] || 0) + 1;
     }
   });
@@ -597,7 +689,7 @@ export default function WqiTab({
                          (!q.funcao && (areaUpper === 'ARMAZEM' || areaUpper === 'ARMAZÉM' || resp.includes('EMPILHADOR')));
 
     if (isEmpilhador) {
-      const name = resp || 'Não Informado';
+      const name = resp ? normalizeCollaboratorName(resp) : 'Não Informado';
       empilhadoresMap[name] = (empilhadoresMap[name] || 0) + 1;
     }
   });
@@ -662,7 +754,7 @@ export default function WqiTab({
       areaKey = 'WQI (ARMAZÉM)';
     }
     setorOccurrencesMap[areaKey].value += 1;
-    setorOccurrencesMap[areaKey].volume += qty;
+    setorOccurrencesMap[areaKey].volume += getValorPorUnidade(q, viewUnit);
   });
 
   const categoryColors: Record<string, string> = {
@@ -846,9 +938,9 @@ export default function WqiTab({
             <span className={`text-[9px] font-black uppercase tracking-wider block ${isDark ? 'text-slate-400' : 'text-gray-400'}`}>Volume Total de Perdas</span>
             <div className="flex items-baseline gap-2 mt-1">
               <span className="text-2xl font-black font-mono text-[#ef4444]">
-                {totalVolume.toLocaleString('pt-BR')}
+                {viewUnit === 'rs' ? `R$ ${totalVolume.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : totalVolume.toLocaleString('pt-BR', { minimumFractionDigits: viewUnit === 'hl' ? 2 : 0, maximumFractionDigits: viewUnit === 'hl' ? 2 : 0 })}
               </span>
-              <span className={`text-xs font-bold ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{viewUnit === 'cx' ? 'unidades' : 'HL'}</span>
+              <span className={`text-xs font-bold ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{viewUnit === 'rs' ? 'R$' : viewUnit === 'hl' ? 'HL' : 'unidades'}</span>
             </div>
             <span className="text-[9px] text-slate-400 mt-0.5 block font-semibold">Volume acumulado de descartes</span>
           </div>
@@ -925,7 +1017,7 @@ export default function WqiTab({
           </div>
 
           <div className={`text-[9px] font-semibold border-t pt-1.5 flex items-center justify-between ${isDark ? 'border-slate-800 text-slate-400' : 'border-gray-100 text-gray-400'}`}>
-            <span>Volume total acumulado: {totalVolume.toLocaleString('pt-BR')} {viewUnit === 'cx' ? 'UN' : 'HL'}</span>
+            <span>Volume total acumulado: {viewUnit === 'rs' ? `R$ ${totalVolume.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : `${totalVolume.toLocaleString('pt-BR')} ${viewUnit === 'hl' ? 'HL' : 'UN'}`}</span>
             <span className={`font-mono font-bold ${isDark ? 'text-blue-400' : 'text-[#032b5e]'}`}>Contagem de registros</span>
           </div>
         </div>
@@ -963,7 +1055,7 @@ export default function WqiTab({
                   <Tooltip 
                     contentStyle={{ backgroundColor: isDark ? '#030712' : '#0f172a', border: '1px solid #334155', borderRadius: '8px', fontSize: 10, color: '#fff' }}
                     formatter={(val: any, name: any, item: any) => [
-                      `${val} ocorrências (${item.payload.volume.toLocaleString('pt-BR')} ${viewUnit === 'cx' ? 'UN' : 'HL'})`, 
+                      `${val} ocorrências (${viewUnit === 'rs' ? `R$ ${item.payload.volume.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : `${item.payload.volume.toLocaleString('pt-BR')} ${viewUnit === 'hl' ? 'HL' : 'UN'}`})`, 
                       'Total'
                     ]}
                   />
@@ -984,7 +1076,7 @@ export default function WqiTab({
                   <div className="flex items-center gap-2 font-mono">
                     <span className={isDark ? 'text-slate-300' : 'text-slate-800'}>{item.value} ocorrências ({pct}%)</span>
                     <span className={`px-1.5 py-0.5 rounded text-[8px] ${isDark ? 'bg-slate-800 text-blue-300' : 'bg-slate-100 text-[#032b5e]'}`}>
-                      {item.volume.toLocaleString('pt-BR')} {viewUnit === 'cx' ? 'UN' : 'HL'}
+                      {viewUnit === 'rs' ? `R$ ${item.volume.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : `${item.volume.toLocaleString('pt-BR')} ${viewUnit === 'hl' ? 'HL' : 'UN'}`}
                     </span>
                   </div>
                 </div>
@@ -1289,18 +1381,36 @@ export default function WqiTab({
           </ResponsiveContainer>
         </div>
 
-        {/* Data Matrix Table Header Bar */}
+        {/* Data Matrix Table Header Bar with 2025 Area Selector */}
         <div className="flex flex-wrap items-center justify-between gap-2 mt-3 mb-1 px-1">
-          <div className="flex items-center gap-1.5 text-[11px] font-extrabold text-amber-500">
-            <Pencil className="w-4 h-4 animate-pulse text-amber-500" />
-            <span>CLIQUE EM QUALQUER CÉLULA ABAIXO PARA EDITAR OS DADOS (HL PERDIDO, HL ENTREGUE, REAL 2026)</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[11px] font-extrabold text-emerald-400 uppercase tracking-wider flex items-center gap-1">
+              <Filter className="w-3.5 h-3.5" /> Visão WQI 2025:
+            </span>
+            <div className="flex items-center gap-1 bg-slate-900 p-1 rounded-lg border border-slate-700">
+              {(['TODOS', 'ARMAZEM', 'ENTREGA', 'PUXADA'] as const).map(area => (
+                <button
+                  key={area}
+                  type="button"
+                  onClick={() => setArea2025Filter(area)}
+                  className={`px-2.5 py-1 text-[10px] font-black rounded transition-all cursor-pointer ${
+                    area2025Filter === area
+                      ? 'bg-emerald-500 text-slate-950 shadow-sm'
+                      : 'text-slate-400 hover:text-white bg-transparent'
+                  }`}
+                >
+                  {area === 'TODOS' ? 'CONSOLIDADO' : area === 'ARMAZEM' ? 'ARMAZÉM' : area}
+                </button>
+              ))}
+            </div>
           </div>
+
           <button
             type="button"
             onClick={() => setIsMatrixModalOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-[11px] rounded shadow transition-colors cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-[11px] rounded shadow transition-colors cursor-pointer"
           >
-            <Sliders className="w-3.5 h-3.5" /> Formulário Completo de Preenchimento
+            <Sliders className="w-3.5 h-3.5" /> Lançamento Completo de HL Faturado & 2025
           </button>
         </div>
 
@@ -1311,7 +1421,7 @@ export default function WqiTab({
           <table className="w-full text-center border-collapse">
             <thead>
               <tr className="bg-black text-white font-black uppercase text-[10px] border-b border-slate-700">
-                <th className="py-2.5 px-3 text-left w-[120px] border-r border-slate-700 font-extrabold tracking-wider">WQI</th>
+                <th className="py-2.5 px-3 text-left w-[140px] border-r border-slate-700 font-extrabold tracking-wider">MATRIZ WQI</th>
                 {annualComparisonData.map(d => (
                   <th key={d.month} className="py-2.5 px-1 border-r border-slate-800 last:border-r-0 min-w-[55px] font-extrabold">{d.month}</th>
                 ))}
@@ -1319,55 +1429,33 @@ export default function WqiTab({
             </thead>
             <tbody className={`divide-y font-mono font-bold ${isDark ? 'divide-slate-800/80 text-slate-200' : 'divide-gray-200 text-slate-800 bg-slate-50/50'}`}>
               
-              {/* Row 1: HL PERDIDO */}
+              {/* Row 1: HL PERDIDO 2026 (AUTOMÁTICO DAS QUEBRAS DA PLATAFORMA) */}
               <tr className={isDark ? 'hover:bg-slate-800/40' : 'hover:bg-slate-100/80'}>
-                <td className={`py-2 px-3 text-left font-sans font-extrabold border-r whitespace-nowrap ${
-                  isDark ? 'text-slate-200 border-slate-700' : 'text-slate-800 border-gray-200'
+                <td className={`py-2 px-3 text-left font-sans font-extrabold border-r whitespace-nowrap flex items-center justify-between ${
+                  isDark ? 'text-slate-300 border-slate-700' : 'text-slate-800 border-gray-200'
                 }`}>
-                  HL PERDIDO ✏️
+                  <span>HL PERDIDO 2026</span>
+                  <span className="text-[9px] px-1 bg-slate-800 text-amber-400 rounded font-mono border border-slate-700">Auto</span>
                 </td>
-                {annualComparisonData.map(d => {
-                  const isEditing = editingCell?.rowKey === 'hlPerdido' && editingCell?.monthIdx === d.monthIdx;
-                  return (
-                    <td key={`hlp-${d.month}`} className={`p-0.5 border-r last:border-r-0 ${isDark ? 'border-slate-800/80' : 'border-gray-200'}`}>
-                      {isEditing ? (
-                        <input
-                          type="text"
-                          autoFocus
-                          className="w-full text-center font-mono font-extrabold text-[10px] py-1 px-0.5 bg-amber-400 text-slate-950 border-2 border-amber-600 rounded focus:outline-none shadow-md"
-                          value={editInputValue}
-                          onChange={(e) => setEditInputValue(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') handleSaveInlineCell();
-                            if (e.key === 'Escape') setEditingCell(null);
-                          }}
-                          onBlur={handleSaveInlineCell}
-                        />
-                      ) : (
-                        <div
-                          onClick={() => handleStartCellEdit('hlPerdido', d.monthIdx, d.hlPerdido)}
-                          title="Clique para digitar HL PERDIDO"
-                          className={`py-1.5 px-1 rounded cursor-pointer hover:bg-amber-500/25 transition-all font-bold ${
-                            d.hlPerdido !== null ? (isDark ? 'text-slate-200' : 'text-slate-900 font-extrabold') : (isDark ? 'text-slate-500' : 'text-gray-400')
-                          }`}
-                        >
-                          {d.hlPerdidoStr}
-                        </div>
-                      )}
-                    </td>
-                  );
-                })}
+                {annualComparisonData.map(d => (
+                  <td key={`hlp-${d.month}`} className={`py-1.5 px-1 border-r last:border-r-0 ${isDark ? 'border-slate-800/80' : 'border-gray-200'}`}>
+                    <span className={d.hlPerdido !== null ? (isDark ? 'text-slate-200 font-bold' : 'text-slate-900 font-extrabold') : 'text-gray-500'}>
+                      {d.hlPerdidoStr}
+                    </span>
+                  </td>
+                ))}
               </tr>
 
-              {/* Row 2: HL ENTREGUE */}
+              {/* Row 2: HL FATURADO DO MÊS 2026 (EDITÁVEL) */}
               <tr className={isDark ? 'hover:bg-slate-800/40' : 'hover:bg-slate-100/80'}>
-                <td className={`py-2 px-3 text-left font-sans font-extrabold border-r whitespace-nowrap ${
-                  isDark ? 'text-slate-200 border-slate-700' : 'text-slate-800 border-gray-200'
+                <td className={`py-2 px-3 text-left font-sans font-extrabold border-r whitespace-nowrap flex items-center justify-between ${
+                  isDark ? 'text-amber-300 border-slate-700' : 'text-amber-800 border-gray-200'
                 }`}>
-                  HL ENTREGUE ✏️
+                  <span>HL FATURADO 2026</span>
+                  <span className="text-[9px] px-1 bg-amber-500/20 text-amber-400 rounded font-mono border border-amber-500/40">✏️ Editar</span>
                 </td>
                 {annualComparisonData.map(d => {
-                  const isEditing = editingCell?.rowKey === 'hlEntregue' && editingCell?.monthIdx === d.monthIdx;
+                  const isEditing = editingCell?.rowKey === 'hlFaturado' && editingCell?.monthIdx === d.monthIdx;
                   return (
                     <td key={`hle-${d.month}`} className={`p-0.5 border-r last:border-r-0 ${isDark ? 'border-slate-800/80' : 'border-gray-200'}`}>
                       {isEditing ? (
@@ -1385,10 +1473,10 @@ export default function WqiTab({
                         />
                       ) : (
                         <div
-                          onClick={() => handleStartCellEdit('hlEntregue', d.monthIdx, d.hlEntregue)}
-                          title="Clique para digitar HL ENTREGUE"
+                          onClick={() => handleStartCellEdit('hlFaturado', d.monthIdx, d.hlEntregue)}
+                          title="Clique para digitar Hectolitros Faturados do Mês"
                           className={`py-1.5 px-1 rounded cursor-pointer hover:bg-amber-500/25 transition-all font-bold ${
-                            d.hlEntregue !== null ? (isDark ? 'text-slate-200' : 'text-slate-900 font-extrabold') : (isDark ? 'text-slate-500' : 'text-gray-400')
+                            d.hlEntregue !== null ? (isDark ? 'text-amber-200 font-extrabold' : 'text-amber-900 font-extrabold') : (isDark ? 'text-slate-500' : 'text-gray-400')
                           }`}
                         >
                           {d.hlEntregueStr}
@@ -1399,23 +1487,46 @@ export default function WqiTab({
                 })}
               </tr>
 
-              {/* Row 3: REAL 2026 */}
+              {/* Row 3: REAL 2026 (PPM CALCULADO) */}
               <tr className={isDark ? 'hover:bg-slate-800/40' : 'hover:bg-slate-100/80'}>
-                <td className={`py-2 px-3 text-left font-sans font-extrabold border-r flex items-center gap-1.5 whitespace-nowrap ${
+                <td className={`py-2 px-3 text-left font-sans font-extrabold border-r whitespace-nowrap flex items-center justify-between ${
                   isDark ? 'text-amber-400 border-slate-700' : 'text-amber-700 border-gray-200'
                 }`}>
-                  <span className="w-2.5 h-2.5 bg-amber-400 rounded-sm inline-block"></span>
-                  REAL 2026 ✏️
+                  <span className="flex items-center gap-1">
+                    <span className="w-2 h-2 bg-amber-400 rounded-sm inline-block"></span>
+                    REAL 2026 (PPM)
+                  </span>
+                  <span className="text-[9px] px-1 bg-slate-800 text-slate-400 rounded font-mono border border-slate-700">Fórmula</span>
+                </td>
+                {annualComparisonData.map(d => (
+                  <td key={`r26-${d.month}`} className={`py-1.5 px-1 border-r last:border-r-0 ${isDark ? 'border-slate-800/80' : 'border-gray-200'}`}>
+                    <span className={`font-black text-[11px] ${d.real2026 !== null ? (isDark ? 'text-amber-300' : 'text-amber-800') : (isDark ? 'text-slate-500' : 'text-gray-400')}`}>
+                      {d.val2026Display}
+                    </span>
+                  </td>
+                ))}
+              </tr>
+
+              {/* Row 4: REAL 2025 (PPM EDITÁVEL POR ÁREA) */}
+              <tr className={isDark ? 'hover:bg-slate-800/40' : 'hover:bg-slate-100/80'}>
+                <td className={`py-2 px-3 text-left font-sans font-extrabold border-r whitespace-nowrap flex items-center justify-between ${
+                  isDark ? 'text-emerald-400 border-slate-700' : 'text-emerald-700 border-gray-200'
+                }`}>
+                  <span className="flex items-center gap-1">
+                    <span className="w-2 h-2 bg-emerald-500 rounded-sm inline-block"></span>
+                    REAL 2025 ({area2025Filter})
+                  </span>
+                  <span className="text-[9px] px-1 bg-emerald-500/20 text-emerald-400 rounded font-mono border border-emerald-500/40">✏️ Editar</span>
                 </td>
                 {annualComparisonData.map(d => {
-                  const isEditing = editingCell?.rowKey === 'real2026' && editingCell?.monthIdx === d.monthIdx;
+                  const isEditing = editingCell?.rowKey === 'real2025' && editingCell?.monthIdx === d.monthIdx;
                   return (
-                    <td key={`r26-${d.month}`} className={`p-0.5 border-r last:border-r-0 ${isDark ? 'border-slate-800/80' : 'border-gray-200'}`}>
+                    <td key={`r25-${d.month}`} className={`p-0.5 border-r last:border-r-0 ${isDark ? 'border-slate-800/80' : 'border-gray-200'}`}>
                       {isEditing ? (
                         <input
                           type="text"
                           autoFocus
-                          className="w-full text-center font-mono font-extrabold text-[10px] py-1 px-0.5 bg-amber-400 text-slate-950 border-2 border-amber-600 rounded focus:outline-none shadow-md"
+                          className="w-full text-center font-mono font-extrabold text-[10px] py-1 px-0.5 bg-emerald-400 text-slate-950 border-2 border-emerald-600 rounded focus:outline-none shadow-md"
                           value={editInputValue}
                           onChange={(e) => setEditInputValue(e.target.value)}
                           onKeyDown={(e) => {
@@ -1426,33 +1537,18 @@ export default function WqiTab({
                         />
                       ) : (
                         <div
-                          onClick={() => handleStartCellEdit('real2026', d.monthIdx, d.real2026)}
-                          title="Clique para digitar REAL 2026 diretamente"
-                          className={`py-1.5 px-1 rounded cursor-pointer hover:bg-amber-500/25 transition-all font-black text-[11px] ${
-                            d.real2026 !== null ? (isDark ? 'text-amber-300' : 'text-amber-800') : (isDark ? 'text-slate-500' : 'text-gray-400')
+                          onClick={() => handleStartCellEdit('real2025', d.monthIdx, d.real2025)}
+                          title={`Clique para editar o PPM 2025 para ${area2025Filter}`}
+                          className={`py-1.5 px-1 rounded cursor-pointer hover:bg-emerald-500/25 transition-all font-bold ${
+                            d.real2025 !== null ? (isDark ? 'text-emerald-300 font-black' : 'text-emerald-800 font-black') : (isDark ? 'text-slate-500' : 'text-gray-400')
                           }`}
                         >
-                          {d.val2026Display}
+                          {d.real2025Str}
                         </div>
                       )}
                     </td>
                   );
                 })}
-              </tr>
-
-              {/* Row 4: REAL 2025 */}
-              <tr className={isDark ? 'hover:bg-slate-800/40' : 'hover:bg-slate-100/80'}>
-                <td className={`py-2 px-3 text-left font-sans font-extrabold border-r flex items-center gap-1.5 whitespace-nowrap ${
-                  isDark ? 'text-emerald-400 border-slate-700' : 'text-emerald-700 border-gray-200'
-                }`}>
-                  <span className="w-2.5 h-2.5 bg-emerald-500 rounded-sm inline-block"></span>
-                  REAL 2025
-                </td>
-                {annualComparisonData.map(d => (
-                  <td key={`r25-${d.month}`} className={`py-2 px-1 border-r last:border-r-0 ${isDark ? 'border-slate-800/80 text-emerald-300' : 'border-gray-200 text-emerald-800'}`}>
-                    {d.real2025}
-                  </td>
-                ))}
               </tr>
             </tbody>
           </table>
@@ -1582,7 +1678,7 @@ export default function WqiTab({
                         </td>
                         <td className="py-2 px-2 whitespace-nowrap">{r.area || '—'}</td>
                         <td className="py-2 px-3 whitespace-nowrap text-slate-500 dark:text-slate-400">
-                          {r.colaboradorQuebrou || r.responsavel || '—'}
+                          {normalizeCollaboratorName(r.colaboradorQuebrou || r.responsavel || '') || '—'}
                         </td>
                       </tr>
                     );
@@ -1620,13 +1716,13 @@ export default function WqiTab({
       {/* Modal Form for Complete WQI Preenchimento */}
       {isMatrixModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fadeIn">
-          <div className={`w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-xl border shadow-2xl p-5 ${
+          <div className={`w-full max-w-5xl max-h-[90vh] overflow-y-auto rounded-xl border shadow-2xl p-5 ${
             isDark ? 'bg-slate-900 border-slate-700 text-slate-100' : 'bg-white border-gray-200 text-slate-900'
           }`}>
             <div className="flex items-center justify-between border-b pb-3 mb-4">
               <div className="flex items-center gap-2">
                 <Sliders className="w-5 h-5 text-amber-500" />
-                <h3 className="font-extrabold text-base tracking-wide uppercase">Preenchimento Manual Matriz WQI 2026</h3>
+                <h3 className="font-extrabold text-base tracking-wide uppercase">Preenchimento Completo Matriz WQI (2025 e 2026)</h3>
               </div>
               <button
                 type="button"
@@ -1638,8 +1734,8 @@ export default function WqiTab({
             </div>
 
             <p className="text-xs text-slate-400 mb-4 font-medium">
-              Informe os valores mensais de <strong>HL PERDIDO</strong>, <strong>HL ENTREGUE</strong> e <strong>REAL 2026</strong>. 
-              (Se REAL 2026 for mantido em branco, ele será calculado automaticamente pela fórmula: <code className="bg-slate-800 px-1 py-0.5 rounded text-amber-400 font-mono">(HL PERDIDO / HL ENTREGUE) * 1.000.000</code>).
+              O <strong>HL PERDIDO 2026</strong> é calculado 100% automaticamente com base nos registros de quebras da unidade. 
+              Informe abaixo os <strong>Hectolitros Faturados (2026)</strong> para gerar o PPM 2026 e os valores históricos de <strong>PPM 2025</strong> por área.
             </p>
 
             <div className="overflow-x-auto rounded-lg border mb-5">
@@ -1647,75 +1743,99 @@ export default function WqiTab({
                 <thead>
                   <tr className="bg-slate-800 text-white font-black uppercase text-[10px]">
                     <th className="py-2 px-3 text-left border-r border-slate-700">Mês</th>
-                    <th className="py-2 px-3 border-r border-slate-700">HL PERDIDO</th>
-                    <th className="py-2 px-3 border-r border-slate-700">HL ENTREGUE</th>
-                    <th className="py-2 px-3">REAL 2026 (Manual)</th>
+                    <th className="py-2 px-3 border-r border-slate-700 text-slate-400">HL PERDIDO (Auto)</th>
+                    <th className="py-2 px-3 border-r border-slate-700 text-amber-400">HL FATURADO 2026</th>
+                    <th className="py-2 px-3 border-r border-slate-700 text-amber-400">PPM 2026 (Calc)</th>
+                    <th className="py-2 px-3 border-r border-slate-700 text-emerald-400">PPM 2025 (Armazém)</th>
+                    <th className="py-2 px-3 border-r border-slate-700 text-emerald-400">PPM 2025 (Entrega)</th>
+                    <th className="py-2 px-3 text-emerald-400">PPM 2025 (Puxada)</th>
                   </tr>
                 </thead>
                 <tbody className={`divide-y font-mono font-bold ${isDark ? 'divide-slate-800' : 'divide-gray-200'}`}>
                   {annualComparisonData.map((d) => (
                     <tr key={d.monthIdx} className={isDark ? 'hover:bg-slate-800/50' : 'hover:bg-slate-50'}>
-                      <td className="py-2 px-3 text-left font-sans font-extrabold border-r font-mono text-amber-500">
-                        {d.month} 2026
+                      <td className="py-2 px-3 text-left font-sans font-extrabold border-r font-mono text-amber-500 whitespace-nowrap">
+                        {d.month}
                       </td>
-                      <td className="py-1 px-2 border-r">
-                        <input
-                          type="text"
-                          placeholder="Ex: 0,12"
-                          className={`w-full text-center font-mono py-1 px-2 rounded border font-bold text-xs focus:ring-2 focus:ring-amber-500 focus:outline-none ${
-                            isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-gray-300 text-slate-900'
-                          }`}
-                          value={d.hlPerdido !== null ? String(d.hlPerdido) : ''}
-                          onChange={(e) => {
-                            const valStr = e.target.value;
-                            if (valStr.trim() === '') {
-                              setHlPerdidoMap(prev => ({ ...prev, [d.monthIdx]: null }));
-                            } else {
-                              const num = parseFloat(valStr.replace(/\./g, '').replace(',', '.'));
-                              if (!isNaN(num)) setHlPerdidoMap(prev => ({ ...prev, [d.monthIdx]: num }));
-                            }
-                          }}
-                        />
+                      <td className="py-1 px-2 border-r text-slate-400 font-mono">
+                        {d.hlPerdidoStr}
                       </td>
                       <td className="py-1 px-2 border-r">
                         <input
                           type="text"
                           placeholder="Ex: 12485,25"
                           className={`w-full text-center font-mono py-1 px-2 rounded border font-bold text-xs focus:ring-2 focus:ring-amber-500 focus:outline-none ${
-                            isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-gray-300 text-slate-900'
+                            isDark ? 'bg-slate-800 border-slate-700 text-amber-200' : 'bg-slate-50 border-gray-300 text-slate-900'
                           }`}
-                          value={d.hlEntregue !== null ? String(d.hlEntregue) : ''}
+                          value={hlFaturadoMap[d.monthIdx] !== undefined && hlFaturadoMap[d.monthIdx] !== null ? String(hlFaturadoMap[d.monthIdx]) : ''}
                           onChange={(e) => {
                             const valStr = e.target.value;
                             if (valStr.trim() === '') {
-                              setHlEntregueMap(prev => ({ ...prev, [d.monthIdx]: null }));
+                              setHlFaturadoMap(prev => ({ ...prev, [d.monthIdx]: null }));
                             } else {
                               const num = parseFloat(valStr.replace(/\./g, '').replace(',', '.'));
-                              if (!isNaN(num)) setHlEntregueMap(prev => ({ ...prev, [d.monthIdx]: num }));
+                              if (!isNaN(num)) setHlFaturadoMap(prev => ({ ...prev, [d.monthIdx]: num }));
                             }
+                          }}
+                        />
+                      </td>
+                      <td className="py-1 px-2 border-r text-amber-400 font-black">
+                        {d.val2026Display}
+                      </td>
+                      <td className="py-1 px-2 border-r">
+                        <input
+                          type="text"
+                          placeholder="Ex: 26"
+                          className={`w-full text-center font-mono py-1 px-2 rounded border font-bold text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none ${
+                            isDark ? 'bg-slate-800 border-slate-700 text-emerald-300' : 'bg-slate-50 border-gray-300 text-slate-900'
+                          }`}
+                          value={real2025Data.armazem[d.monthIdx] !== null ? String(real2025Data.armazem[d.monthIdx]) : ''}
+                          onChange={(e) => {
+                            const valStr = e.target.value;
+                            const num = valStr.trim() === '' ? null : parseFloat(valStr.replace(',', '.'));
+                            setReal2025Data(prev => {
+                              const newArm = [...prev.armazem];
+                              newArm[d.monthIdx] = isNaN(num as any) ? null : num;
+                              return { ...prev, armazem: newArm };
+                            });
+                          }}
+                        />
+                      </td>
+                      <td className="py-1 px-2 border-r">
+                        <input
+                          type="text"
+                          placeholder="Ex: 15"
+                          className={`w-full text-center font-mono py-1 px-2 rounded border font-bold text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none ${
+                            isDark ? 'bg-slate-800 border-slate-700 text-emerald-300' : 'bg-slate-50 border-gray-300 text-slate-900'
+                          }`}
+                          value={real2025Data.entrega[d.monthIdx] !== null ? String(real2025Data.entrega[d.monthIdx]) : ''}
+                          onChange={(e) => {
+                            const valStr = e.target.value;
+                            const num = valStr.trim() === '' ? null : parseFloat(valStr.replace(',', '.'));
+                            setReal2025Data(prev => {
+                              const newEnt = [...prev.entrega];
+                              newEnt[d.monthIdx] = isNaN(num as any) ? null : num;
+                              return { ...prev, entrega: newEnt };
+                            });
                           }}
                         />
                       </td>
                       <td className="py-1 px-2">
                         <input
                           type="text"
-                          placeholder={`Calc: ${d.real2026 !== null ? d.real2026 : '—'}`}
-                          className={`w-full text-center font-mono py-1 px-2 rounded border font-extrabold text-xs focus:ring-2 focus:ring-amber-500 focus:outline-none ${
-                            isDark ? 'bg-slate-800 border-slate-700 text-amber-400' : 'bg-slate-50 border-gray-300 text-amber-800'
+                          placeholder="Ex: 10"
+                          className={`w-full text-center font-mono py-1 px-2 rounded border font-bold text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none ${
+                            isDark ? 'bg-slate-800 border-slate-700 text-emerald-300' : 'bg-slate-50 border-gray-300 text-slate-900'
                           }`}
-                          value={real2026ManualMap[d.monthIdx] !== undefined && real2026ManualMap[d.monthIdx] !== null ? String(real2026ManualMap[d.monthIdx]) : ''}
+                          value={real2025Data.puxada[d.monthIdx] !== null ? String(real2025Data.puxada[d.monthIdx]) : ''}
                           onChange={(e) => {
                             const valStr = e.target.value;
-                            if (valStr.trim() === '') {
-                              setReal2026ManualMap(prev => {
-                                const copy = { ...prev };
-                                delete copy[d.monthIdx];
-                                return copy;
-                              });
-                            } else {
-                              const num = parseFloat(valStr.replace(/\./g, '').replace(',', '.'));
-                              if (!isNaN(num)) setReal2026ManualMap(prev => ({ ...prev, [d.monthIdx]: num }));
-                            }
+                            const num = valStr.trim() === '' ? null : parseFloat(valStr.replace(',', '.'));
+                            setReal2025Data(prev => {
+                              const newPux = [...prev.puxada];
+                              newPux[d.monthIdx] = isNaN(num as any) ? null : num;
+                              return { ...prev, puxada: newPux };
+                            });
                           }}
                         />
                       </td>
@@ -1729,18 +1849,17 @@ export default function WqiTab({
               <button
                 type="button"
                 onClick={() => {
-                  setHlPerdidoMap({});
-                  setHlEntregueMap({ 0: 16335.56, 1: 12485.25, 2: 13813.48, 3: 12981.13 });
-                  setReal2026ManualMap({});
+                  setHlFaturadoMap({});
+                  setReal2025Data({ armazem: Array(12).fill(null), entrega: Array(12).fill(null), puxada: Array(12).fill(null) });
                 }}
-                className="px-3 py-1.5 rounded text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors cursor-pointer"
+                className="px-3 py-1.5 text-xs text-red-400 hover:text-red-300 hover:bg-red-950/30 rounded font-bold transition-colors cursor-pointer"
               >
-                Restaurar Padrões
+                Limpar Todos os Valores Manuais
               </button>
               <button
                 type="button"
                 onClick={() => setIsMatrixModalOpen(false)}
-                className="px-5 py-2 rounded-lg font-black text-xs bg-amber-500 hover:bg-amber-600 text-slate-950 shadow-lg transition-colors cursor-pointer flex items-center gap-1.5"
+                className="px-5 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs uppercase tracking-wider rounded shadow transition-colors cursor-pointer flex items-center gap-1.5"
               >
                 <Check className="w-4 h-4" /> Concluir e Salvar
               </button>

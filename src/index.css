@@ -52,15 +52,15 @@ body {
 
 /* Fluid adaptive typography for supreme corporate aesthetics */
 .text-fluid-title {
-  font-size: clamp(13px, 1.3vw, 17px) !important;
+  font-size: clamp(14px, 1.4vw, 18px) !important;
   letter-spacing: -0.01em;
   font-weight: 800;
 }
 .text-fluid-subtitle {
-  font-size: clamp(9.5px, 0.95vw, 11px) !important;
+  font-size: clamp(12px, 0.95vw, 13px) !important;
 }
 .text-fluid-text {
-  font-size: clamp(10px, 0.9vw, 12.5px) !important;
+  font-size: clamp(12px, 0.9vw, 13px) !important;
 }
 .text-fluid-kpi {
   font-size: clamp(18px, 1.8vw, 24px) !important;
@@ -71,8 +71,8 @@ body {
 /* Highly dense enterprise data grids */
 .dense-table th,
 .dense-table td {
-  padding: 3.5px 5px !important;
-  font-size: clamp(9px, 0.85vw, 11.5px) !important;
+  padding: 4px 6px !important;
+  font-size: clamp(11px, 0.85vw, 12px) !important;
 }
 
 /* Reduced margins/paddings for maximum density (mimicking 67% zoom at 100% zoom) */
@@ -617,41 +617,78 @@ path[fill="#22c55e"] {
   max-height: 98% !important;
 }
 
-/* Compact headers and fonts within cards */
+/* Compact headers and fonts within cards - ETAPA 16 Standard */
 [id$="-dashboard-wrapper"] h3 {
-  font-size: clamp(9px, 0.9vw, 11px) !important;
+  font-size: clamp(12px, 1vw, 13px) !important;
   margin-top: 0 !important;
   margin-bottom: 2px !important;
 }
 
 [id$="-dashboard-wrapper"] .text-2xl,
 [id$="-dashboard-wrapper"] .text-3xl {
-  font-size: clamp(16px, 1.6vw, 22px) !important;
+  font-size: clamp(18px, 1.8vw, 24px) !important;
   letter-spacing: -0.015em !important;
 }
 
 [id$="-dashboard-wrapper"] .text-sm {
-  font-size: clamp(10.5px, 0.95vw, 11.5px) !important;
+  font-size: clamp(12px, 1vw, 13px) !important;
 }
 
 [id$="-dashboard-wrapper"] .text-xs {
-  font-size: clamp(9px, 0.85vw, 10.5px) !important;
+  font-size: clamp(12px, 0.95vw, 12.5px) !important;
 }
 
-/* Corporate Data Grids & Tables: Ultra Compact */
+/* Corporate Data Grids & Tables: Minimum 11px Font (ETAPA 16) */
 [id$="-dashboard-wrapper"] table {
   border-collapse: collapse !important;
 }
 
 [id$="-dashboard-wrapper"] th {
-  padding: clamp(2.5px, 0.35vw, 4.5px) clamp(3px, 0.4vw, 5px) !important;
-  font-size: clamp(8.5px, 0.8vw, 10.5px) !important;
+  padding: clamp(3px, 0.4vw, 6px) clamp(4px, 0.5vw, 8px) !important;
+  font-size: clamp(11px, 0.85vw, 12px) !important;
   background-color: rgba(30, 86, 240, 0.03) !important;
 }
 
 [id$="-dashboard-wrapper"] td {
-  padding: clamp(2.5px, 0.35vw, 4.5px) clamp(3px, 0.4vw, 5px) !important;
-  font-size: clamp(8.5px, 0.8vw, 11px) !important;
+  padding: clamp(3px, 0.4vw, 6px) clamp(4px, 0.5vw, 8px) !important;
+  font-size: clamp(11px, 0.85vw, 12px) !important;
+}
+
+/* ──────────────────────────────────────────────────
+   ETAPA 16 — PADRONIZAÇÃO DE LAYOUT VISUAL E ERGONOMIA
+   ────────────────────────────────────────────────── */
+
+/* Table Font Size Minimum Standard (ETAPA 16: Minimum 11px) */
+table th,
+table td,
+.dense-table th,
+.dense-table td {
+  font-size: max(11px, clamp(11px, 0.85vw, 12.5px)) !important;
+}
+
+/* Metric / KPI Card Minimum Standard (ETAPA 16: Minimum 12px for labels/headers) */
+.g-card,
+[id$="-dashboard-wrapper"] .g-card,
+.kpi-card {
+  font-size: 12px;
+}
+
+/* Upgrade micro class utilities to 11px / 12px for maximum legibility */
+.text-\[7px\],
+.text-\[8px\],
+.text-\[9px\] {
+  font-size: 11px !important;
+}
+
+.text-\[10px\],
+.text-\[10\.5px\] {
+  font-size: 11px !important;
+}
+
+/* Ensure KPI Titles & Labels in cards are clear, legible, and non-truncated */
+.kpi-title, .kpi-label {
+  font-size: 12px !important;
+  font-weight: 700 !important;
 }
 
 /* Adaptive sidebar adjustments for tablet and narrow viewports */

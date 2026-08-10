@@ -1,0 +1,196 @@
+{
+  "headerStandard": {
+    "title": "Armazém Ambev Guarabira — Workstation CCO",
+    "unitToggle": {
+      "options": ["cx", "hl"],
+      "default": "cx",
+      "description": "Alternância global em tempo real entre Caixas (cx) e Hectolitros (HL) com conversão automática via fator SKU."
+    },
+    "dateFilters": {
+      "options": ["Diário", "Semanal", "Mensal", "Personalizado"],
+      "default": "Semanal"
+    },
+    "ccoStatusBadge": {
+      "label": "CCO Ativo",
+      "status": "OPERATIONAL",
+      "lastSync": "2026-08-05T07:47:39-07:00"
+    },
+    "actions": [
+      {
+        "id": "btn_5s_jornada",
+        "label": "Checklist 5S & Início de Jornada",
+        "variant": "primary",
+        "opensModal": "ChecklistModal5S"
+      },
+      {
+        "id": "btn_refresh_ocr",
+        "label": "Sincronizar OCR / Imagens",
+        "variant": "outline",
+        "action": "refresh_demands"
+      }
+    ]
+  },
+  "views": [
+    {
+      "id": "visao_geral",
+      "name": "Visão Geral",
+      "route": "/overview",
+      "access": ["Administrativo", "Conferente", "Operador Empilhadeira", "Ajudante"],
+      "wireframe": {
+        "layout": "Header -> Executive KPI Grid (4 Cards) -> Alerta Risco 45D -> Matriz 13 Operações -> Ações Rápidas",
+        "components": ["ExecutiveSummaryCards", "WorkstationCriticosRecolhimento", "MatrizGeral13Operacoes", "QuickActionDrawer"]
+      }
+    },
+    {
+      "id": "desvios_acoes",
+      "name": "Desvios & Ações",
+      "route": "/desvios",
+      "access": ["Administrativo", "Conferente"],
+      "wireframe": {
+        "layout": "Header -> Tabela de Desvios OCR -> Plano de Ação Causa Raiz (5 Porquês) -> Timeline de Resolução",
+        "components": ["DeviationsTable", "ActionPlanManager", "RootCauseAnalysis", "ResolutionTimeline"]
+      }
+    },
+    {
+      "id": "agenda_executiva",
+      "name": "Agenda Executiva",
+      "route": "/agenda",
+      "access": ["Administrativo"],
+      "wireframe": {
+        "layout": "Header -> Calendário DPO Interativo -> Programação de Auditorias -> Pauta da Reunião Matinal",
+        "components": ["ExecutiveCalendar", "DPOAuditSchedule", "RoutineEvents", "MorningMeetingPlanner"]
+      }
+    },
+    {
+      "id": "diario_bordo",
+      "name": "Diário de Bordo",
+      "route": "/diario",
+      "access": ["Administrativo", "Conferente", "Operador Empilhadeira", "Ajudante"],
+      "wireframe": {
+        "layout": "Header -> Formulário Passagem de Turno -> Registro de Ocorrências e Avarias -> Ocorrências do Dia",
+        "components": ["ShiftLogList", "ShiftHandoverForm", "OccurrenceTracker", "DamageReportCard"]
+      }
+    },
+    {
+      "id": "fluxograma_demandas",
+      "name": "Fluxograma de Demandas",
+      "route": "/fluxograma",
+      "access": ["Administrativo", "Conferente"],
+      "wireframe": {
+        "layout": "Header -> Kanban de Estágios Operacionais (Entrada -> Triagem -> Em Ação -> Concluído) -> Transição Drag & Drop",
+        "components": ["WorkstationKanban", "DemandFlowchart", "StageTransitions", "KanbanCardDetail"]
+      }
+    },
+    {
+      "id": "reunioes_treinamentos",
+      "name": "Reuniões & Treinamentos",
+      "route": "/reunioes",
+      "access": ["Administrativo", "Conferente"],
+      "wireframe": {
+        "layout": "Header -> Lista de Padrões POP DPO -> Registro de Presença Treinamentos -> Atas e Assinaturas",
+        "components": ["DPOStandardList", "TrainingRecords", "MeetingMinutes", "AttendanceTracker"]
+      }
+    },
+    {
+      "id": "produtividade",
+      "name": "Produtividade (Repack / Despejo / Quebras)",
+      "route": "/produtividade",
+      "access": ["Administrativo", "Conferente", "Operador Empilhadeira", "Ajudante"],
+      "wireframe": {
+        "layout": "Header -> Matriz Ranking de Operadores -> Temporizador Repack -> Módulo Despejo/Quebras -> Modal Drilldown Colaborador",
+        "components": ["OperationsRankingMatrix", "RepackTimerCard", "DespejoCard", "QuebrasCard", "DrilldownCollaboratorModal"]
+      }
+    },
+    {
+      "id": "gestao_escoamento",
+      "name": "Gestão de Escoamento",
+      "route": "/escoamento",
+      "access": ["Administrativo", "Conferente"],
+      "wireframe": {
+        "layout": "Header -> Tabela FEFO Giro -> Gráfico Curva Crítica Stock Age -> Modal Registrar Escoamento",
+        "components": ["FEFOGiroTable", "CriticalWindowChart", "EscoamentoActionModal", "StockAgeGauge"]
+      }
+    },
+    {
+      "id": "future_shelf_conferente",
+      "name": "Future Shelf / Conferente",
+      "route": "/future-shelf",
+      "access": ["Administrativo", "Conferente"],
+      "wireframe": {
+        "layout": "Header -> Tabela Prateleira Futura -> Edição Inline de Saldo Físico pelo Conferente -> Botão Lançamento Rápido",
+        "components": ["FutureShelfTable", "ConferenteQtyUpdater", "EscoamentoRegistrarBtn", "PatiosDifferenceBadge"]
+      }
+    },
+    {
+      "id": "cadastros",
+      "name": "Cadastros",
+      "route": "/cadastros",
+      "access": ["Administrativo"],
+      "wireframe": {
+        "layout": "Header -> Catálogo de SKUs Ambev -> Registro de Lotes & Validades -> Parâmetros do Armazém Guarabira",
+        "components": ["ProductCatalog", "LotRegistry", "WarehouseMasterData", "SkuConversionTable"]
+      }
+    },
+    {
+      "id": "controle_acessos",
+      "name": "Controle de Acessos",
+      "route": "/acessos",
+      "access": ["Administrativo"],
+      "wireframe": {
+        "layout": "Header -> Matriz de Perfis (Ajudante, Operador, Conferente, Adm) -> Painel de Subscrição Manual -> Logs de Auditoria",
+        "components": ["UserRoleMatrix", "ManualOverridePanel", "PermissionAuditLog", "SecurityPolicyCard"]
+      }
+    }
+  ],
+  "reusableComponents": {
+    "ChecklistModal5S": {
+      "trigger": "Iniciar Jornada / Modal 5S",
+      "blocking": true,
+      "template": "5s_armazem_guarabira_v1",
+      "fields": ["1s_utilizacao", "2s_organizacao", "3s_limpeza", "4s_padronizacao", "5s_disciplina"]
+    },
+    "WorkstationCriticosRecolhimento": {
+      "windowDays": 45,
+      "conferenteEditableQty": true,
+      "editableDays": ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"]
+    },
+    "FEFOGiroTable": {
+      "sorting": "data_vencimento ASC",
+      "highlightThresholdDays": 30,
+      "unitToggleSupport": true
+    },
+    "DrilldownCollaboratorModal": {
+      "dataPoints": ["caixas_repack_dia", "tempo_medio_minutos", "taxa_reaproveitamento", "historico_semanal"]
+    }
+  },
+  "interactions": [
+    {
+      "id": "int_01",
+      "event": "click_iniciar_jornada",
+      "action": "open_modal_checklist_5s",
+      "rule": "block_all_operations_until_submitted"
+    },
+    {
+      "id": "int_02",
+      "event": "click_registrar_escoamento",
+      "action": "open_modal_registrar_escoamento",
+      "targetView": "gestao_escoamento"
+    },
+    {
+      "id": "int_03",
+      "event": "click_editar_qtd_conferente",
+      "action": "inline_edit_quantidade",
+      "roleRequired": "Conferente"
+    },
+    {
+      "id": "int_04",
+      "event": "toggle_unidade",
+      "action": "convert_cx_hl_globally",
+      "rule": "recalculate_table_values_instantly"
+    }
+  ],
+  "permissions": {
+    "profiles": ["Ajudante", "Operador Empilhadeira", "Conferente", "Administrativo"],
+    "manualOverrideAllowed": true
+  }
+}

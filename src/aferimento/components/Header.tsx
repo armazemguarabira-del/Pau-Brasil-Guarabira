@@ -88,7 +88,7 @@ export default function Header({
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16 items-center">
           {/* Navigation / Mode Tabs */}
-          <div className="hidden md:flex items-center space-x-1 bg-slate-800 p-1 rounded-lg border border-slate-700 overflow-x-auto max-w-[50vw] lg:max-w-[60vw] xl:max-w-none shrink-0 whitespace-nowrap scrollbar-none">
+          <div className="hidden md:flex items-center space-x-1 bg-slate-800 p-1 rounded-lg border border-slate-700 overflow-x-auto max-w-[50vw] lg:max-w-[60vw] xl:max-w-none shrink-0 whitespace-nowrap scrollbar-thin scrollbar-thumb-slate-700">
              {currentUser.role === 'conferente' && (
               <button
                 id="nav_conferente"

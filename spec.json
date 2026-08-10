@@ -1,0 +1,182 @@
+{
+  "project": {
+    "name": "DPO Guarabira-PB Logística & Gestão de Armazém",
+    "version": "1.0.0",
+    "unidade": "Guarabira - PB",
+    "frente_operacional": "DPO - 13 Operações & Futura Prateleira (Future Shelf)"
+  },
+  "views": [
+    {
+      "id": "visao_geral",
+      "name": "Visão Geral",
+      "route": "/overview",
+      "access": ["Administrativo", "Conferente", "Operador Empilhadeira", "Ajudante"],
+      "components": ["ExecutiveSummaryCards", "WorkstationCriticosRecolhimento", "MatrizGeral13Operacoes"]
+    },
+    {
+      "id": "desvios_acoes",
+      "name": "Desvios & Ações",
+      "route": "/desvios",
+      "access": ["Administrativo", "Conferente"],
+      "components": ["DeviationsTable", "ActionPlanManager", "RootCauseAnalysis"]
+    },
+    {
+      "id": "agenda_executiva",
+      "name": "Agenda Executiva",
+      "route": "/agenda",
+      "access": ["Administrativo"],
+      "components": ["ExecutiveCalendar", "DPOAuditSchedule", "RoutineEvents"]
+    },
+    {
+      "id": "diario_bordo",
+      "name": "Diário de Bordo",
+      "route": "/diario",
+      "access": ["Administrativo", "Conferente", "Operador Empilhadeira", "Ajudante"],
+      "components": ["ShiftLogList", "ShiftHandoverForm", "OccurrenceTracker"]
+    },
+    {
+      "id": "fluxograma_demandas",
+      "name": "Fluxograma de Demandas",
+      "route": "/fluxograma",
+      "access": ["Administrativo", "Conferente"],
+      "components": ["WorkstationKanban", "DemandFlowchart", "StageTransitions"]
+    },
+    {
+      "id": "reunioes_treinamentos",
+      "name": "Reuniões & Treinamentos",
+      "route": "/reunioes",
+      "access": ["Administrativo", "Conferente"],
+      "components": ["DPOStandardList", "TrainingRecords", "MeetingMinutes"]
+    },
+    {
+      "id": "produtividade",
+      "name": "Produtividade (Repack / Despejo / Quebras)",
+      "route": "/produtividade",
+      "access": ["Administrativo", "Conferente", "Operador Empilhadeira", "Ajudante"],
+      "components": ["OperationsRankingMatrix", "RepackTimerCard", "DespejoCard", "QuebrasCard", "DrilldownCollaboratorModal"]
+    },
+    {
+      "id": "gestao_escoamento",
+      "name": "Gestão de Escoamento",
+      "route": "/escoamento",
+      "access": ["Administrativo", "Conferente"],
+      "components": ["FEFOGiroTable", "CriticalWindowChart", "EscoamentoActionModal"]
+    },
+    {
+      "id": "future_shelf_conferente",
+      "name": "Future Shelf / Conferente",
+      "route": "/future-shelf",
+      "access": ["Administrativo", "Conferente"],
+      "components": ["FutureShelfTable", "ConferenteQtyUpdater", "EscoamentoRegistrarBtn"]
+    },
+    {
+      "id": "cadastros",
+      "name": "Cadastros",
+      "route": "/cadastros",
+      "access": ["Administrativo"],
+      "components": ["ProductCatalog", "LotRegistry", "WarehouseMasterData"]
+    },
+    {
+      "id": "controle_acessos",
+      "name": "Controle de Acessos",
+      "route": "/acessos",
+      "access": ["Administrativo"],
+      "components": ["UserRoleMatrix", "ManualOverridePanel", "PermissionAuditLog"]
+    }
+  ],
+  "schema": {
+    "tables": [
+      "colaboradores",
+      "produtos",
+      "logins",
+      "demand_items",
+      "desvios",
+      "acoes",
+      "diario",
+      "reunioes",
+      "uploads",
+      "indicadores_repack",
+      "indicadores_despejo",
+      "indicadores_quebras",
+      "escoamento_registros",
+      "checklists",
+      "notifications",
+      "jobs",
+      "logs"
+    ]
+  },
+  "endpoints": [
+    "/auth/login",
+    "/users",
+    "/workstation",
+    "/demandas",
+    "/demandas/:id/atualizar-quantidade",
+    "/escoamento",
+    "/checklists/submit",
+    "/access-control",
+    "/acoes/:id/fechar"
+  ],
+  "jobs": [
+    "job_45dias",
+    "job_stock_age_index",
+    "job_indicadores_repack_despejo_quebras",
+    "job_notificacoes_recorrentes"
+  ],
+  "notifications": [
+    "trigger_item_45dias",
+    "trigger_stock_age_alert",
+    "trigger_reuniao_recorrente_team_room",
+    "trigger_fechamento_acao_dpo"
+  ],
+  "permissions": {
+    "profiles": [
+      {
+        "role": "Administrativo",
+        "description": "Acesso total irrestrito, gestão de cadastros, controle de acessos e overrides",
+        "permissions": ["read:*", "write:*", "admin:*"]
+      },
+      {
+        "role": "Conferente",
+        "description": "Edição de quantidade no Future Shelf (Mon-Sáb), registro de escoamento e diário",
+        "permissions": ["read:future_shelf", "write:future_shelf_qty", "read:gestao_escoamento", "write:escoamento_registro", "read:diario_bordo", "write:diario_bordo"]
+      },
+      {
+        "role": "Operador Empilhadeira",
+        "description": "Visualização de workstations, movimentação e checklists",
+        "permissions": ["read:workstation", "read:future_shelf", "write:checklist_5s"]
+      },
+      {
+        "role": "Ajudante",
+        "description": "Execução do checklist 5S de início de jornada e visualização do ranking de produtividade",
+        "permissions": ["write:checklist_5s", "read:produtividade"]
+      }
+    ],
+    "manual_override_enabled": true,
+    "audit_logging": true
+  },
+  "backlog_sprints": [
+    "Sprint 1: MVP Core Base & Autenticação",
+    "Sprint 2: TAPA X — Cadastros Master & Controle de Acessos RBAC",
+    "Sprint 3: Workstation Pátio, Future Shelf & Edição Mon–Sáb por Conferente",
+    "Sprint 4: Operação do Ajudante, Modal Checklist 5S e Trava de Jornada",
+    "Sprint 5: Gestão de Escoamento, Stock Age Index (<60) e Notificações",
+    "Sprint 6: Produtividade 13 Operações, Governança DPO, Rollout e Suporte"
+  ],
+  "acceptance_tests": [
+    "Cenário 1 — Login Obrigatório e Autenticação Protegida",
+    "Cenário 2 — Inativação de Usuário Bloqueia Acesso Imediatamente",
+    "Cenário 3 — Checklist de 5S do Ajudante Obrigatório ao Iniciar Jornada",
+    "Cenário 4 — Conferente Atualiza Quantidade Físicamente Contada (Mon–Sáb)",
+    "Cenário 5 — Registro de Escoamento e Filtro por Stock Age Index (<60)",
+    "Cenário 6 — Fechamento de Ação Corretiva DPO e Recálculo Global de percent_closed"
+  ],
+  "requires_manual_review_items": [
+    {
+      "demanda_id": "a1b2c3d4-0004-4000-8000-000000000004",
+      "produto_codigo": "347",
+      "produto_descricao": "SUKITA PET 1L CAIXA C/12",
+      "confidence": 0.58,
+      "motivo": "Baixa confiança no OCR da imagem da nota de entrada (confiança = 58% < threshold de 80%). Requer validação manual da quantidade e lote."
+    }
+  ]
+}

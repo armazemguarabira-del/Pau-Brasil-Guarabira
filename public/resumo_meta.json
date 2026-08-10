@@ -1,0 +1,8 @@
+{
+  "next_step_ready": true,
+  "items_extracted": 10,
+  "items_requires_review": 1,
+  "top_missing_fields": [
+    "lote_conferencia"
+  ]
+}

@@ -1,12 +1,26 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, setLogLevel } from 'firebase/firestore';
+import { initializeFirestore, memoryLocalCache, setLogLevel } from 'firebase/firestore';
 
 // Set Firestore log level to silent to suppress backend retry warnings in offline mode
 try {
   setLogLevel('silent');
 } catch (e) {
   // Ignore if already initialized
+}
+
+// Clean up any stale or heavy firestore target keys from localStorage to free space
+if (typeof window !== 'undefined' && window.localStorage) {
+  try {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const key = localStorage.key(i);
+      if (key && (key.startsWith('firestore_') || key.startsWith('firebase_'))) {
+        localStorage.removeItem(key);
+      }
+    }
+  } catch (e) {
+    // Ignore storage access errors
+  }
 }
 
 interface FirebaseConfigExtended {
@@ -68,10 +82,10 @@ const auth = getAuth(app);
 
 const db = firebaseConfig.firestoreDatabaseId 
   ? initializeFirestore(app, {
-      localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+      localCache: memoryLocalCache()
     }, firebaseConfig.firestoreDatabaseId)
   : initializeFirestore(app, {
-      localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+      localCache: memoryLocalCache()
     });
 
 // Helper to determine if we are using custom config

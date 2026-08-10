@@ -9,9 +9,13 @@ import {
 } from 'firebase/firestore';
 import { RepackRow, Usuario, Empresa, RepackActionPlan, RepackA3Board } from '../types';
 import { useEmpresaData } from '../context/EmpresaDataContext';
-import { generateMockRepackRows } from '../mockDataGenerator';
+import { withTimestamps } from '../utils/firestoreUtils';
 import A3BoardComponent from './A3BoardComponent';
 import CalendarFilter from './CalendarFilter';
+import { SimuladorAgilidadeMeta } from './SimuladorAgilidadeMeta';
+import { PadraoOperacionalModal } from './PadraoOperacionalModal';
+import { SopManagerModal } from './SopManagerModal';
+import { ManualInstrucaoCard } from './ManualInstrucaoCard';
 import { 
   Box, 
   Clock, 
@@ -37,7 +41,8 @@ import {
   Trophy,
   Check,
   Droplet,
-  AlertTriangle
+  AlertTriangle,
+  BarChart2
 } from 'lucide-react';
 import { 
   ResponsiveContainer, 
@@ -247,28 +252,13 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
   const [currentA3Step, setCurrentA3Step] = useState<number>(1);
   const [a3ViewMode, setA3ViewMode] = useState<'passo-a-passo' | 'tabuleiro'>('passo-a-passo');
 
-  const seedRows = useMemo(() => {
-    return generateSeedRepackRows(empresa?.id || 'demo');
-  }, [empresa?.id]);
-
-  const seedActionPlans = useMemo(() => {
-    return generateSeedActionPlans(empresa?.id || 'demo');
-  }, [empresa?.id]);
-
   const repackRows = useMemo(() => {
-    if (actualRepackRows && actualRepackRows.length > 0) {
-      return actualRepackRows;
-    }
-    const companyId = empresa?.id || 'demo';
-    return generateMockRepackRows(companyId);
-  }, [actualRepackRows, empresa?.id]);
+    return actualRepackRows || [];
+  }, [actualRepackRows]);
 
   const actionPlans = useMemo(() => {
-    if (actualActionPlans.length === 0) {
-      return seedActionPlans;
-    }
-    return actualActionPlans;
-  }, [actualActionPlans, seedActionPlans]);
+    return actualActionPlans || [];
+  }, [actualActionPlans]);
 
   // Filters State
   const [filterColaborador, setFilterColaborador] = useState('todos');
@@ -331,6 +321,9 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
   const [apCausa, setApCausa] = useState<'Método' | 'Mão de Obra' | 'Máquina' | 'Material'>('Método');
   const [apResp, setApResp] = useState('');
   const [apPrazo, setApPrazo] = useState('');
+
+  // POP Modal State
+  const [isPopModalOpen, setIsPopModalOpen] = useState(false);
 
   // Simulator states
   const [simUnidade, setSimUnidade] = useState<'HE' | 'SKUs'>('HE');
@@ -792,8 +785,8 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
     const mediaSKUs = Math.round((totalSKUs / elapsedDays) * 10) / 10;
 
     // 4. Default meta (1.3x current month's trend)
-    const defaultMetaHE = Math.round(totalHE * 1.3) || 450;
-    const defaultMetaSKUs = Math.round(totalSKUs * 1.3) || 2500;
+    const defaultMetaHE = Math.round(totalHE * 1.3);
+    const defaultMetaSKUs = Math.round(totalSKUs * 1.3);
 
     return {
       diasTrabalhados: elapsedDays,
@@ -1069,33 +1062,18 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
 
   // Distribuição do Trabalho Pizza
   const chartDistribuicaoTrabalho = useMemo(() => {
+    if (filteredRows.length === 0) return [];
     const map: Record<string, number> = {};
     filteredRows.forEach(r => { map[r.embalagem] = (map[r.embalagem] || 0) + (Number(r.quantidade) || 0); });
     const entries = Object.entries(map).map(([name, value]) => ({ name, value }));
-    if (entries.length === 0) {
-      return [
-        { name: 'Lata 250', value: 40 },
-        { name: 'PET 500ml', value: 25 },
-        { name: 'PET 2L', value: 15 },
-        { name: 'Lata 473', value: 12 },
-        { name: 'Outros', value: 8 }
-      ];
-    }
+    if (entries.length === 0) return [];
     const tot = entries.reduce((s, e) => s + e.value, 0);
     return entries.map(e => ({ name: e.name, value: Math.round((e.value / tot) * 100) }));
   }, [filteredRows]);
 
   // Evolução Semanal Eficiência calculada dinamicamente com base nas linhas filtradas
   const chartEvolucaoSemanal = useMemo(() => {
-    if (filteredRows.length === 0) {
-      return [
-        { name: 'S1', Eficiencia: 100 },
-        { name: 'S2', Eficiencia: 100 },
-        { name: 'S3', Eficiencia: 100 },
-        { name: 'S4', Eficiencia: 100 },
-        { name: 'S5', Eficiencia: 100 }
-      ];
-    }
+    if (filteredRows.length === 0) return [];
 
     // Encontra a data mais recente nos registros filtrados
     let latestTime = -Infinity;
@@ -1244,7 +1222,7 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
     };
 
     try {
-      await addDoc(collection(db, 'repack'), newEntry);
+      await addDoc(collection(db, 'repack'), withTimestamps(newEntry));
       setIsModalOpen(false);
       setFormInicio('');
       setFormFim('');
@@ -1271,11 +1249,17 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
   };
 
   const handleDeleteRow = async (id: string) => {
-    if (!window.confirm('Excluir este registro permanentemente?')) return;
+    if (!id) return;
     try {
-      await deleteDoc(doc(db, 'repack', id));
+      if (db) {
+        await deleteDoc(doc(db, 'repack', id));
+      }
     } catch (e) {
       console.error(e);
+    } finally {
+      const remaining = actualRepackRows.filter(r => r._docId !== id && (r as any).id !== id);
+      setActualRepackRows(remaining);
+      localStorage.setItem(`repack_rows_${empresa?.id || 'demo'}`, JSON.stringify(remaining));
     }
   };
 
@@ -1296,7 +1280,7 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
       _criadoEm: today.toISOString()
     };
     try {
-      await addDoc(collection(db, 'repack_action_plans'), newPlan);
+      await addDoc(collection(db, 'repack_action_plans'), withTimestamps(newPlan));
       setApDesc('');
       setApResp('');
       setApPrazo('');
@@ -1307,7 +1291,7 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
 
   const handleChangeApStatus = async (id: string, next: 'Pendente' | 'Em Andamento' | 'Concluído') => {
     try {
-      await updateDoc(doc(db, 'repack_action_plans', id), { status: next });
+      await updateDoc(doc(db, 'repack_action_plans', id), withTimestamps({ status: next }, true));
     } catch (e) {
       console.error(e);
     }
@@ -1574,6 +1558,13 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => setIsPopModalOpen(true)}
+            className="px-3.5 py-1.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-black text-xs rounded-lg shadow-xs uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer"
+          >
+            📋 Padrão Operacional (POP)
+          </button>
+
           <div className="flex items-center bg-gray-100 p-0.5 rounded-lg border border-gray-200/60">
             <button 
               onClick={() => setActiveSubTab('produtividade')}
@@ -1595,6 +1586,36 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
 
       {activeSubTab === 'produtividade' && (
         <div className="space-y-3">
+          {/* MANUAL DE INSTRUÇÃO E METAS */}
+          <ManualInstrucaoCard
+            title="Manual de Instrução & Parâmetros de Meta — Processo de Repack & Qualidade"
+            metrics={[
+              {
+                key: 'repack_produtividade',
+                label: 'Produtividade Repack',
+                unit: 'cx/h',
+                comoCalcular: '(Total de Caixas Reembaladas/Recuperadas) ÷ (Soma das Horas Trabalhadas da Equipe de Repack).'
+              },
+              {
+                key: 'wqi',
+                label: 'Qualidade do Produto (WQI)',
+                unit: '%',
+                comoCalcular: '(Amostras Conformes com Especificação de Rótulo/Palete/Embalagem) ÷ (Total de Amostras Inspecionadas no Repack) × 100.'
+              },
+              {
+                key: 'refugo',
+                label: 'Taxa de Refugo',
+                unit: '%',
+                comoCalcular: '(Caixas/Unidades Descartadas sem Possibilidade de Recuperação) ÷ (Total Processado) × 100.'
+              },
+              {
+                key: 'fefo',
+                label: 'Conformidade FEFO',
+                unit: '%',
+                comoCalcular: '(Paletes/Caixas Expedidos Respeitando a Fila do Lote Mais Próximo do Vencimento) ÷ (Total Expedido) × 100.'
+              }
+            ]}
+          />
           
           {/* ── LINHA DE FILTROS COMPACTA ── */}
           <section className="bg-white border border-gray-200 rounded-xl flex flex-wrap items-center justify-between p-3 gap-3 shadow-xs">
@@ -1797,249 +1818,42 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
                 </div>
               </section>
 
-              {/* ── SIMULADOR DE META MENSAL ── */}
-              <section className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm hover:border-[#1e56f0]/30 transition-all duration-300">
-                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-gray-100 pb-3 mb-4">
-                  <div>
-                    <h3 className="font-sans font-black text-xs uppercase text-[#032b5e] tracking-wider flex items-center gap-1.5">
-                      <Zap className="w-4 h-4 text-[#1e56f0] animate-pulse" />
-                      Simulador de Meta Mensal - Fechamento Projetado (Mês Vigente)
-                    </h3>
-                    <p className="text-[10px] text-gray-400 font-semibold mt-0.5 uppercase tracking-wide">
-                      Projeção automatizada baseada inteiramente em dados reais de produção e calendário útil
-                    </p>
+              {/* ── SIMULADOR DE AGILIDADE & META (+10%) ── */}
+              <SimuladorAgilidadeMeta 
+                tipo="repack"
+                totalHectolitros={totalHE}
+                totalCaixasUnidades={totalSkus}
+                tempoTotalMinutos={Math.round(totalTempoGastoSec / 60)}
+                metaHectolitrosMensal={simMeta}
+              />
+
+              {/* MODAL DE PADRÃO OPERACIONAL (POP) */}
+              <PadraoOperacionalModal
+                moduleKey="repack"
+                moduleName="Repack de Produtos"
+                isOpen={isPopModalOpen}
+                onClose={() => setIsPopModalOpen(false)}
+                user={user}
+              />
+
+
+
+              {/* LINE 2: Produtividade por Dia & Tempo Médio (OU ESTADO VAZIO) */}
+              {filteredRows.length === 0 ? (
+                <div className="bg-slate-50 border-2 border-dashed border-slate-300 rounded-2xl p-8 text-center my-4 flex flex-col items-center justify-center shadow-xs">
+                  <div className="w-12 h-12 rounded-full bg-slate-200/80 flex items-center justify-center text-slate-500 mb-3">
+                    <BarChart2 className="w-6 h-6 text-slate-400" />
                   </div>
+                  <h4 className="text-sm font-black text-slate-700 uppercase tracking-wide">
+                    Nenhum dado importado para o período selecionado
+                  </h4>
+                  <p className="text-xs text-slate-500 max-w-md mt-1">
+                    Não existem lançamentos ou registros de repack para os filtros aplicados. As métricas em R$ e HL foram zeradas e nenhum gráfico fictício é gerado.
+                  </p>
                 </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
-                  {/* Card 1: Volume Realizado */}
-                  <div className="bg-slate-50 border border-slate-100 rounded-xl p-3 flex items-center gap-3 shadow-xs">
-                    <div className="p-2 bg-blue-50 text-[#1e56f0] rounded-lg">
-                      <Box className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <span className="text-[10px] font-black uppercase text-gray-400 tracking-wider block">Realizado Acumulado</span>
-                      <span className="font-extrabold text-[#032b5e] text-[15px] block leading-tight font-mono">
-                        {simVolumeAcumulado.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 2 })} {simUnidade}
-                      </span>
-                      <span className="text-[9px] text-gray-400 font-semibold block uppercase leading-tight mt-0.5">
-                        Mês: {workingDaysInfo.monthName}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Card 2: Média Diária Real */}
-                  <div className="bg-slate-50 border border-slate-100 rounded-xl p-3 flex items-center gap-3 shadow-xs">
-                    <div className="p-2 bg-purple-50 text-purple-600 rounded-lg">
-                      <TrendingUp className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <span className="text-[10px] font-black uppercase text-gray-400 tracking-wider block">Média p/ Dia Útil</span>
-                      <span className="font-extrabold text-purple-700 text-[15px] block leading-tight font-mono">
-                        {simMediaAcumulada.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} {simUnidade}/dia
-                      </span>
-                      <span className="text-[9px] text-gray-400 font-semibold block uppercase leading-tight mt-0.5">
-                        Ritmo real do mês
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Card 3: Calendário de Dias Úteis */}
-                  <div className="bg-slate-50 border border-slate-100 rounded-xl p-3 flex items-center gap-3 shadow-xs">
-                    <div className="p-2 bg-amber-50 text-amber-600 rounded-lg">
-                      <Calendar className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <span className="text-[10px] font-black uppercase text-gray-400 tracking-wider block">Calendário Útil</span>
-                      <span className="font-extrabold text-amber-700 text-[15px] block leading-tight font-mono">
-                        {workingDaysInfo.totalWorkingDays} dias úteis
-                      </span>
-                      <span className="text-[9px] text-gray-400 font-semibold block uppercase leading-tight mt-0.5">
-                        {workingDaysInfo.elapsedWorkingDays} trab. | {workingDaysInfo.remainingWorkingDays} rest.
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Card 4: Meta Mensal */}
-                  <div className="bg-slate-50 border border-slate-100 rounded-xl p-3 flex items-center gap-3 shadow-xs">
-                    <div className="p-2 bg-rose-50 text-rose-600 rounded-lg">
-                      <Target className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <span className="text-[10px] font-black uppercase text-gray-400 tracking-wider block">Meta Estabelecida</span>
-                      <span className="font-extrabold text-rose-700 text-[15px] block leading-tight font-mono">
-                        {simMeta.toLocaleString('pt-BR')} {simUnidade}
-                      </span>
-                      <span className="text-[9px] text-gray-400 font-semibold block uppercase leading-tight mt-0.5">
-                        Objetivo do controle (130%)
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Consolidated Closing Projection & Progress Status */}
-                <div className={`p-4 rounded-xl border ${atingiuMeta ? 'bg-emerald-50 border-emerald-200 text-emerald-950' : 'bg-rose-50 border-rose-200 text-rose-950'} flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-xs`}>
-                  {/* Left block: Numeric result */}
-                  <div className="flex items-center gap-3">
-                    <div className={`p-2 rounded-lg flex items-center justify-center flex-shrink-0 ${atingiuMeta ? 'bg-emerald-500/10 text-emerald-600' : 'bg-rose-500/10 text-rose-600'}`}>
-                      {atingiuMeta ? <CheckCircle2 className="w-6 h-6" /> : <AlertTriangle className="w-6 h-6" />}
-                    </div>
-                    <div>
-                      <span className="text-[9px] font-extrabold uppercase tracking-widest block opacity-70">Fechamento Projetado</span>
-                      <div className="flex items-baseline gap-2">
-                        <span className="text-xl font-black font-mono tracking-tight text-[#032b5e]">
-                          {projecaoFechamento.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} {simUnidade}
-                        </span>
-                        <span className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full ${atingiuMeta ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
-                          {atingiuMeta ? `Meta OK (${atingimentoPercent}%)` : `Risco de Desvio (${atingimentoPercent}%)`}
-                        </span>
-                      </div>
-                      <p className="text-[10.5px] font-medium mt-0.5 leading-tight opacity-90">
-                        {atingiuMeta 
-                          ? `Com base no ritmo real, a meta mensal de ${simMeta} ${simUnidade} será batida com folga de +${(projecaoFechamento - simMeta).toFixed(1)} ${simUnidade}.`
-                          : `Desvio de ${deficit.toFixed(1)} ${simUnidade} projetado. É recomendável ativar o plano de contingência abaixo.`
-                        }
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Right block: Compact progress bar */}
-                  <div className="md:w-64 flex-shrink-0">
-                    <div className="flex justify-between text-[9px] font-black uppercase tracking-wider mb-1.5">
-                      <span className="opacity-70">Progresso da Meta</span>
-                      <span>{atingimentoPercent}%</span>
-                    </div>
-                    <div className="w-full bg-gray-200/80 rounded-full h-2.5 overflow-hidden relative shadow-inner">
-                      <div
-                        className={`h-full rounded-full transition-all duration-500 ease-out ${atingiuMeta ? 'bg-gradient-to-r from-emerald-500 to-emerald-600' : 'bg-gradient-to-r from-rose-500 to-rose-600'}`}
-                        style={{ width: `${Math.min(100, atingimentoPercent)}%` }}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Plano de Ação Elaborado pelo Controle */}
-                {!atingiuMeta && (
-                  <div className="mt-4 border-t border-dashed border-gray-200 pt-4">
-                    <div className="bg-[#032b5e]/5 border border-[#032b5e]/20 rounded-xl p-3 mb-3">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                        <div>
-                          <span className="text-[10px] font-black text-[#032b5e] uppercase tracking-wider flex items-center gap-1.5">
-                            <SlidersHorizontal className="w-3.5 h-3.5 text-[#032b5e]" />
-                            Dimensionamento de Esforço Recomendado pelo Controle
-                          </span>
-                          <p className="text-[10px] text-gray-500 font-medium mt-0.5">
-                            Para atingir a meta nos {simDiasRestantes} dias restantes, a média de produção precisa de incremento operacional.
-                          </p>
-                        </div>
-                        <div className="bg-[#032b5e] text-white rounded-lg px-2.5 py-1 text-center font-mono text-[10px] font-bold">
-                          <span className="block text-[8px] text-gray-300 font-black uppercase tracking-widest">Média Necessária</span>
-                          {mediaNecessariaProximosDias.toFixed(1)} {simUnidade}/dia
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-xs">
-                      <div className="bg-slate-50 border-b border-gray-100 px-3 py-2 flex items-center justify-between">
-                        <span className="text-[9px] font-black uppercase text-gray-500 tracking-wider flex items-center gap-1.5">
-                          📋 Plano de Ação Crítico - Elaborado pelo Controle de Produtividade
-                        </span>
-                        <span className="bg-rose-100 text-rose-700 px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-wider">
-                          Requer Ativação Urgente
-                        </span>
-                      </div>
-                      <div className="divide-y divide-gray-100 text-xs text-slate-700">
-                        <div className="p-3 grid grid-cols-1 md:grid-cols-12 gap-2 items-center">
-                          <div className="md:col-span-2">
-                            <span className="bg-blue-100 text-blue-800 px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-wider">Mão de Obra</span>
-                          </div>
-                          <div className="md:col-span-6">
-                            <span className="font-bold text-slate-800 block">Redistribuição tática de operadores</span>
-                            <span className="text-[10px] text-gray-400 font-semibold block mt-0.5">
-                              Deslocar 1 operador adicional de apoio das áreas de menor criticidade para a linha de reembalagem do Repack.
-                            </span>
-                          </div>
-                          <div className="md:col-span-2">
-                            <span className="text-[10px] text-gray-400 font-bold block uppercase tracking-wide">Prazo / Responsável</span>
-                            <span className="font-semibold text-slate-700 block">D+1 / Matheus Barbosa</span>
-                          </div>
-                          <div className="md:col-span-2 text-right">
-                            <span className="inline-block bg-[#1e56f0]/10 text-[#1e56f0] px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase">
-                              Aguardando
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="p-3 grid grid-cols-1 md:grid-cols-12 gap-2 items-center">
-                          <div className="md:col-span-2">
-                            <span className="bg-purple-100 text-purple-800 px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-wider">Método</span>
-                          </div>
-                          <div className="md:col-span-6">
-                            <span className="font-bold text-slate-800 block">Blitz de Otimização de Bancada (5S + Ergonomia)</span>
-                            <span className="text-[10px] text-gray-400 font-semibold block mt-0.5">
-                              Reorganizar insumos de divisórias e fitas a menos de 1,5 metro de raio de giro do operador para mitigar perda por micro-movimentações.
-                            </span>
-                          </div>
-                          <div className="md:col-span-2">
-                            <span className="text-[10px] text-gray-400 font-bold block uppercase tracking-wide">Prazo / Responsável</span>
-                            <span className="font-semibold text-slate-700 block">D+2 / Paulo Pereira</span>
-                          </div>
-                          <div className="md:col-span-2 text-right">
-                            <span className="inline-block bg-[#1e56f0]/10 text-[#1e56f0] px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase">
-                              Aguardando
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="p-3 grid grid-cols-1 md:grid-cols-12 gap-2 items-center">
-                          <div className="md:col-span-2">
-                            <span className="bg-blue-100 text-blue-800 px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-wider">Máquina</span>
-                          </div>
-                          <div className="md:col-span-6">
-                            <span className="font-bold text-slate-800 block">Escalonamento de Pausas em Regime Rotativo</span>
-                            <span className="text-[10px] text-gray-400 font-semibold block mt-0.5">
-                              Assegurar que as pausas para refeição ocorram de forma intercalada, mantendo o processo produtivo ativo continuamente.
-                            </span>
-                          </div>
-                          <div className="md:col-span-2">
-                            <span className="text-[10px] text-gray-400 font-bold block uppercase tracking-wide">Prazo / Responsável</span>
-                            <span className="font-semibold text-slate-700 block">D+1 / Ozenildo Silva</span>
-                          </div>
-                          <div className="md:col-span-2 text-right">
-                            <span className="inline-block bg-[#1e56f0]/10 text-[#1e56f0] px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase">
-                              Aguardando
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="p-3 grid grid-cols-1 md:grid-cols-12 gap-2 items-center">
-                          <div className="md:col-span-2">
-                            <span className="bg-rose-100 text-rose-800 px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-wider">Material</span>
-                          </div>
-                          <div className="md:col-span-6">
-                            <span className="font-bold text-slate-800 block">Acordo de Lotes Mínimos de Setup (PCP)</span>
-                            <span className="text-[10px] text-gray-400 font-semibold block mt-0.5">
-                              Negociar com o PCP o agrupamento de ordens semanais do mesmo SKU para evitar transições de formato frequentes nas linhas.
-                            </span>
-                          </div>
-                          <div className="md:col-span-2">
-                            <span className="text-[10px] text-gray-400 font-bold block uppercase tracking-wide">Prazo / Responsável</span>
-                            <span className="font-semibold text-slate-700 block">D+3 / Supervisão de Logística</span>
-                          </div>
-                          <div className="md:col-span-2 text-right">
-                            <span className="inline-block bg-[#1e56f0]/10 text-[#1e56f0] px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase">
-                              Aguardando
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </section>
-
-              {/* LINE 2: Produtividade por Dia & Tempo Médio */}
-              <section className="grid grid-cols-1 lg:grid-cols-12 gap-3">
+              ) : (
+                <div className="space-y-3">
+                  <section className="grid grid-cols-1 lg:grid-cols-12 gap-3">
                 <div className="bg-white border border-gray-200 rounded-xl lg:col-span-6 p-2.5 h-[175px] flex flex-col justify-between shadow-3xs">
                   <h3 className="font-sans font-black text-[10px] uppercase text-[#032b5e] tracking-wider mb-1">
                     Produtividade por Dia ({viewUnit === 'cx' ? 'CX' : 'HE'})
@@ -2170,10 +1984,9 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
                   </div>
                 </div>
               </section>
-            </div>
 
-            {/* ── COCKPIT MATRIZES & BI ── */}
-            <div className="space-y-3">
+              {/* ── COCKPIT MATRIZES & BI ── */}
+              <div className="space-y-3">
               {/* LINE 1: Heatmap & Evolução */}
               <section className="grid grid-cols-1 lg:grid-cols-12 gap-3">
                 <div className="bg-white border border-gray-200 rounded-xl lg:col-span-6 p-3 h-[245px] flex flex-col justify-between shadow-3xs">
@@ -2348,7 +2161,9 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
                   </div>
                 </div>
               </section>
+              </div>
             </div>
+          )}
 
           {/* ── LINHA 7: TABELA (1300px) & PAINEL LATERAL (450px) ── */}
           <section className={`grid grid-cols-1 lg:grid-cols-12 ${isCompact ? 'gap-3' : 'gap-4'}`}>
@@ -2546,6 +2361,7 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
 
           </section>
 
+        </div>
         </div>
       )}
 
@@ -3286,6 +3102,14 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
           </div>
         </div>
       )}
+
+      {/* ── MODAL DE GESTÃO DO PADRÃO OPERACIONAL (POP/SOP) ── */}
+      <SopManagerModal 
+        operation="repack" 
+        operationName="Repack" 
+        isOpen={isPopModalOpen} 
+        onClose={() => setIsPopModalOpen(false)} 
+      />
 
     </div>
   );

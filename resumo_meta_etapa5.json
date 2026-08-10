@@ -1,0 +1,12 @@
+{
+  "next_step_ready": true,
+  "abc_count": 7,
+  "total_itens_processados": 10,
+  "total_faturamento_3m_reais": 391554,
+  "classes_distribution": {
+    "A": 4,
+    "B": 1,
+    "C": 2
+  },
+  "generated_at": "2026-08-05T15:07:20.321Z"
+}
