@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { safeSetLocalStorage } from '../utils/safeLocalStorage';
-import { getAllSops, saveOrUpdateSop, canUserManageSop, createSafePdfBlobUrl, openPdfInNewTab, downloadPdfFile } from '../utils/sopUtils';
+import { getAllSops, saveOrUpdateSop, canUserManageSop, createSafePdfBlobUrl, openPdfInNewTab, downloadPdfFile, openOrDownloadGeneratedSopPdf } from '../utils/sopUtils';
 import { Usuario } from '../types';
 import { 
   FileText, 
@@ -596,6 +596,56 @@ export const PadraoOperacionalModal: React.FC<PadraoOperacionalProps> = ({
         {/* BODY */}
         <div className="p-6 overflow-y-auto space-y-6 flex-1 text-slate-800 dark:text-slate-100">
           
+          {/* BANNER DE AÇÕES DO PDF PARA O OPERACIONAL */}
+          <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 text-white p-4 rounded-xl border border-blue-500/30 flex flex-wrap items-center justify-between gap-3 shadow-md">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-blue-500/20 text-blue-400 rounded-xl border border-blue-400/30">
+                <FileText className="w-5 h-5" />
+              </div>
+              <div>
+                <span className="text-xs font-black uppercase tracking-wide text-blue-200 block">
+                  Documento do Padrão Operacional em PDF
+                </span>
+                <span className="text-[11px] text-slate-300 block">
+                  Acesse ou baixe o documento em PDF oficial do padrão operacional do setor.
+                </span>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => openOrDownloadGeneratedSopPdf(popData, false)}
+                className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
+              >
+                <Eye className="w-4 h-4" />
+                <span>Visualizar PDF</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => openOrDownloadGeneratedSopPdf(popData, true)}
+                className="px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
+              >
+                <Download className="w-4 h-4" />
+                <span>Baixar PDF</span>
+              </button>
+
+              {isUserAdmin && (
+                <label className="px-3.5 py-2 bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold rounded-xl uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer shadow-sm">
+                  <Upload className="w-4 h-4" />
+                  <span>Importar Padrão (PDF)</span>
+                  <input 
+                    type="file" 
+                    accept=".pdf,.doc,.docx,.txt,.csv,.png,.jpg"
+                    onChange={handleFileUpload}
+                    className="hidden" 
+                  />
+                </label>
+              )}
+            </div>
+          </div>
+
           {/* OBJETIVO DO PROCESSO BANNER */}
           {popData.objetivo && (
             <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 rounded-xl p-4 shadow-xs">
@@ -801,14 +851,14 @@ export const PadraoOperacionalModal: React.FC<PadraoOperacionalProps> = ({
             </div>
           )}
 
-          {/* EDIT & IMPORT SECTION FOR SUPERVISORS */}
-          {isUserAdmin && (
-            <div className="border-t border-slate-200 dark:border-slate-800 pt-5 space-y-4">
-              <div className="flex items-center justify-between">
-                <h4 className="text-xs font-black uppercase text-slate-500 tracking-wider">
-                  Gerenciar / Importar Novo Padrão Operacional
-                </h4>
+          {/* EDIT & IMPORT SECTION */}
+          <div className="border-t border-slate-200 dark:border-slate-800 pt-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-black uppercase text-slate-500 tracking-wider">
+                Importar ou Atualizar Padrão Operacional (PDF / Documento)
+              </h4>
 
+              {isUserAdmin && (
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => {
@@ -829,47 +879,47 @@ export const PadraoOperacionalModal: React.FC<PadraoOperacionalProps> = ({
                     Restaurar Padrão
                   </button>
                 </div>
-              </div>
-
-              {isEditing && (
-                <div className="space-y-2">
-                  <textarea
-                    value={customText}
-                    onChange={(e) => setCustomText(e.target.value)}
-                    rows={4}
-                    placeholder="Digite as instruções e detalhamento do procedimento operacional..."
-                    className="w-full p-3 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-amber-500 font-sans"
-                  />
-                  <button
-                    onClick={handleSaveText}
-                    className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-xl uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors"
-                  >
-                    <Save className="w-4 h-4" />
-                    Salvar Alterações do Padrão
-                  </button>
-                </div>
               )}
-
-              {/* IMPORT FILE DROPZONE */}
-              <label className="border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-amber-500 dark:hover:border-amber-400 bg-slate-50/50 dark:bg-slate-800/30 rounded-xl p-4 flex flex-col items-center justify-center gap-2 cursor-pointer transition-all group">
-                <Upload className="w-6 h-6 text-slate-400 group-hover:text-amber-500 transition-colors" />
-                <div className="text-center">
-                  <span className="text-xs font-bold text-slate-700 dark:text-slate-200 block">
-                    Importar Arquivo de Padrão Operacional (PDF, DOC, TXT)
-                  </span>
-                  <span className="text-[10px] text-slate-400 block mt-0.5">
-                    Selecione o documento para exibir aos operadores neste setor
-                  </span>
-                </div>
-                <input 
-                  type="file" 
-                  accept=".pdf,.doc,.docx,.txt,.csv,.png,.jpg"
-                  onChange={handleFileUpload}
-                  className="hidden" 
-                />
-              </label>
             </div>
-          )}
+
+            {isEditing && isUserAdmin && (
+              <div className="space-y-2">
+                <textarea
+                  value={customText}
+                  onChange={(e) => setCustomText(e.target.value)}
+                  rows={4}
+                  placeholder="Digite as instruções e detalhamento do procedimento operacional..."
+                  className="w-full p-3 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-amber-500 font-sans"
+                />
+                <button
+                  onClick={handleSaveText}
+                  className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-xl uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors"
+                >
+                  <Save className="w-4 h-4" />
+                  Salvar Alterações do Padrão
+                </button>
+              </div>
+            )}
+
+            {/* IMPORT FILE DROPZONE FOR OPERATIONAL & ADMINS */}
+            <label className="border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-amber-500 dark:hover:border-amber-400 bg-slate-50/50 dark:bg-slate-800/30 rounded-xl p-4 flex flex-col items-center justify-center gap-2 cursor-pointer transition-all group">
+              <Upload className="w-6 h-6 text-slate-400 group-hover:text-amber-500 transition-colors" />
+              <div className="text-center">
+                <span className="text-xs font-bold text-slate-700 dark:text-slate-200 block">
+                  Importar Arquivo do Padrão Operacional (PDF, DOC, TXT)
+                </span>
+                <span className="text-[10px] text-slate-400 block mt-0.5">
+                  Selecione o documento oficial para disponibilizar ao ajudante, operador de empilhadeira e conferente
+                </span>
+              </div>
+              <input 
+                type="file" 
+                accept=".pdf,.doc,.docx,.txt,.csv,.png,.jpg"
+                onChange={handleFileUpload}
+                className="hidden" 
+              />
+            </label>
+          </div>
 
         </div>
 

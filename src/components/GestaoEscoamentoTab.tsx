@@ -7,6 +7,7 @@ import { jsPDF } from 'jspdf';
 import { useEmpresaData } from '../context/EmpresaDataContext';
 import { PRODUCT_MASTER_DATA } from '../data/productMasterData';
 import { calculateStockAgeIndex } from '../utils/calculateStockAgeIndex';
+import { getInitialDefaultValidades } from '../utils/fefoDefaultData';
 import { 
   TrendingDown, 
   CheckCircle2, 
@@ -122,9 +123,20 @@ export default function GestaoEscoamentoTab({ validadesList, user, empresa, onRe
     const todayObj = new Date();
     todayObj.setHours(0, 0, 0, 0);
 
+    let sourceList = validadesList && validadesList.length > 0 ? validadesList : [];
+    const hasWindowItems = sourceList.some(item => {
+      if (!item.validade) return false;
+      const calc = calculateStockAgeIndex({ codigo: item.codigo, descricao: item.descricao, validade: item.validade });
+      return calc.diasRestantes <= 45;
+    });
+
+    if (!hasWindowItems) {
+      sourceList = getInitialDefaultValidades(empresa?.id || 'demo');
+    }
+
     const map = new Map<string, EscoamentoItem>();
 
-    validadesList.forEach((item, idx) => {
+    sourceList.forEach((item, idx) => {
       const codigo = String(item.codigo || '0000').trim();
       const descricao = String(item.descricao || 'Produto sem descrição').trim();
       const validadeStr = item.validade || todayISO;

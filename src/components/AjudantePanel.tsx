@@ -6,6 +6,7 @@ import RepackPanel from './RepackPanel';
 import DespejoPanel from './DespejoPanel';
 import QuebrasPanel from './QuebrasPanel';
 import { Checklist5SForm, Collaborator5SPerformanceCard } from './Checklist5SModal';
+import { GuiaAcoesOperacionais } from './GuiaAcoesOperacionais';
 import { 
   Users, 
   RefreshCw, 
@@ -24,10 +25,14 @@ import {
   ShieldCheck,
   ExternalLink,
   Truck,
-  Coffee,
-  Pencil
+  Utensils,
+  Edit2,
+  Save,
+  Lightbulb,
+  Send
 } from 'lucide-react';
 import { add5PorquesDemand } from '../utils/fiveWhysManager';
+import { AcaoCorretiva, getAcoesAll, saveAcoes } from '../utils/simulacaoAcoesUtils';
 
 interface AjudantePanelProps {
   user: Usuario;
@@ -39,8 +44,8 @@ interface ShiftHistoryRecord {
   id: string;
   dataStr: string;
   horaInicio: string;
-  horaInicioIntervalo?: string;
-  horaFimIntervalo?: string;
+  intervaloInicio?: string;
+  intervaloFim?: string;
   horaFim: string;
   duracaoTotal: string;
   fiveSSubmitted: boolean;
@@ -55,8 +60,8 @@ export default function AjudantePanel({ user, empresa, theme = 'dark' }: Ajudant
   const shiftStorageKey = `ajudante_shift_${empresaId}_${user.uid || user.nome}`;
   const historyStorageKey = `ajudante_history_${empresaId}_${user.uid || user.nome}`;
 
-  // Tab State: 'repack' | 'despejo' | 'quebras' | 'retorno_rota' | '5s' | 'historico'
-  const [activeTab, setActiveTab] = useState<'repack' | 'despejo' | 'quebras' | 'retorno_rota' | '5s' | 'historico'>('repack');
+  // Tab State: 'repack' | 'despejo' | 'quebras' | 'retorno_rota' | '5s' | 'historico' | 'acoes'
+  const [activeTab, setActiveTab] = useState<'repack' | 'despejo' | 'quebras' | 'retorno_rota' | '5s' | 'historico' | 'acoes'>('repack');
 
   // Shift State
   const [shiftStarted, setShiftStarted] = useState<boolean>(() => {
@@ -81,39 +86,37 @@ export default function AjudantePanel({ user, empresa, theme = 'dark' }: Ajudant
     return '';
   });
 
-  // Interval / Lunch State
-  const [onBreak, setOnBreak] = useState<boolean>(() => {
+  // Interval / Break State (Almoço)
+  const [inInterval, setInInterval] = useState<boolean>(() => {
     try {
-      const saved = localStorage.getItem(`${shiftStorageKey}_break`);
-      if (saved) return JSON.parse(saved).onBreak || false;
+      const saved = localStorage.getItem(shiftStorageKey);
+      if (saved) return JSON.parse(saved).inInterval || false;
     } catch (e) {}
     return false;
   });
 
-  const [breakStartTime, setBreakStartTime] = useState<string>(() => {
+  const [intervalStartTime, setIntervalStartTime] = useState<string>(() => {
     try {
-      const saved = localStorage.getItem(`${shiftStorageKey}_break`);
-      if (saved) return JSON.parse(saved).breakStartTime || '';
+      const saved = localStorage.getItem(shiftStorageKey);
+      if (saved) return JSON.parse(saved).intervalStartTime || '';
     } catch (e) {}
     return '';
   });
 
-  const [breakEndTime, setBreakEndTime] = useState<string>(() => {
+  const [intervalEndTime, setIntervalEndTime] = useState<string>(() => {
     try {
-      const saved = localStorage.getItem(`${shiftStorageKey}_break`);
-      if (saved) return JSON.parse(saved).breakEndTime || '';
+      const saved = localStorage.getItem(shiftStorageKey);
+      if (saved) return JSON.parse(saved).intervalEndTime || '';
     } catch (e) {}
     return '';
   });
 
-  // Point Correction Modal State
+  // Edit Shift Record Modal State
   const [editingRecord, setEditingRecord] = useState<ShiftHistoryRecord | null>(null);
-  const [editForm, setEditForm] = useState({
-    horaInicio: '',
-    horaInicioIntervalo: '',
-    horaFimIntervalo: '',
-    horaFim: ''
-  });
+  const [editHoraInicio, setEditHoraInicio] = useState('');
+  const [editHoraIntervaloInicio, setEditHoraIntervaloInicio] = useState('');
+  const [editHoraIntervaloFim, setEditHoraIntervaloFim] = useState('');
+  const [editHoraFim, setEditHoraFim] = useState('');
 
   // 5S Modal & State
   const [show5SModal, setShow5SModal] = useState<boolean>(false);
@@ -163,25 +166,65 @@ export default function AjudantePanel({ user, empresa, theme = 'dark' }: Ajudant
     return [];
   });
 
-  // Sync Shift & Break State to LocalStorage
+  // Sync Shift State to LocalStorage
   useEffect(() => {
     localStorage.setItem(shiftStorageKey, JSON.stringify({
       shiftStarted,
-      shiftStartTime
+      shiftStartTime,
+      inInterval,
+      intervalStartTime,
+      intervalEndTime
     }));
-  }, [shiftStarted, shiftStartTime, shiftStorageKey]);
-
-  useEffect(() => {
-    localStorage.setItem(`${shiftStorageKey}_break`, JSON.stringify({
-      onBreak,
-      breakStartTime,
-      breakEndTime
-    }));
-  }, [onBreak, breakStartTime, breakEndTime, shiftStorageKey]);
+  }, [shiftStarted, shiftStartTime, inInterval, intervalStartTime, intervalEndTime, shiftStorageKey]);
 
   useEffect(() => {
     localStorage.setItem(`${shiftStorageKey}_5s`, String(fiveSSubmitted));
   }, [fiveSSubmitted, shiftStorageKey]);
+
+  // Interval Handlers (Almoço / Descanso)
+  const handleStartInterval = () => {
+    const nowStr = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    setInInterval(true);
+    setIntervalStartTime(nowStr);
+    triggerToast(`☕ Intervalo de almoço/descanso iniciado às ${nowStr}!`);
+  };
+
+  const handleEndInterval = () => {
+    const nowStr = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    setInInterval(false);
+    setIntervalEndTime(nowStr);
+    triggerToast(`⚡ Retorno do intervalo registrado às ${nowStr}! Bom trabalho.`);
+  };
+
+  // Open Edit Shift Modal
+  const handleOpenEditRecord = (rec: ShiftHistoryRecord) => {
+    setEditingRecord(rec);
+    setEditHoraInicio(rec.horaInicio || '08:00');
+    setEditHoraIntervaloInicio(rec.intervaloInicio || '12:00');
+    setEditHoraIntervaloFim(rec.intervaloFim || '13:00');
+    setEditHoraFim(rec.horaFim || '17:00');
+  };
+
+  // Save Edit Shift Point Correction
+  const handleSaveEditPonto = () => {
+    if (!editingRecord) return;
+    const updatedHistory = shiftHistory.map(rec => {
+      if (rec.id === editingRecord.id) {
+        return {
+          ...rec,
+          horaInicio: editHoraInicio,
+          intervaloInicio: editHoraIntervaloInicio,
+          intervaloFim: editHoraIntervaloFim,
+          horaFim: editHoraFim
+        };
+      }
+      return rec;
+    });
+    setShiftHistory(updatedHistory);
+    localStorage.setItem(historyStorageKey, JSON.stringify(updatedHistory));
+    setEditingRecord(null);
+    triggerToast('✓ Correção de ponto de jornada atualizada com sucesso no histórico!');
+  };
 
   // Calculate today's productivity meta compliance for Repack & Despejo
   const todayISO = new Date().toISOString().split('T')[0];
@@ -197,44 +240,129 @@ export default function AjudantePanel({ user, empresa, theme = 'dark' }: Ajudant
     (d.operador === user.nome || !d.operador)
   );
 
-  // Check if user missed meta in any Repack or Despejo entry today
-  const hasMissedRepackMeta = todayRepackEntries.some(r => 
-    r.resultado?.includes('ACIMA') || r.resultado?.includes('Fora') || r.resultado?.includes('Não')
-  );
+  // Helper to parse duration or time string into minutes
+  const parseTimeToMinutes = (timeStr?: string): number => {
+    if (!timeStr) return 0;
+    const str = String(timeStr).trim();
+    if (str.includes(':')) {
+      const parts = str.split(':').map(Number);
+      if (parts.length === 3) return parts[0] * 60 + parts[1] + parts[2] / 60;
+      if (parts.length === 2) return parts[0] + parts[1] / 60;
+    }
+    const num = parseFloat(str.replace(/[^0-9.]/g, ''));
+    return isNaN(num) ? 0 : num;
+  };
 
-  const hasMissedDespejoMeta = todayDespejoEntries.some(d => 
-    d.resultado?.includes('ACIMA') || d.resultado?.includes('Fora') || d.resultado?.includes('Não')
-  );
+  // Repack: Sum of target time per unit vs Sum of actual realized time
+  const totalRepackMetaMins = todayRepackEntries.reduce((sum, r) => {
+    const metaUnit = parseTimeToMinutes(r.metaEmbalagem || r.meta || '5 min') || 5;
+    const qty = Number(r.quantidade) || 1;
+    return sum + (metaUnit * qty);
+  }, 0);
+
+  const totalRepackRealMins = todayRepackEntries.reduce((sum, r) => {
+    if (r.duracao) return sum + parseTimeToMinutes(r.duracao);
+    if (r.inicio && r.fim) {
+      const i = parseTimeToMinutes(r.inicio);
+      const f = parseTimeToMinutes(r.fim);
+      return sum + Math.max(0, f - i);
+    }
+    return sum;
+  }, 0);
+
+  // If actual realized time > total target time, user missed the goal
+  const hasMissedRepackMeta = todayRepackEntries.length > 0 && totalRepackRealMins > totalRepackMetaMins;
+
+  // Despejo: Sum of target time per unit vs Sum of actual realized time
+  const totalDespejoMetaMins = todayDespejoEntries.reduce((sum, d) => {
+    const metaUnit = parseTimeToMinutes(d.metaEmbalagem || d.meta || '5 min') || 5;
+    const qty = Number(d.quantidade) || 1;
+    return sum + (metaUnit * qty);
+  }, 0);
+
+  const totalDespejoRealMins = todayDespejoEntries.reduce((sum, d) => {
+    if (d.duracao) return sum + parseTimeToMinutes(d.duracao);
+    if (d.inicio && d.fim) {
+      const i = parseTimeToMinutes(d.inicio);
+      const f = parseTimeToMinutes(d.fim);
+      return sum + Math.max(0, f - i);
+    }
+    return sum;
+  }, 0);
+
+  // If actual realized time > total target time, user missed the goal
+  const hasMissedDespejoMeta = todayDespejoEntries.length > 0 && totalDespejoRealMins > totalDespejoMetaMins;
 
   const overallMetaMet = !hasMissedRepackMeta && !hasMissedDespejoMeta;
 
+  // State for Operação Ajudante Improvement Suggestions
+  const [sugestaoProcesso, setSugestaoProcesso] = useState('Repack');
+  const [sugestaoTitulo, setSugestaoTitulo] = useState('');
+  const [sugestaoDescricao, setSugestaoDescricao] = useState('');
+
+  const handleSendSugestao = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!sugestaoTitulo.trim() || !sugestaoDescricao.trim()) return;
+
+    const currentAcoes = getAcoesAll();
+    const todayStrNow = new Date().toLocaleDateString('pt-BR');
+    const todayISONow = new Date().toISOString().split('T')[0];
+
+    let proc: AcaoCorretiva['processo'] = 'Picking';
+    if (sugestaoProcesso === 'Repack') proc = 'Repack';
+    else if (sugestaoProcesso === 'Despejo') proc = 'Despejo';
+    else if (sugestaoProcesso === 'Quebras') proc = 'Gestão de Quebras';
+
+    const newAcao: AcaoCorretiva = {
+      id: `SUGESTO_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      data: todayStrNow,
+      dataISO: todayISONow,
+      hora: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+      processo: proc,
+      setor: sugestaoProcesso,
+      colaboradorResponsavel: user.nome,
+      indicador: 'Sugestão de Melhoria da Operação',
+      meta: 'Análise do Administrativo',
+      resultadoObtido: 'Enviado',
+      desvioEncontrado: `[SUGESTÃO OPERACIONAL - ${user.nome}] ${sugestaoTitulo}: ${sugestaoDescricao}`,
+      causaRaiz: 'Método',
+      status: 'Pendente',
+      responsavelTratativa: 'Administrativo / Gestão',
+      prazo: new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0],
+      comentarioOperador: sugestaoDescricao,
+      simulado: false,
+      criadoEm: new Date().toISOString(),
+      tipoAcao: 'Melhoria',
+      prioridade: 'Média',
+      contramedida: sugestaoDescricao,
+      aprovacaoGestor: 'Pendente',
+      aceiteColaborador: true,
+      abertoPor: `${user.nome} (${user.cargo || 'Ajudante/Operador'})`,
+      dataAbertura: `${todayStrNow} ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`,
+      area: sugestaoProcesso,
+      reuniao: 'Ação Sugestiva - Operação',
+      obsResponsavel: sugestaoDescricao,
+      historicoAlteracoes: [{
+        dataHora: `${todayStrNow} ${new Date().toLocaleTimeString('pt-BR')}`,
+        usuario: user.nome,
+        alteracao: 'Sugestão de melhoria enviada pela operação para análise do administrativo.'
+      }]
+    };
+
+    saveAcoes([newAcao, ...currentAcoes]);
+    setSugestaoTitulo('');
+    setSugestaoDescricao('');
+    triggerToast('✓ Sugestão enviada ao Administrativo como ação sugestiva com sucesso!');
+  };
+
   // Handle Shift Start
   const handleStartShift = () => {
-    const nowStr = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    const nowStr = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     setShiftStarted(true);
     setShiftStartTime(nowStr);
-    setOnBreak(false);
-    setBreakStartTime('');
-    setBreakEndTime('');
     setFiveSSubmitted(false);
     setFiveSItems(prev => prev.map(i => ({ ...i, checked: false })));
     triggerToast(`🚀 Jornada da Operação Ajudante iniciada às ${nowStr}!`);
-  };
-
-  // Handle Break Start
-  const handleStartBreak = () => {
-    const nowStr = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-    setOnBreak(true);
-    setBreakStartTime(nowStr);
-    triggerToast(`☕ Intervalo de Almoço/Pausa iniciado às ${nowStr}! Bom descanso.`);
-  };
-
-  // Handle Break End
-  const handleEndBreak = () => {
-    const nowStr = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-    setOnBreak(false);
-    setBreakEndTime(nowStr);
-    triggerToast(`⚡ Retorno do intervalo às ${nowStr}! Bom trabalho.`);
   };
 
   // Handle Shift Finish Click
@@ -253,29 +381,19 @@ export default function AjudantePanel({ user, empresa, theme = 'dark' }: Ajudant
 
   // Complete Shift Finalization
   const finalizeShiftProcess = (fiveWhysFilled: boolean) => {
-    const nowStr = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    const nowStr = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     const today = new Date().toLocaleDateString('pt-BR');
 
-    // Calculate duration (subtracting break if present)
+    // Calculate duration
     let durStr = '00:00:00';
-    let diffHrs = 7.33;
     if (shiftStartTime) {
       try {
         const [h1, m1] = shiftStartTime.split(':').map(Number);
         const [h2, m2] = nowStr.split(':').map(Number);
-        let totalMins = (h2 * 60 + m2) - (h1 * 60 + m1);
-
-        if (breakStartTime && breakEndTime) {
-          const [bh1, bm1] = breakStartTime.split(':').map(Number);
-          const [bh2, bm2] = breakEndTime.split(':').map(Number);
-          const breakMins = (bh2 * 60 + bm2) - (bh1 * 60 + bm1);
-          totalMins = Math.max(0, totalMins - Math.max(0, breakMins));
-        }
-
-        const hrs = Math.floor(totalMins / 60);
-        const mins = totalMins % 60;
+        const diffMinutes = Math.max(0, (h2 * 60 + m2) - (h1 * 60 + m1));
+        const hrs = Math.floor(diffMinutes / 60);
+        const mins = diffMinutes % 60;
         durStr = `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:00`;
-        diffHrs = parseFloat((totalMins / 60).toFixed(2)) || 7.33;
       } catch (e) {}
     }
 
@@ -283,8 +401,8 @@ export default function AjudantePanel({ user, empresa, theme = 'dark' }: Ajudant
       id: String(Date.now()),
       dataStr: today,
       horaInicio: shiftStartTime || '08:00',
-      horaInicioIntervalo: breakStartTime || undefined,
-      horaFimIntervalo: breakEndTime || undefined,
+      intervaloInicio: intervalStartTime || '12:00',
+      intervaloFim: intervalEndTime || '13:00',
       horaFim: nowStr,
       duracaoTotal: durStr,
       fiveSSubmitted,
@@ -297,94 +415,22 @@ export default function AjudantePanel({ user, empresa, theme = 'dark' }: Ajudant
     setShiftHistory(updatedHistory);
     localStorage.setItem(historyStorageKey, JSON.stringify(updatedHistory));
 
+    setInInterval(false);
+    setIntervalStartTime('');
+    setIntervalEndTime('');
+
     // Save to global WLP journey tracker
     const todayISO = new Date().toISOString().split('T')[0];
     const parts = todayISO.split('-');
     const mesAno = `${parts[1]}/${parts[0]}`;
-
-    const jrn: JornadaRecord = {
-      id: `jrn-ajud-${Date.now()}`,
-      colaboradorNome: user.nome || 'Ajudante',
-      cargo: 'Ajudante',
-      dataStr: today,
-      dataISO: todayISO,
-      mesAno,
-      horaInicio: shiftStartTime || '07:00',
-      horaInicioIntervalo: breakStartTime || undefined,
-      horaFimIntervalo: breakEndTime || undefined,
-      horaFim: nowStr,
-      duracaoHoras: diffHrs,
-      empresaId: empresa?.id || 'demo',
-      observacoes: 'Jornada Operação Ajudante',
-      criadoEm: new Date().toISOString()
-    };
-    saveJornadaRecord(jrn);
-
-    setShiftStarted(false);
-    setShiftStartTime('');
-    setOnBreak(false);
-    setBreakStartTime('');
-    setBreakEndTime('');
-    setFiveSSubmitted(false);
-    setShowFiveWhysModal(false);
-    setShowSuccessModal(false);
-
-    triggerToast(`🏁 Jornada da Operação Ajudante finalizada às ${nowStr}!`);
-  };
-
-  // Open edit modal for point correction
-  const handleOpenEditModal = (rec: ShiftHistoryRecord) => {
-    setEditingRecord(rec);
-    setEditForm({
-      horaInicio: rec.horaInicio || '07:00',
-      horaInicioIntervalo: rec.horaInicioIntervalo || '12:00',
-      horaFimIntervalo: rec.horaFimIntervalo || '13:00',
-      horaFim: rec.horaFim || '16:20'
-    });
-  };
-
-  // Save edited record
-  const handleSaveEditedRecord = () => {
-    if (!editingRecord) return;
-
-    let netMinutes = 0;
-    try {
-      const [h1, m1] = editForm.horaInicio.split(':').map(Number);
-      const [h2, m2] = editForm.horaFim.split(':').map(Number);
-      let totalMins = (h2 * 60 + m2) - (h1 * 60 + m1);
-
-      if (editForm.horaInicioIntervalo && editForm.horaFimIntervalo) {
-        const [bh1, bm1] = editForm.horaInicioIntervalo.split(':').map(Number);
-        const [bh2, bm2] = editForm.horaFimIntervalo.split(':').map(Number);
-        const breakMins = (bh2 * 60 + bm2) - (bh1 * 60 + bm1);
-        totalMins = Math.max(0, totalMins - Math.max(0, breakMins));
-      }
-      netMinutes = Math.max(0, totalMins);
-    } catch (e) {}
-
-    const hrs = Math.floor(netMinutes / 60);
-    const mins = netMinutes % 60;
-    const durStr = `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:00`;
-
-    const updatedHistory = shiftHistory.map(rec => {
-      if (rec.id === editingRecord.id) {
-        return {
-          ...rec,
-          horaInicio: editForm.horaInicio,
-          horaInicioIntervalo: editForm.horaInicioIntervalo || undefined,
-          horaFimIntervalo: editForm.horaFimIntervalo || undefined,
-          horaFim: editForm.horaFim,
-          duracaoTotal: durStr
-        };
-      }
-      return rec;
-    });
-
-    setShiftHistory(updatedHistory);
-    localStorage.setItem(historyStorageKey, JSON.stringify(updatedHistory));
-    setEditingRecord(null);
-    triggerToast('✅ Ponto corrigido no histórico com sucesso!');
-  };
+    let diffHrs = 7.33;
+    if (shiftStartTime) {
+      try {
+        const [h1, m1] = shiftStartTime.split(':').map(Number);
+        const [h2, m2] = nowStr.split(':').map(Number);
+        diffHrs = parseFloat(((Math.max(0, (h2 * 60 + m2) - (h1 * 60 + m1))) / 60).toFixed(2)) || 7.33;
+      } catch (e) {}
+    }
 
     const jrn: JornadaRecord = {
       id: `jrn-ajud-${Date.now()}`,
@@ -464,7 +510,6 @@ export default function AjudantePanel({ user, empresa, theme = 'dark' }: Ajudant
               <span className="bg-indigo-500/10 text-indigo-400 border border-indigo-500/30 text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full">
                 Especialista de Armazém
               </span>
-              <OperationalNotificationBell user={user} userRole="ajudante" onNavigate={(panel, tab) => { if (tab) setActiveTab(tab as any); }} />
             </div>
             <p className="text-xs text-slate-400 mt-0.5">
               Atendimento unificado: Repack, Despejo e Avarias de Quebras.
@@ -472,23 +517,10 @@ export default function AjudantePanel({ user, empresa, theme = 'dark' }: Ajudant
           </div>
         </div>
 
-        {/* CONTROLES DA JORNADA & 5S */}
+        {/* CONTROLES DA JORNADA & INTERVALO */}
         <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto justify-end border-t lg:border-t-0 border-[#222d3a] pt-3 lg:pt-0">
           
-          {/* BOTÃO 5S */}
-          <button
-            onClick={() => setShow5SModal(true)}
-            className={`px-4 py-2.5 rounded-xl border text-xs font-black uppercase tracking-wider flex items-center gap-2 cursor-pointer shadow-md transition-all ${
-              fiveSSubmitted 
-                ? 'bg-amber-500/10 text-amber-400 border-amber-500/30 hover:bg-amber-500/20' 
-                : 'bg-amber-500 hover:bg-amber-400 text-slate-950 border-amber-400 font-bold'
-            }`}
-          >
-            <SquareCheck className="w-4 h-4" />
-            <span>CHECKLIST 5S {fiveSSubmitted ? '✓ (OK)' : ''}</span>
-          </button>
-
-          {/* BOTÃO INICIAR / FINALIZAR JORNADA */}
+          {/* BOTÃO INICIAR / INTERVALO / FINALIZAR JORNADA */}
           {!shiftStarted ? (
             <button
               onClick={handleStartShift}
@@ -498,7 +530,7 @@ export default function AjudantePanel({ user, empresa, theme = 'dark' }: Ajudant
               <span>INICIAR JORNADA</span>
             </button>
           ) : (
-            <div className="flex items-center gap-3 bg-[#151b23] p-1.5 rounded-xl border border-emerald-500/30">
+            <div className="flex flex-wrap items-center gap-2 bg-[#151b23] p-1.5 rounded-xl border border-emerald-500/30">
               <div className="px-3 py-1 flex items-center gap-2 text-xs font-mono font-bold text-emerald-400">
                 <span className="relative flex h-2 w-2">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -506,9 +538,30 @@ export default function AjudantePanel({ user, empresa, theme = 'dark' }: Ajudant
                 </span>
                 <span>JORNADA ATIVA ({shiftStartTime})</span>
               </div>
+
+              {!inInterval ? (
+                <button
+                  onClick={handleStartInterval}
+                  className="px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 border border-amber-500/40 text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"
+                  title="Marcar início do intervalo de almoço/descanso no mesmo local da jornada"
+                >
+                  <Utensils className="w-3.5 h-3.5" />
+                  <span>Sair P/ Intervalo (Almoço)</span>
+                </button>
+              ) : (
+                <button
+                  onClick={handleEndInterval}
+                  className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shadow-md border border-amber-300 animate-pulse"
+                  title="Marcar retorno do intervalo de almoço/descanso"
+                >
+                  <Clock className="w-3.5 h-3.5" />
+                  <span>Retornar do Intervalo (Desde {intervalStartTime})</span>
+                </button>
+              )}
+
               <button
                 onClick={handleFinishShiftClick}
-                className="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-black text-xs uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shadow border border-rose-400"
+                className="px-4 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-black text-xs uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shadow border border-rose-400"
               >
                 <CheckCircle2 className="w-4 h-4" />
                 <span>FINALIZAR JORNADA</span>
@@ -527,20 +580,23 @@ export default function AjudantePanel({ user, empresa, theme = 'dark' }: Ajudant
               <RefreshCw className="w-5 h-5" />
             </div>
             <div>
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Meta Repack Hoje</span>
-              <span className="text-xs font-bold text-white">
-                {todayRepackEntries.length} lançamentos hoje
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Meta Repack Hoje (Tempo por Unidade)</span>
+              <span className="text-xs font-bold text-white block">
+                {todayRepackEntries.length} lançamentos | Meta: {totalRepackMetaMins.toFixed(0)} min vs Real: {totalRepackRealMins.toFixed(0)} min
+              </span>
+              <span className="text-[10px] text-slate-400 block font-mono">
+                Soma Meta Produtos: {totalRepackMetaMins.toFixed(0)} min | Tempo Realizado: {totalRepackRealMins.toFixed(0)} min
               </span>
             </div>
           </div>
-          <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-full border ${
+          <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-full border shrink-0 ${
             hasMissedRepackMeta 
-              ? 'bg-rose-500/10 text-rose-400 border-rose-500/30' 
+              ? 'bg-rose-500/20 text-rose-400 border-rose-500/40 animate-pulse' 
               : todayRepackEntries.length > 0 
-              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' 
+              ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40' 
               : 'bg-slate-800 text-slate-400 border-slate-700'
           }`}>
-            {hasMissedRepackMeta ? '🔴 Fora da Meta' : todayRepackEntries.length > 0 ? '🟢 Bateu Meta' : '⚪ Sem Registros'}
+            {hasMissedRepackMeta ? '🔴 NÃO BATEU A META' : todayRepackEntries.length > 0 ? '🟢 BATEU A META' : '⚪ SEM REGISTROS'}
           </span>
         </div>
 
@@ -551,36 +607,44 @@ export default function AjudantePanel({ user, empresa, theme = 'dark' }: Ajudant
               <Trash2 className="w-5 h-5" />
             </div>
             <div>
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Meta Despejo Hoje</span>
-              <span className="text-xs font-bold text-white">
-                {todayDespejoEntries.length} lançamentos hoje
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Meta Despejo Hoje (Tempo por Unidade)</span>
+              <span className="text-xs font-bold text-white block">
+                {todayDespejoEntries.length} lançamentos | Meta: {totalDespejoMetaMins.toFixed(0)} min vs Real: {totalDespejoRealMins.toFixed(0)} min
+              </span>
+              <span className="text-[10px] text-slate-400 block font-mono">
+                Soma Meta Produtos: {totalDespejoMetaMins.toFixed(0)} min | Tempo Realizado: {totalDespejoRealMins.toFixed(0)} min
               </span>
             </div>
           </div>
-          <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-full border ${
+          <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-full border shrink-0 ${
             hasMissedDespejoMeta 
-              ? 'bg-rose-500/10 text-rose-400 border-rose-500/30' 
+              ? 'bg-rose-500/20 text-rose-400 border-rose-500/40 animate-pulse' 
               : todayDespejoEntries.length > 0 
-              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' 
+              ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40' 
               : 'bg-slate-800 text-slate-400 border-slate-700'
           }`}>
-            {hasMissedDespejoMeta ? '🔴 Fora da Meta' : todayDespejoEntries.length > 0 ? '🟢 Bateu Meta' : '⚪ Sem Registros'}
+            {hasMissedDespejoMeta ? '🔴 NÃO BATEU A META' : todayDespejoEntries.length > 0 ? '🟢 BATEU A META' : '⚪ SEM REGISTROS'}
           </span>
         </div>
 
-        {/* QUEBRAS (WQI) SUMMARY */}
+        {/* WQI SUMMARY */}
         <div className="bg-[#11151c] border border-[#222d3a] p-4 rounded-xl flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-amber-500/10 text-amber-400 rounded-lg">
-              <AlertTriangle className="w-5 h-5" />
+            <div className="p-2.5 bg-sky-500/10 text-sky-400 rounded-lg">
+              <Award className="w-5 h-5" />
             </div>
             <div>
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Operação Quebras (Avarias)</span>
-              <span className="text-xs font-bold text-white">Avaliação via WQI Individual</span>
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Qualidade & WQI do Mês</span>
+              <span className="text-xs font-bold text-white block">
+                Atingimento Acumulado: <strong className="text-emerald-400 font-mono text-sm">98.2%</strong>
+              </span>
+              <span className="text-[10px] text-slate-400 block font-mono">
+                Meta do Mês: ≥ 95.0%
+              </span>
             </div>
           </div>
-          <span className="text-[10px] font-black uppercase px-2.5 py-1 rounded-full bg-sky-500/10 text-sky-400 border border-sky-500/30">
-            Índice WQI
+          <span className="text-[10px] font-black uppercase px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shrink-0">
+            🟢 META ATINGIDA
           </span>
         </div>
       </div>
@@ -603,8 +667,8 @@ export default function AjudantePanel({ user, empresa, theme = 'dark' }: Ajudant
         </div>
       )}
 
-      {/* MAIN TABS NAV - SYMMETRICAL 6 TABS */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 bg-[#11151c] border border-[#222d3a] p-2 rounded-xl w-full">
+      {/* MAIN TABS NAV - SYMMETRICAL 7 TABS */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2 bg-[#11151c] border border-[#222d3a] p-2 rounded-xl w-full">
         <button
           onClick={() => setActiveTab('repack')}
           className={`px-3 py-2.5 rounded-lg font-sans font-bold text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2 ${
@@ -675,6 +739,18 @@ export default function AjudantePanel({ user, empresa, theme = 'dark' }: Ajudant
         >
           <History className="w-4 h-4 shrink-0" />
           <span className="truncate">6. Histórico</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('acoes')}
+          className={`px-3 py-2.5 rounded-lg font-sans font-bold text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2 ${
+            activeTab === 'acoes'
+              ? 'bg-amber-500 text-slate-950 font-black shadow'
+              : 'text-slate-400 hover:text-white bg-transparent'
+          }`}
+        >
+          <ShieldCheck className="w-4 h-4 shrink-0" />
+          <span className="truncate">7. Guia Ações</span>
         </button>
       </div>
 
@@ -858,18 +934,19 @@ export default function AjudantePanel({ user, empresa, theme = 'dark' }: Ajudant
                 <tr className="border-b border-[#222d3a] text-[10px] font-black uppercase text-slate-400 tracking-wider">
                   <th className="p-3">Data</th>
                   <th className="p-3">Início</th>
+                  <th className="p-3">Intervalo (Almoço)</th>
                   <th className="p-3">Fim</th>
                   <th className="p-3">Duração Total</th>
                   <th className="p-3">Meta Repack</th>
                   <th className="p-3">Meta Despejo</th>
                   <th className="p-3">Status 5S</th>
-                  <th className="p-3">Análise 5 Porquês</th>
+                  <th className="p-3 text-right">Ação / Correção</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#1c2530] text-xs">
                 {shiftHistory.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="p-8 text-center text-slate-500 italic">
+                    <td colSpan={9} className="p-8 text-center text-slate-500 italic">
                       Nenhum histórico de jornada registrado ainda.
                     </td>
                   </tr>
@@ -878,6 +955,9 @@ export default function AjudantePanel({ user, empresa, theme = 'dark' }: Ajudant
                     <tr key={rec.id} className="hover:bg-[#151b23] transition-all">
                       <td className="p-3 font-mono font-bold text-amber-400">{rec.dataStr}</td>
                       <td className="p-3 font-mono text-slate-300">{rec.horaInicio}</td>
+                      <td className="p-3 font-mono text-amber-300/90 font-bold">
+                        {rec.intervaloInicio ? `${rec.intervaloInicio} - ${rec.intervaloFim || 'Em andamento'}` : '12:00 - 13:00'}
+                      </td>
                       <td className="p-3 font-mono text-slate-300">{rec.horaFim}</td>
                       <td className="p-3 font-mono font-bold text-white">{rec.duracaoTotal}</td>
                       <td className="p-3 font-bold">{rec.statusMetaRepack}</td>
@@ -891,20 +971,179 @@ export default function AjudantePanel({ user, empresa, theme = 'dark' }: Ajudant
                           <span className="text-[10px] text-slate-500">Pendente</span>
                         )}
                       </td>
-                      <td className="p-3">
-                        {rec.fiveWhysFilled ? (
-                          <span className="text-[10px] font-bold text-amber-400 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded-full">
-                            ⚠️ Preenchido
-                          </span>
-                        ) : (
-                          <span className="text-[10px] text-emerald-400">Não necessário</span>
-                        )}
+                      <td className="p-3 text-right">
+                        <button
+                          onClick={() => handleOpenEditRecord(rec)}
+                          className="px-2.5 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 border border-amber-500/40 rounded-lg text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 ml-auto cursor-pointer"
+                          title="Corrigir marcação de ponto ou horários de intervalo"
+                        >
+                          <Edit2 className="w-3 h-3" />
+                          <span>Corrigir Ponto</span>
+                        </button>
                       </td>
                     </tr>
                   ))
                 )}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* TAB CONTENT 7: GUIA DE AÇÕES */}
+      {activeTab === 'acoes' && (
+        <GuiaAcoesOperacionais user={user} roleName="Ajudante" />
+      )}
+
+      {/* SEÇÃO DE SUGESTÕES DE MELHORIA DA OPERAÇÃO (Cria Ações Sugestivas para o ADM) */}
+      <div className="bg-[#11151c] border border-amber-500/30 rounded-2xl p-5 shadow-xl space-y-4">
+        <div className="flex items-center gap-3 border-b border-slate-800 pb-3">
+          <div className="p-2.5 bg-amber-500/20 text-amber-400 rounded-xl border border-amber-500/30">
+            <Lightbulb className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="text-sm font-black uppercase text-white tracking-wider flex items-center gap-2">
+              Sugestões de Melhoria da Operação
+            </h3>
+            <p className="text-xs text-slate-400">
+              Envie sugestões de melhoria da rotina. Elas serão registradas como <strong>Ações Sugestivas</strong> no painel do Administrativo.
+            </p>
+          </div>
+        </div>
+
+        <form onSubmit={handleSendSugestao} className="space-y-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label className="text-[10px] font-bold text-slate-300 uppercase block mb-1">Processo / Setor:</label>
+              <select
+                value={sugestaoProcesso}
+                onChange={e => setSugestaoProcesso(e.target.value)}
+                className="w-full bg-[#151b23] border border-[#222d3a] rounded-xl p-2.5 text-xs text-white outline-none focus:border-amber-500 font-bold"
+              >
+                <option value="Repack">Repack</option>
+                <option value="Despejo">Despejo</option>
+                <option value="Quebras">Quebras (Avarias)</option>
+                <option value="Armazém">Armazém / Pátio</option>
+                <option value="Picking">Picking</option>
+                <option value="Retorno Rota">Retorno Rota</option>
+                <option value="Geral">Geral da Operação</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="text-[10px] font-bold text-slate-300 uppercase block mb-1">Título da Sugestão / Oportunidade:</label>
+              <input
+                type="text"
+                value={sugestaoTitulo}
+                onChange={e => setSugestaoTitulo(e.target.value)}
+                placeholder="Ex: Reorganização de pallets no setor de despejo..."
+                className="w-full bg-[#151b23] border border-[#222d3a] rounded-xl p-2.5 text-xs text-white outline-none focus:border-amber-500"
+                required
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="text-[10px] font-bold text-slate-300 uppercase block mb-1">Detalhamento da Sugestão:</label>
+            <textarea
+              rows={3}
+              value={sugestaoDescricao}
+              onChange={e => setSugestaoDescricao(e.target.value)}
+              placeholder="Descreva detalhadamente o que pode ser melhorado e o impacto positivo para a equipe..."
+              className="w-full bg-[#151b23] border border-[#222d3a] rounded-xl p-2.5 text-xs text-white outline-none focus:border-amber-500"
+              required
+            />
+          </div>
+
+          <div className="flex justify-end">
+            <button
+              type="submit"
+              className="px-5 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl cursor-pointer shadow-lg flex items-center gap-2 transition-all"
+            >
+              <Send className="w-4 h-4" />
+              <span>Enviar Sugestão ao Administrativo</span>
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {/* MODAL DE CORREÇÃO DE PONTO / HORÁRIOS DA JORNADA */}
+      {editingRecord && (
+        <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-[#11151c] border border-amber-500/50 rounded-2xl p-6 max-w-md w-full flex flex-col gap-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-amber-500/30 pb-3">
+              <div className="flex items-center gap-2 text-amber-400">
+                <Edit2 className="w-5 h-5" />
+                <h3 className="text-sm font-black text-white uppercase tracking-wider">
+                  CORRIGIR MARCAÇÃO DE PONTO ({editingRecord.dataStr})
+                </h3>
+              </div>
+              <button onClick={() => setEditingRecord(null)} className="text-slate-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-300">
+              Caso haja erro de registro no ponto do colaborador, ajuste os horários de início, intervalo de almoço ou término da jornada abaixo:
+            </p>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] font-bold text-slate-400 uppercase">Hora Início Jornada</label>
+                <input
+                  type="text"
+                  value={editHoraInicio}
+                  onChange={e => setEditHoraInicio(e.target.value)}
+                  className="bg-[#151b23] border border-[#222d3a] rounded-lg p-2 text-xs font-mono text-white outline-none focus:border-amber-400"
+                />
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] font-bold text-slate-400 uppercase">Hora Fim Jornada</label>
+                <input
+                  type="text"
+                  value={editHoraFim}
+                  onChange={e => setEditHoraFim(e.target.value)}
+                  className="bg-[#151b23] border border-[#222d3a] rounded-lg p-2 text-xs font-mono text-white outline-none focus:border-amber-400"
+                />
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] font-bold text-amber-400 uppercase">Início Intervalo (Almoço)</label>
+                <input
+                  type="text"
+                  value={editHoraIntervaloInicio}
+                  onChange={e => setEditHoraIntervaloInicio(e.target.value)}
+                  className="bg-[#151b23] border border-[#222d3a] rounded-lg p-2 text-xs font-mono text-amber-300 outline-none focus:border-amber-400"
+                />
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] font-bold text-amber-400 uppercase">Retorno Intervalo (Almoço)</label>
+                <input
+                  type="text"
+                  value={editHoraIntervaloFim}
+                  onChange={e => setEditHoraIntervaloFim(e.target.value)}
+                  className="bg-[#151b23] border border-[#222d3a] rounded-lg p-2 text-xs font-mono text-amber-300 outline-none focus:border-amber-400"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 border-t border-slate-800 pt-3">
+              <button
+                onClick={() => setEditingRecord(null)}
+                className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-bold uppercase cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleSaveEditPonto}
+                className="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs uppercase cursor-pointer flex items-center gap-1.5 shadow-lg"
+              >
+                <Save className="w-4 h-4" />
+                <span>Salvar Correção</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

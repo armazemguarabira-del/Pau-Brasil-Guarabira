@@ -50,6 +50,9 @@ export interface PresencaItem {
   nome: string;
   cargo: string;
   presente: boolean;
+  convocado?: boolean;
+  confirmadoPeloColaborador?: boolean;
+  horarioConfirmacao?: string;
 }
 
 export interface OcorrenciaReuniao {
@@ -361,16 +364,45 @@ export const ReunioesComponent: React.FC<ReunioesComponentProps> = ({
     setFormAssuntos('');
     setFormAnexos([]);
 
-    // Initialize presence with official collaborators
+    // Initialize presence with official collaborators and convocation status
     const initPresences = LISTA_COLABORADORES_OFICIAIS.map(c => ({
       matricula: c.matricula,
       nome: c.nome,
       cargo: c.cargo,
-      presente: true
+      presente: true,
+      convocado: true,
+      confirmadoPeloColaborador: false
     }));
     setFormPresencas(initPresences);
 
     setIsNewOccurrenceModalOpen(true);
+  };
+
+  // Confirm collaborator attendance on active convocations
+  const handleConfirmPresence = (occId: string) => {
+    const timeNow = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    const updated = ocorrencias.map(occ => {
+      if (occ.id === occId) {
+        const updatedList = occ.listaPresenca.map(p => {
+          const userName = (user?.nome || '').toLowerCase();
+          const match = p.nome.toLowerCase().includes(userName) || (user?.matricula && p.matricula === user.matricula) || p.convocado;
+          if (match) {
+            return {
+              ...p,
+              presente: true,
+              confirmadoPeloColaborador: true,
+              horarioConfirmacao: timeNow
+            };
+          }
+          return p;
+        });
+        return { ...occ, listaPresenca: updatedList };
+      }
+      return occ;
+    });
+
+    saveOcorrenciasToStorage(updated);
+    alert(`✅ Presença e assinatura confirmadas com sucesso às ${timeNow}!`);
   };
 
   // Handle Save New Occurrence
@@ -538,6 +570,52 @@ export const ReunioesComponent: React.FC<ReunioesComponentProps> = ({
           </div>
         </div>
       </div>
+
+      {/* BANNER DE CONVOCAÇÕES DE PRESENÇA ATIVAS PARA O COLABORADOR */}
+      {ocorrencias.filter(occ => {
+        const item = occ.listaPresenca?.find(p => 
+          (p.nome && user?.nome && p.nome.toLowerCase().includes(user.nome.toLowerCase())) || 
+          (user?.matricula && p.matricula === user.matricula) || 
+          p.convocado
+        );
+        return item && !item.confirmadoPeloColaborador;
+      }).slice(0, 3).map(occ => {
+        const matchingFicha = fichas.find(f => f.id === occ.reuniaoId);
+        return (
+          <div key={occ.id} className="p-4 bg-gradient-to-r from-indigo-950 via-slate-900 to-indigo-900 border-2 border-indigo-500 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-2xl">
+            <div className="flex items-center gap-3.5">
+              <div className="p-3 bg-indigo-500/20 text-indigo-400 rounded-xl border border-indigo-500/30 shrink-0">
+                <Users className="w-6 h-6 text-indigo-400" />
+              </div>
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-amber-400 bg-amber-500/20 px-2.5 py-0.5 rounded-full border border-amber-500/30">
+                    📢 Convocar Comparecimento / Assinatura de Presença
+                  </span>
+                  <span className="text-[10px] font-bold text-slate-400">
+                    {occ.dataFormatted} às {occ.hora}
+                  </span>
+                </div>
+                <h4 className="text-sm sm:text-base font-black text-white uppercase mt-1">
+                  {matchingFicha?.nome || 'Reunião e Treinamento Operacional'}
+                </h4>
+                <p className="text-xs text-slate-300 font-medium mt-0.5">
+                  Facilitador: <strong className="text-amber-300">{occ.facilitador}</strong> — O responsável solicitou seu comparecimento e confirmação na Lista de Presença.
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => handleConfirmPresence(occ.id)}
+              className="px-4 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl shadow-lg transition-all cursor-pointer shrink-0 border border-emerald-300 flex items-center gap-2"
+            >
+              <CheckCircle2 className="w-4 h-4 text-slate-950" />
+              <span>Assinar Lista de Presença</span>
+            </button>
+          </div>
+        );
+      })}
 
       {/* MASTER SUB-TABS SELECTOR */}
       <div className="p-2 rounded-2xl bg-[#0d1527] border border-slate-800 overflow-x-auto flex items-center gap-2 no-scrollbar">
@@ -1120,34 +1198,73 @@ export const ReunioesComponent: React.FC<ReunioesComponentProps> = ({
                 />
               </div>
 
-              {/* LISTA DE PRESENÇA STEP */}
+              {/* LISTA DE PRESENÇA E CONVOCAÇÃO STEP */}
               <div className="p-4 rounded-xl bg-[#080d19] border border-slate-800 space-y-3">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold uppercase text-amber-400 block">
-                    Lista de Presença dos Colaboradores
-                  </label>
-                  <span className="text-[10px] text-slate-400">
-                    {formPresencas.filter(p => p.presente).length} de {formPresencas.length} Presentes
-                  </span>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <label className="text-xs font-bold uppercase text-amber-400 block">
+                      Lista de Presença & Convocação dos Colaboradores
+                    </label>
+                    <span className="text-[10px] text-slate-400 block">
+                      Selecione quem deve comparecer para notificar e coletar assinatura na lista de presença
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const updated = formPresencas.map(p => ({ ...p, presente: true, convocado: true }));
+                        setFormPresencas(updated);
+                      }}
+                      className="px-2.5 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 text-[10px] font-bold rounded-lg cursor-pointer"
+                    >
+                      Convocar Todos ({formPresencas.length})
+                    </button>
+                    <span className="text-[10px] text-slate-400 font-mono">
+                      {formPresencas.filter(p => p.presente).length} Marcado(s)
+                    </span>
+                  </div>
                 </div>
 
-                <div className="max-h-40 overflow-y-auto space-y-1.5 pr-2">
+                <div className="max-h-48 overflow-y-auto space-y-1.5 pr-2">
                   {formPresencas.map((p, idx) => (
                     <div key={idx} className="flex items-center justify-between p-2 rounded-lg bg-slate-900 border border-slate-800 text-xs">
-                      <span className="text-white font-medium">{p.nome} ({p.cargo})</span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const updated = [...formPresencas];
-                          updated[idx].presente = !updated[idx].presente;
-                          setFormPresencas(updated);
-                        }}
-                        className={`px-2.5 py-1 rounded font-bold text-[10px] cursor-pointer ${
-                          p.presente ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
-                        }`}
-                      >
-                        {p.presente ? '✓ Presente' : '✗ Ausente'}
-                      </button>
+                      <div className="min-w-0 pr-2">
+                        <span className="text-white font-medium block truncate">{p.nome} ({p.cargo})</span>
+                        {p.confirmadoPeloColaborador && (
+                          <span className="text-[9px] text-emerald-400 font-mono block">
+                            ✓ Assinado pelo colaborador às {p.horarioConfirmacao || 'recém'}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = [...formPresencas];
+                            updated[idx].convocado = !updated[idx].convocado;
+                            setFormPresencas(updated);
+                          }}
+                          className={`px-2 py-0.5 rounded font-bold text-[9px] cursor-pointer ${
+                            p.convocado ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30' : 'bg-slate-800 text-slate-500'
+                          }`}
+                        >
+                          {p.convocado ? '📢 Convocado' : 'Sem Notif.'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = [...formPresencas];
+                            updated[idx].presente = !updated[idx].presente;
+                            setFormPresencas(updated);
+                          }}
+                          className={`px-2.5 py-1 rounded font-bold text-[10px] cursor-pointer ${
+                            p.presente ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                          }`}
+                        >
+                          {p.presente ? '✓ Presente' : '✗ Ausente'}
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>

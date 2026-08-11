@@ -65,7 +65,7 @@ import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { doc, getDoc, collection, query, where, onSnapshot } from 'firebase/firestore';
 import { Usuario, Empresa } from './types';
 import { motion, AnimatePresence } from 'motion/react';
-import { Sun, Moon, Zap, PanelLeftOpen, PanelLeftClose, ArrowLeft, ArrowRight, LayoutGrid } from 'lucide-react';
+import { Sun, Moon, Zap, PanelLeftOpen, PanelLeftClose, ArrowLeft, ArrowRight, LayoutGrid, LogOut } from 'lucide-react';
 
 function HeaderClock({ theme }: { theme: 'light' | 'dark' }) {
   const [timeStr, setTimeStr] = useState('');
@@ -168,6 +168,7 @@ export default function App() {
     return ['landing'];
   });
   const [historyIndex, setHistoryIndex] = useState<number>(0);
+  const [dashInitialTab, setDashInitialTab] = useState<'operacao' | '5s' | 'matriz' | 'desvios' | 'agenda' | 'diario_bordo' | 'reunioes' | 'fluxograma' | 'wlp' | undefined>(undefined);
 
   const navigateToPanel = (panel: string) => {
     if (!panel || panel === activePanel) return;
@@ -285,15 +286,8 @@ export default function App() {
   }, [user?.uid, user?.empresaId]);
 
   const isBlockedByActionPlan = () => {
-    // Admin, supervisors and master bypasses are never blocked!
-    const isNixon = user?.email?.toLowerCase().trim() === 'nixon.a.a100.nh@gmail.com';
-    const isSuperOrAdmin = user?.isControle || user?.papel === 'admin' || user?.papel === 'controle' || user?.uid === 'bypass_g1009';
-    if (isNixon || isSuperOrAdmin) return false;
-
-    return activeActions.some(action => {
-      const limitTime = new Date(action.limiteEm || (new Date(action.criadoEm).getTime() + 7 * 24 * 60 * 60 * 1000)).getTime();
-      return Date.now() > limitTime;
-    });
+    // Disabled blocking popup on main screen as requested
+    return false;
   };
 
   // Session Access Tracking for Security
@@ -682,6 +676,7 @@ export default function App() {
             empresa={empresa} 
             onNavigate={setActivePanel} 
             theme={theme}
+            initialTab={dashInitialTab}
             kpiStats={{
               usuarios: 3,
               modulos: empresa?.modulos ? empresa.modulos.length : 6,
@@ -1201,18 +1196,18 @@ export default function App() {
         }`}>
           
           {/* Workspace Top Header (Glassmorphic & Premium) */}
-          <header className={`sticky top-0 z-30 backdrop-blur-md px-3 md:px-5 py-2 h-12 md:h-14 flex items-center justify-between gap-2.5 md:gap-4 border-b ${
+          <header className={`sticky top-0 z-30 backdrop-blur-md px-3 md:px-5 py-2 min-h-[52px] flex items-center justify-between gap-2 border-b ${
             theme === 'dark' 
               ? 'bg-[#07090d]/90 border-[#1c2530]' 
               : 'bg-white/95 border-slate-200 shadow-xs'
           }`}>
-            <div className="flex items-center gap-2 md:gap-3 min-w-0">
+            <div className="flex items-center gap-1.5 sm:gap-2.5 min-w-0 flex-1">
               {/* Workstation Icon Button for Mobile & Quick Access */}
               <button
                 type="button"
                 onClick={() => {
-                  const targetOp = getUserOperationPanel(user);
-                  navigateToPanel(targetOp);
+                  setDashInitialTab(undefined);
+                  navigateToPanel('visao-geral');
                 }}
                 className={`p-1.5 px-2.5 rounded-xl border flex items-center gap-1.5 font-black text-xs uppercase tracking-wider transition-all cursor-pointer shadow-xs flex-shrink-0 hover:scale-[1.02] ${
                   theme === 'dark'
@@ -1222,7 +1217,7 @@ export default function App() {
                 title="Workstation / Painel Principal da Operação"
               >
                 <LayoutGrid className="w-4 h-4 text-amber-400 flex-shrink-0" />
-                <span className="font-extrabold font-mono text-[11px] uppercase">Workstation</span>
+                <span className="font-extrabold font-mono text-[11px] uppercase hidden xs:inline">Workstation</span>
               </button>
 
               {/* Back & Forward History Navigation Buttons - Visible for Admin guide switching */}
@@ -1297,8 +1292,8 @@ export default function App() {
               </div>
             </div>
 
-            {/* Right Side Header Controls: 1. Sino, 2. Ir Para Operação & 3. Escolher o Tema */}
-            <div className="flex items-center gap-1.5 sm:gap-2.5 flex-shrink-0">
+            {/* Right Side Header Controls: 1. Sino, 2. Ir Para Operação, 3. Escolher Tema, 4. Logout (Sair) */}
+            <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
               {/* 1. OPERATIONAL NOTIFICATION BELL (SINO) */}
               <OperationalNotificationBell user={user} onNavigate={navigateToPanel} />
 
@@ -1307,10 +1302,16 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => {
-                    const targetOp = getUserOperationPanel(user);
-                    navigateToPanel(targetOp);
+                    const isSuperOrAdmin = user.isControle || user.papel === 'admin' || user.papel === 'controle' || getUserRoleType(user) === 'admin';
+                    if (isSuperOrAdmin) {
+                      setDashInitialTab('diario_bordo');
+                      navigateToPanel('visao-geral');
+                    } else {
+                      const targetOp = getUserOperationPanel(user);
+                      navigateToPanel(targetOp);
+                    }
                   }}
-                  className="bg-amber-400 hover:bg-amber-300 text-slate-950 px-2.5 py-1.5 md:px-3.5 md:py-1.5 rounded-xl font-black text-[10px] md:text-[11px] uppercase tracking-wider shadow-md hover:scale-[1.03] active:scale-95 transition-all cursor-pointer flex items-center gap-1.5 border border-amber-300 flex-shrink-0"
+                  className="bg-amber-400 hover:bg-amber-300 text-slate-950 px-2.5 py-1.5 rounded-xl font-black text-[10px] md:text-[11px] uppercase tracking-wider shadow-md hover:scale-[1.03] active:scale-95 transition-all cursor-pointer flex items-center gap-1.5 border border-amber-300 flex-shrink-0"
                   title="Ir diretamente para a tela da operação vinculada ao seu perfil"
                 >
                   <Zap className="w-3.5 h-3.5 fill-slate-950 text-slate-950 flex-shrink-0" />
@@ -1330,8 +1331,25 @@ export default function App() {
                 title={theme === 'dark' ? 'Mudar para Tema Claro' : 'Mudar para Tema Escuro'}
               >
                 {theme === 'dark' ? <Sun className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" /> : <Moon className="w-3.5 h-3.5 text-slate-700 flex-shrink-0" />}
-                <span className="text-[9.5px] font-extrabold uppercase tracking-wider hidden sm:inline">
+                <span className="text-[9.5px] font-extrabold uppercase tracking-wider hidden md:inline">
                   {theme === 'dark' ? 'Claro' : 'Escuro'}
+                </span>
+              </button>
+
+              {/* 4. LOGOUT BUTTON (SAIR / LOGOUT) */}
+              <button
+                type="button"
+                onClick={handleLogout}
+                className={`px-2.5 py-1.5 rounded-xl border transition-all cursor-pointer flex items-center justify-center gap-1.5 flex-shrink-0 ${
+                  theme === 'dark'
+                    ? 'bg-rose-950/40 border-rose-800/50 text-rose-400 hover:bg-rose-900/60 hover:border-rose-600 shadow-xs'
+                    : 'bg-rose-50 border-rose-200 text-rose-700 hover:bg-rose-100 shadow-xs'
+                }`}
+                title="Sair da Conta / Encerrar Sessão"
+              >
+                <LogOut className="w-3.5 h-3.5 text-rose-400 flex-shrink-0" />
+                <span className="text-[10px] font-black uppercase tracking-wider">
+                  Sair
                 </span>
               </button>
             </div>

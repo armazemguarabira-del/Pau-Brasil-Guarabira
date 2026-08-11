@@ -22,6 +22,7 @@ import { Upload, FileSpreadsheet, CheckCircle2, Clock, AlertTriangle, Truck, Pla
 import ValidadesPanel from './ValidadesPanel';
 import TemperaturaImportExportBar from './TemperaturaImportExportBar';
 import { Checklist5SForm, Collaborator5SPerformanceCard } from './Checklist5SModal';
+import { GuiaAcoesOperacionais } from './GuiaAcoesOperacionais';
 import { getStoredTempLogs } from '../utils/tempStorage';
 import { saveJornadaRecord, saveMultipleJornadas, saveDailyFaturadoRecord, getStoredJornadas, getStoredMontagens, saveMontagemRecord, finalizarMontagemRecord, WlpMontagemRecord, JornadaRecord } from '../utils/jornadaUtils';
 import { OperationalNotificationBell } from './OperationalNotificationBell';
@@ -612,11 +613,7 @@ export default function ConferentePanel({ user, empresa, initialTab }: Conferent
 
   // Temperature Logs State & Handlers
   const [tempLogs, setTempLogs] = useState<ArmazemTemperaturaLog[]>(() => {
-    try {
-      const saved = localStorage.getItem('armazem_temperatura_logs');
-      if (saved) return JSON.parse(saved);
-    } catch {}
-    return [];
+    return getStoredTempLogs();
   });
 
   const reloadTempLogs = () => {
@@ -1157,7 +1154,7 @@ export default function ConferentePanel({ user, empresa, initialTab }: Conferent
     <div className="flex flex-col gap-6">
       
       {/* Top Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 bg-[#11151c] border-b border-[#222d3a] rounded-t-xl -mx-6 md:-mx-12 -mt-6 gap-3">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 bg-[#11151c] border border-[#222d3a] rounded-xl w-full gap-3">
         <div>
           <span className="font-sans font-black text-sm tracking-widest text-[#f5a623] uppercase flex items-center gap-2">
             <Truck className="w-4 h-4 text-amber-400" /> CONFERENTE / ADM & GESTÃO EFC / EFD
@@ -1520,6 +1517,9 @@ export default function ConferentePanel({ user, empresa, initialTab }: Conferent
               </button>
             </div>
           </div>
+
+          {/* GUIA DE AÇÕES CORRETIVAS E MELHORIAS - CONFERENTE */}
+          <GuiaAcoesOperacionais user={user} roleName="Conferente" />
 
           {/* Relatório de Atividades Diárias (R&R) */}
           <div className="g-card p-6">

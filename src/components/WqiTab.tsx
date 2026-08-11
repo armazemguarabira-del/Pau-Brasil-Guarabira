@@ -42,6 +42,7 @@ import { db } from '../firebase';
 import { QuebraRow } from '../types';
 import CalendarFilter from './CalendarFilter';
 import { PRODUCTS } from '../planosData';
+import { PRODUCT_MASTER_DATA, PRODUCT_MASTER_MAP, findProductMaster } from '../data/productMasterData';
 import { useEmpresaData } from '../context/EmpresaDataContext';
 import { COLABORADORES_QUEBRA } from './QuebrasPanel';
 import { normalizeCollaboratorName } from '../utils/colaboradorUtils';
@@ -73,30 +74,45 @@ export const getItemHlInfo = (r: Partial<QuebraRow>) => {
   const qty = Number(r.quantidade) || 0;
   let fator = 0;
 
-  // 1. Explicit r.fatorHl (from Column G "FATOR HECTO POR UNIDADE" in imported CSV or record)
-  if (r.fatorHl && Number(r.fatorHl) > 0) {
-    const fNum = Number(r.fatorHl);
-    if (fNum < 1.0) {
-      fator = fNum;
+  // 1. Primary lookup in PRODUCT_MASTER_DATA by codProduto or description
+  let pm: any;
+  if (r.codProduto) {
+    const codeClean = String(r.codProduto).trim().replace(/^0+/, '');
+    const num = parseInt(codeClean, 10);
+    if (!isNaN(num)) {
+      pm = PRODUCT_MASTER_MAP.get(num) || PRODUCT_MASTER_DATA.find(p => p.cod === num);
     }
   }
+  if (!pm && r.descricao) {
+    pm = findProductMaster(r.descricao);
+  }
 
-  // 2. Primary lookup: Official PRODUCTS database by SKU code (Column G)
+  if (pm && pm.fator > 0 && pm.fatorHecto > 0) {
+    // Unit hectoliter = SKU_FATOR_HECTO / SKU_FATOR
+    fator = pm.fatorHecto / pm.fator;
+  }
+
+  // 2. Lookup in PRODUCTS catalog by code
   if (fator <= 0 && r.codProduto) {
     const codeStr = String(r.codProduto).trim();
     const codeClean = codeStr.replace(/^0+/, '');
     const match = PRODUCTS.find(p => String(p.codigo) === codeClean || String(p.codigo) === codeStr);
-    if (match && match.fatorHectoPorUnidade && match.fatorHectoPorUnidade > 0) {
-      fator = match.fatorHectoPorUnidade;
+    if (match) {
+      if (match.fatorHectoPorUnidade && match.fatorHectoPorUnidade > 0) {
+        fator = match.fatorHectoPorUnidade;
+      } else if (match.fatorHecto && match.fator) {
+        fator = match.fatorHecto / match.fator;
+      }
     }
   }
 
-  // 3. Secondary lookup: Official PRODUCTS database by description (Column G)
-  if (fator <= 0 && r.descricao) {
-    const descUpper = String(r.descricao).toUpperCase().trim();
-    const matchDesc = PRODUCTS.find(p => p.descricao && p.descricao.toUpperCase().trim() === descUpper);
-    if (matchDesc && matchDesc.fatorHectoPorUnidade && matchDesc.fatorHectoPorUnidade > 0) {
-      fator = matchDesc.fatorHectoPorUnidade;
+  // 3. Explicit r.fatorHl (only if valid unit factor <= 0.05)
+  if (fator <= 0 && r.fatorHl && Number(r.fatorHl) > 0) {
+    const fNum = Number(r.fatorHl);
+    if (fNum <= 0.05) {
+      fator = fNum;
+    } else {
+      fator = fNum / (pm?.fator || 12);
     }
   }
 
@@ -163,39 +179,51 @@ export const getItemHlInfo = (r: Partial<QuebraRow>) => {
 // Helper to get real monetary value (in R$) for a item based on row or product catalog
 export function getItemValorReal(q: Partial<QuebraRow>): number {
   const qty = Number(q.quantidade) || 0;
-  if (q.valorTotal && Number(q.valorTotal) > 0) {
-    return Number(q.valorTotal);
+  if (qty <= 0) return 0;
+
+  // 1. Primary lookup in PRODUCT_MASTER_DATA by codProduto or description
+  let pm: any;
+  if (q.codProduto) {
+    const codeClean = String(q.codProduto).trim().replace(/^0+/, '');
+    const num = parseInt(codeClean, 10);
+    if (!isNaN(num)) {
+      pm = PRODUCT_MASTER_MAP.get(num) || PRODUCT_MASTER_DATA.find(p => p.cod === num);
+    }
   }
+  if (!pm && q.descricao) {
+    pm = findProductMaster(q.descricao);
+  }
+
+  let catalogUnitPrice = 0;
+  if (pm && pm.fator > 0 && pm.valor > 0) {
+    // Unit price = SKU_VALOR / SKU_FATOR
+    catalogUnitPrice = pm.valor / pm.fator;
+  } else if (q.codProduto || q.descricao) {
+    const codeClean = String(q.codProduto || '').replace(/^0+/, '');
+    const match = PRODUCTS.find(p => String(p.codigo) === codeClean || (q.descricao && p.descricao && p.descricao.toUpperCase().trim() === String(q.descricao).toUpperCase().trim()));
+    if (match) {
+      const p = match as any;
+      const casePrice = p.preco || p.valor || 0;
+      const fator = p.fator || 1;
+      if (casePrice > 0) {
+        catalogUnitPrice = casePrice / fator;
+      }
+    }
+  }
+
+  if (catalogUnitPrice > 0) {
+    return catalogUnitPrice * qty;
+  }
+
+  // Fallback to row values if catalog not matched
   if (q.valorUnitario && Number(q.valorUnitario) > 0) {
     return Number(q.valorUnitario) * qty;
   }
-  // Lookup in PRODUCTS catalog by codProduto
-  if (q.codProduto) {
-    const codeStr = String(q.codProduto).trim();
-    const codeClean = codeStr.replace(/^0+/, '');
-    const match = PRODUCTS.find(p => String(p.codigo) === codeClean || String(p.codigo) === codeStr);
-    if (match) {
-      const p = match as any;
-      const unitPrice = p.precoUnitario || p.preco || p.valorUnidade || p.valorUnitario;
-      if (unitPrice && Number(unitPrice) > 0) {
-        return Number(unitPrice) * qty;
-      }
-    }
+  if (q.valorTotal && Number(q.valorTotal) > 0) {
+    return Number(q.valorTotal);
   }
-  // Lookup in PRODUCTS catalog by description
-  if (q.descricao) {
-    const descUpper = String(q.descricao).toUpperCase().trim();
-    const matchDesc = PRODUCTS.find(p => p.descricao && p.descricao.toUpperCase().trim() === descUpper);
-    if (matchDesc) {
-      const p = matchDesc as any;
-      const unitPrice = p.precoUnitario || p.preco || p.valorUnidade || p.valorUnitario;
-      if (unitPrice && Number(unitPrice) > 0) {
-        return Number(unitPrice) * qty;
-      }
-    }
-  }
-  // Default estimate per box/unit if not present in product catalog
-  return qty * 45.0;
+
+  return qty * 3.50;
 }
 
 // 3-way unit value getter

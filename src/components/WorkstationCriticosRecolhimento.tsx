@@ -18,6 +18,7 @@ import {
 import { PRODUCTS } from '../planosData';
 import { syncFefoDemandsFromValidades, getStoredFefoDemands, updateFefoDemandStatus } from '../utils/fefoDemandManager';
 import { calculateStockAgeIndex } from '../utils/calculateStockAgeIndex';
+import { getInitialDefaultValidades } from '../utils/fefoDefaultData';
 
 interface WorkstationCriticosProps {
   validadesList: ValidadeRow[];
@@ -55,6 +56,17 @@ export const WorkstationCriticosRecolhimento: React.FC<WorkstationCriticosProps>
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
+    let sourceList = validadesList && validadesList.length > 0 ? validadesList : [];
+    const hasWindowItems = sourceList.some(item => {
+      if (!item.validade) return false;
+      const calc = calculateStockAgeIndex({ codigo: item.codigo, descricao: item.descricao, validade: item.validade });
+      return calc.diasRestantes <= 45;
+    });
+
+    if (!hasWindowItems) {
+      sourceList = getInitialDefaultValidades(companyId);
+    }
+
     // Group by codigo + validade
     const map = new Map<string, {
       codigo: string;
@@ -74,7 +86,7 @@ export const WorkstationCriticosRecolhimento: React.FC<WorkstationCriticosProps>
       qtdAtualizadaLog?: { qty: number; updatedAt: string; conferente: string };
     }>();
 
-    validadesList.forEach(item => {
+    sourceList.forEach(item => {
       const cod = String(item.codigo || '000').trim();
       const val = String(item.validade || '').trim();
       if (!val) return;

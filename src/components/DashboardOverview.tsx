@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { getStoredTempLogs, saveTempLogs } from '../utils/tempStorage';
 import { 
   Usuario, 
   Empresa, 
@@ -67,12 +68,14 @@ import {
   UserCheck,
   Flame,
   TrendingDown,
-  GitFork
+  GitFork,
+  Download
 } from 'lucide-react';
 import { QuadroDesviosEAcoes } from './QuadroDesviosEAcoes';
 import AuditoriaDpoPanel from './AuditoriaDpoPanel';
 import { PadraoOperacionalModal, OperationalModuleKey } from './PadraoOperacionalModal';
-import { getSopForOperation } from '../utils/sopUtils';
+import { getSopForOperation, openPdfInNewTab, downloadPdfFile } from '../utils/sopUtils';
+import { getUserRoleType } from '../utils/permissions';
 import { Checklist5SModal, Audit5SRecord } from './Checklist5SModal';
 import { Workstation5SSection } from './Workstation5SSection';
 import { WorkstationCriticosRecolhimento } from './WorkstationCriticosRecolhimento';
@@ -254,7 +257,7 @@ export default function DashboardOverview({
   const unidadesDisponiveis = ['GUARABIRA'];
 
   // User permission check
-  const isSupervisorOrAdmin = user.isControle || user.papel === 'admin' || user.papel === 'controle';
+  const isSupervisorOrAdmin = user.isControle || user.papel === 'admin' || user.papel === 'controle' || user.papel === 'supervisor' || getUserRoleType(user) === 'admin';
   
   // View mode state: 'gestao' (Visão Executiva) vs 'operacional' (Visão Operador)
   const [viewMode, setViewMode] = useState<'gestao' | 'operacional'>(() => {
@@ -262,13 +265,24 @@ export default function DashboardOverview({
   });
 
   // Workstation Subtab Navigation
-  const [workstationTab, setWorkstationTab] = useState<'operacao' | '5s' | 'matriz' | 'desvios' | 'agenda' | 'diario_bordo' | 'reunioes' | 'fluxograma' | 'wlp'>(initialTab || 'desvios');
+  const [workstationTab, setWorkstationTab] = useState<'operacao' | '5s' | 'matriz' | 'desvios' | 'agenda' | 'diario_bordo' | 'reunioes' | 'fluxograma' | 'wlp'>(() => {
+    if (initialTab && (initialTab !== 'desvios' || isSupervisorOrAdmin)) {
+      return initialTab;
+    }
+    return isSupervisorOrAdmin ? 'desvios' : 'operacao';
+  });
 
   useEffect(() => {
     if (initialTab) {
-      setWorkstationTab(initialTab);
+      if (initialTab === 'desvios' && (!isSupervisorOrAdmin || viewMode === 'operacional')) {
+        setWorkstationTab('operacao');
+      } else {
+        setWorkstationTab(initialTab);
+      }
+    } else if ((!isSupervisorOrAdmin || viewMode === 'operacional') && workstationTab === 'desvios') {
+      setWorkstationTab('operacao');
     }
-  }, [initialTab]);
+  }, [initialTab, isSupervisorOrAdmin, viewMode]);
 
   // Action Plans & Collections Data from Context (SINGLE SOURCE OF TRUTH)
   const empresaData = useEmpresaData();
@@ -571,8 +585,21 @@ export default function DashboardOverview({
 
   // Modals POP and 5S
   const [popModalKey, setPopModalKey] = useState<OperationalModuleKey | null>(null);
+  const [popRefreshKey, setPopRefreshKey] = useState(0);
   const [is5SModalOpen, setIs5SModalOpen] = useState(false);
   const [selected5SSetor, setSelected5SSetor] = useState('Repack');
+
+  useEffect(() => {
+    const handlePopUpdate = () => {
+      setPopRefreshKey(prev => prev + 1);
+    };
+    window.addEventListener('af_pop_updated', handlePopUpdate);
+    window.addEventListener('storage', handlePopUpdate);
+    return () => {
+      window.removeEventListener('af_pop_updated', handlePopUpdate);
+      window.removeEventListener('storage', handlePopUpdate);
+    };
+  }, []);
   const [audits5S, setAudits5S] = useState<Audit5SRecord[]>(() => {
     try {
       const saved = localStorage.getItem('af_5s_audits');
@@ -604,15 +631,7 @@ export default function DashboardOverview({
   const [selectedTempDayId, setSelectedTempDayId] = useState<string | null>(null);
 
   const [tempLogs, setTempLogs] = useState<ArmazemTemperaturaLog[]>(() => {
-    try {
-      const saved = localStorage.getItem('armazem_temperatura_logs');
-      if (saved) return JSON.parse(saved);
-      const initial = generateInitialTempLogs();
-      localStorage.setItem('armazem_temperatura_logs', JSON.stringify(initial));
-      return initial;
-    } catch {
-      return generateInitialTempLogs();
-    }
+    return getStoredTempLogs();
   });
 
   // Conferente Form inputs
@@ -654,8 +673,8 @@ export default function DashboardOverview({
     };
 
     const updated = [newEntry, ...tempLogs];
-    setTempLogs(updated);
-    localStorage.setItem('armazem_temperatura_logs', JSON.stringify(updated));
+    saveTempLogs(updated);
+    setTempLogs(getStoredTempLogs());
 
     setNewTempValor('');
     setNewTempObs('');
@@ -836,24 +855,24 @@ export default function DashboardOverview({
   return (
     <div className="space-y-6">
       {/* ── CABEÇALHO DA PLATAFORMA & IDENTIDADE DA UNIDADE ── */}
-      <div className="bg-[#111a30] border border-slate-800 rounded-2xl p-5 shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <div className="p-3 bg-indigo-500/10 text-indigo-400 rounded-xl border border-indigo-500/20 shrink-0">
-            <Building2 className="w-8 h-8 text-indigo-400" />
+      <div className="bg-[#111a30] border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-lg flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div className="flex items-center gap-3.5 min-w-0">
+          <div className="p-3 bg-indigo-500/10 text-indigo-400 rounded-xl border border-indigo-500/20 shrink-0 flex items-center justify-center">
+            <Building2 className="w-7 h-7 text-indigo-400" />
           </div>
 
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-black uppercase tracking-widest text-indigo-400 bg-indigo-500/10 px-2.5 py-0.5 rounded-full border border-indigo-500/20">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[10px] font-black uppercase tracking-widest text-indigo-400 bg-indigo-500/10 px-2.5 py-0.5 rounded-full border border-indigo-500/20 shrink-0">
                 UNIDADE OPERACIONAL
               </span>
-              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+              <span className="text-[10.5px] text-slate-300 font-bold uppercase tracking-wider truncate">
                 {getGreeting()}, <strong className="text-white">{user.nome}</strong>
               </span>
             </div>
 
-            <div className="flex items-center gap-3 mt-1">
-              <h1 className="text-xl font-black text-white tracking-tight flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2.5 mt-1.5">
+              <h1 className="text-lg sm:text-xl font-black text-white tracking-tight flex items-center gap-1.5 shrink-0">
                 UNIDADE: <span className="text-indigo-400">{selectedUnidade}</span>
               </h1>
 
@@ -861,180 +880,186 @@ export default function DashboardOverview({
               <select 
                 value={selectedUnidade}
                 onChange={e => setSelectedUnidade(e.target.value)}
-                className="bg-[#0b1222] border border-slate-700 text-slate-300 font-black text-xs px-2.5 py-1 rounded-lg outline-none focus:border-indigo-400"
+                className="bg-[#0b1222] border border-slate-700 text-slate-300 font-extrabold text-xs px-3 py-1 rounded-lg outline-none focus:border-indigo-400 max-w-[200px]"
               >
                 {unidadesDisponiveis.map(u => (
-                  <option key={u} value={u}>UNIDADE: {u}</option>
+                  <option key={u} value={u}>Pau Brasil - {u}</option>
                 ))}
               </select>
             </div>
           </div>
         </div>
 
-        {/* CONTROLE DE MODO DE VISÃO & BOTÃO AMARELO IR PARA OPERAÇÃO */}
-        <div className="flex flex-wrap items-center gap-3 bg-[#0b1222] p-1.5 rounded-xl border border-slate-800">
-          {/* BOTÃO AMARELO IR PARA OPERAÇÃO */}
-          <button
-            type="button"
-            onClick={() => {
-              const targetOp = getUserOperationPanel(user);
-              onNavigate(targetOp);
-            }}
-            className="bg-amber-400 hover:bg-amber-300 text-slate-950 px-4 py-2 rounded-lg font-black text-xs uppercase tracking-wider shadow-lg hover:scale-105 transition-all cursor-pointer flex items-center gap-2 border-2 border-amber-300"
-            title="Ir para a operação correspondente ao seu login"
-          >
-            <Zap className="w-4 h-4 fill-slate-950 text-slate-950" />
-            <span className="font-black">Ir para Operação</span>
-          </button>
+        {/* CONTROLE DE MODO DE VISÃO & BOTÃO AMARELO IR PARA OPERAÇÃO (APENAS PARA ADMINISTRATIVO / SUPERVISOR) */}
+        {isSupervisorOrAdmin && (
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3 bg-[#0b1222] p-1.5 rounded-xl border border-slate-800 shrink-0">
+            {/* BOTÃO AMARELO IR PARA OPERAÇÃO (VAI PARA O DIÁRIO DE BORDO) */}
+            <button
+              type="button"
+              onClick={() => {
+                setWorkstationTab('diario_bordo');
+              }}
+              className="bg-amber-400 hover:bg-amber-300 text-slate-950 px-3.5 py-2 rounded-lg font-black text-xs uppercase tracking-wider shadow-lg hover:scale-[1.02] active:scale-95 transition-all cursor-pointer flex items-center gap-2 border border-amber-300"
+              title="Ir para o Diário de Bordo da Operação"
+            >
+              <Zap className="w-4 h-4 fill-slate-950 text-slate-950 shrink-0" />
+              <span className="font-black">Ir para Operação</span>
+            </button>
 
-          <button
-            onClick={() => setViewMode('gestao')}
-            className={`px-3.5 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 ${
-              viewMode === 'gestao'
-                ? 'bg-indigo-600 text-white shadow-md'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <BarChart3 className="w-3.5 h-3.5" />
-            Visão Executiva
-          </button>
+            <button
+              onClick={() => setViewMode('gestao')}
+              className={`px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 ${
+                viewMode === 'gestao'
+                  ? 'bg-indigo-600 text-white shadow-md'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <BarChart3 className="w-3.5 h-3.5 shrink-0" />
+              Visão Executiva
+            </button>
 
-          <button
-            onClick={() => setViewMode('operacional')}
-            className={`px-3.5 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 ${
-              viewMode === 'operacional'
-                ? 'bg-indigo-600 text-white shadow-md'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Eye className="w-3.5 h-3.5" />
-            Visão Operacional
-          </button>
-        </div>
+            <button
+              onClick={() => setViewMode('operacional')}
+              className={`px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 ${
+                viewMode === 'operacional'
+                  ? 'bg-indigo-600 text-white shadow-md'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Eye className="w-3.5 h-3.5 shrink-0" />
+              Visão Operacional
+            </button>
+          </div>
+        )}
       </div>
 
       {/* ==================================================================== */}
-      {/* NAVEGAÇÃO DE SUBGUIAS DO WORKSTATION */}
+      {/* NAVEGAÇÃO DE SUBGUIAS DO WORKSTATION (SIMÉTRICA SEM BARRA DE ROLAGEM) */}
       {/* ==================================================================== */}
-      <div className="flex items-center gap-2 border-b border-slate-800 pb-3 overflow-x-auto">
+      <div className={`grid gap-2 w-full border-b border-slate-800 pb-3 ${
+        viewMode === 'operacional' 
+          ? 'grid-cols-2 sm:grid-cols-3 md:grid-cols-5' 
+          : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-9'
+      }`}>
         <button
           type="button"
           onClick={() => setWorkstationTab('operacao')}
-          className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap shadow-sm ${
+          className={`px-3 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2 shadow-sm ${
             workstationTab === 'operacao'
               ? 'bg-[#032b5e] text-white border-2 border-blue-500 shadow-md ring-2 ring-blue-500/20'
               : 'bg-[#0b1222] text-slate-400 hover:text-white border border-slate-800 hover:border-slate-700'
           }`}
         >
-          <Zap className="w-4 h-4 text-amber-400" />
-          Pátio & Focos Diários
+          <Zap className="w-4 h-4 text-amber-400 shrink-0" />
+          <span className="truncate">Pátio & Focos</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setWorkstationTab('reunioes')}
+          className={`px-3 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2 shadow-sm ${
+            workstationTab === 'reunioes'
+              ? 'bg-[#032b5e] text-white border-2 border-indigo-500 shadow-md ring-2 ring-indigo-500/20'
+              : 'bg-[#0b1222] text-slate-400 hover:text-white border border-slate-800 hover:border-slate-700'
+          }`}
+        >
+          <Users className="w-4 h-4 text-indigo-400 shrink-0" />
+          <span className="truncate">Reuniões & Treinamento</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setWorkstationTab('fluxograma')}
+          className={`px-3 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2 shadow-sm ${
+            workstationTab === 'fluxograma'
+              ? 'bg-[#032b5e] text-white border-2 border-teal-500 shadow-md ring-2 ring-teal-500/20'
+              : 'bg-[#0b1222] text-slate-400 hover:text-white border border-slate-800 hover:border-slate-700'
+          }`}
+        >
+          <GitFork className="w-4 h-4 text-teal-400 shrink-0" />
+          <span className="truncate">Fluxograma Demandas</span>
         </button>
 
         <button
           type="button"
           onClick={() => setWorkstationTab('5s')}
-          className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap shadow-sm ${
+          className={`px-3 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2 shadow-sm ${
             workstationTab === '5s'
               ? 'bg-[#032b5e] text-white border-2 border-amber-500 shadow-md ring-2 ring-amber-500/20'
               : 'bg-[#0b1222] text-slate-400 hover:text-white border border-slate-800 hover:border-slate-700'
           }`}
         >
-          <ShieldCheck className="w-4 h-4 text-amber-400" />
-          Programa 5S Workstation & Responsáveis
+          <ShieldCheck className="w-4 h-4 text-amber-400 shrink-0" />
+          <span className="truncate">Programa 5S</span>
         </button>
 
-        <button
-          type="button"
-          onClick={() => setWorkstationTab('desvios')}
-          className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap shadow-sm ${
-            workstationTab === 'desvios'
-              ? 'bg-[#032b5e] text-white border-2 border-rose-500 shadow-md ring-2 ring-rose-500/20'
-              : 'bg-[#0b1222] text-slate-400 hover:text-white border border-slate-800 hover:border-slate-700'
-          }`}
-        >
-          <AlertTriangle className="w-4 h-4 text-rose-400" />
-          Desvios e Ações
-        </button>
+        {isSupervisorOrAdmin && viewMode !== 'operacional' && (
+          <button
+            type="button"
+            onClick={() => setWorkstationTab('desvios')}
+            className={`px-3 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2 shadow-sm ${
+              workstationTab === 'desvios'
+                ? 'bg-[#032b5e] text-white border-2 border-rose-500 shadow-md ring-2 ring-rose-500/20'
+                : 'bg-[#0b1222] text-slate-400 hover:text-white border border-slate-800 hover:border-slate-700'
+            }`}
+          >
+            <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+            <span className="truncate">Desvios & Ações</span>
+          </button>
+        )}
 
-        {/* GUIAS EXECUTIVAS — EXIBIDAS EXCLUSIVAMENTE NA VISÃO EXECUTIVA */}
-        {viewMode === 'executiva' && (
+        {viewMode !== 'operacional' && (
           <>
             <button
               type="button"
               onClick={() => setWorkstationTab('matriz')}
-              className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap shadow-sm ${
+              className={`px-3 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2 shadow-sm ${
                 workstationTab === 'matriz'
                   ? 'bg-[#032b5e] text-white border-2 border-sky-500 shadow-md ring-2 ring-sky-500/20'
                   : 'bg-[#0b1222] text-slate-400 hover:text-white border border-slate-800 hover:border-slate-700'
               }`}
             >
-              <Target className="w-4 h-4 text-sky-400" />
-              Matriz SDPO
+              <Target className="w-4 h-4 text-sky-400 shrink-0" />
+              <span className="truncate">Matriz SDPO</span>
             </button>
 
             <button
               type="button"
               onClick={() => setWorkstationTab('agenda')}
-              className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap shadow-sm ${
+              className={`px-3 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2 shadow-sm ${
                 workstationTab === 'agenda'
                   ? 'bg-[#032b5e] text-white border-2 border-blue-500 shadow-md ring-2 ring-blue-500/20'
                   : 'bg-[#0b1222] text-slate-400 hover:text-white border border-slate-800 hover:border-slate-700'
               }`}
             >
-              <Calendar className="w-4 h-4 text-blue-400" />
-              Agenda Executiva
+              <Calendar className="w-4 h-4 text-blue-400 shrink-0" />
+              <span className="truncate">Agenda Executiva</span>
             </button>
 
             <button
               type="button"
               onClick={() => setWorkstationTab('diario_bordo')}
-              className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap shadow-sm ${
+              className={`px-3 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2 shadow-sm ${
                 workstationTab === 'diario_bordo'
                   ? 'bg-[#032b5e] text-white border-2 border-amber-500 shadow-md ring-2 ring-amber-500/20'
                   : 'bg-[#0b1222] text-slate-400 hover:text-white border border-slate-800 hover:border-slate-700'
               }`}
             >
-              <BookOpen className="w-4 h-4 text-amber-400" />
-              Diário de Bordo
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setWorkstationTab('reunioes')}
-              className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap shadow-sm ${
-                workstationTab === 'reunioes'
-                  ? 'bg-[#032b5e] text-white border-2 border-indigo-500 shadow-md ring-2 ring-indigo-500/20'
-                  : 'bg-[#0b1222] text-slate-400 hover:text-white border border-slate-800 hover:border-slate-700'
-              }`}
-            >
-              <Users className="w-4 h-4 text-indigo-400" />
-              Reuniões e Treinamentos
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setWorkstationTab('fluxograma')}
-              className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap shadow-sm ${
-                workstationTab === 'fluxograma'
-                  ? 'bg-[#032b5e] text-white border-2 border-teal-500 shadow-md ring-2 ring-teal-500/20'
-                  : 'bg-[#0b1222] text-slate-400 hover:text-white border border-slate-800 hover:border-slate-700'
-              }`}
-            >
-              <GitFork className="w-4 h-4 text-teal-400" />
-              Fluxograma de Demandas
+              <BookOpen className="w-4 h-4 text-amber-400 shrink-0" />
+              <span className="truncate">Diário de Bordo</span>
             </button>
 
             <button
               type="button"
               onClick={() => setWorkstationTab('wlp')}
-              className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap shadow-sm ${
+              className={`px-3 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2 shadow-sm ${
                 workstationTab === 'wlp'
                   ? 'bg-[#032b5e] text-white border-2 border-amber-500 shadow-md ring-2 ring-amber-500/20'
                   : 'bg-[#0b1222] text-slate-400 hover:text-white border border-slate-800 hover:border-slate-700'
               }`}
             >
-              <BarChart3 className="w-4 h-4 text-amber-400" />
-              Dashboard WLP
+              <BarChart3 className="w-4 h-4 text-amber-400 shrink-0" />
+              <span className="truncate">Dashboard WLP</span>
             </button>
           </>
         )}
@@ -1135,7 +1160,7 @@ export default function DashboardOverview({
       )}
 
       {/* TELA DA GUIA DESVIOS E AÇÕES */}
-      {workstationTab === 'desvios' && (
+      {workstationTab === 'desvios' && isSupervisorOrAdmin && viewMode !== 'operacional' && (
         <QuadroDesviosEAcoes empresaId={empresa?.id} user={user} onNavigateToAcoes={() => onNavigate && onNavigate('acoes')} />
       )}
 
@@ -1475,10 +1500,10 @@ export default function DashboardOverview({
                 <div className="p-3 bg-[#0b1222] rounded-xl border border-slate-800 space-y-2">
                   <span className="text-[10px] text-emerald-400 font-black uppercase tracking-wider block border-b border-slate-800 pb-1 flex items-center justify-between">
                     <span>Top 5 Conferentes</span>
-                    <span className="text-[9px] text-slate-500 font-normal">Conferente de Armazém</span>
+                    <span className="text-[9px] text-slate-500 font-normal">Conferente Armazém</span>
                   </span>
                   {CADASTRO_MESTRE_COLABORADORES
-                    .filter(c => c.funcaoGroup === 'Operador' || c.cargo.toUpperCase().includes('CONFERENTE') || c.cargo.toUpperCase().includes('OPERADOR'))
+                    .filter(c => c.funcaoGroup === 'Conferente' || c.funcaoGroup === 'Operador')
                     .sort((a, b) => b.percentualMeta - a.percentualMeta)
                     .slice(0, 5)
                     .map((item, idx) => (
@@ -1628,7 +1653,7 @@ export default function DashboardOverview({
                 </button>
               </div>
 
-              <div className="space-y-2 text-xs">
+              <div key={popRefreshKey} className="space-y-2 text-xs">
                 {[
                   { key: 'repack' as OperationalModuleKey, name: 'Repack' },
                   { key: 'despejo' as OperationalModuleKey, name: 'Despejo' },
@@ -1638,52 +1663,76 @@ export default function DashboardOverview({
                   { key: 'quebras' as OperationalModuleKey, name: 'Quebras e Avarias' }
                 ].map((item) => {
                   const sop = getSopForOperation(item.key);
+                  const hasPdfFile = Boolean(sop.fileUrl);
+
                   return (
                     <div 
                       key={item.key}
-                      onClick={() => setPopModalKey(item.key)}
-                      className="p-3 bg-[#0b1222] hover:bg-[#131f3b] transition-colors rounded-xl border border-slate-800 flex items-center justify-between cursor-pointer group"
+                      className="p-3 bg-[#0b1222] hover:bg-[#131f3b] transition-colors rounded-xl border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 group"
                     >
-                      <div className="flex items-center gap-2.5 overflow-hidden">
-                        <FileText className="w-3.5 h-3.5 text-indigo-400 shrink-0 group-hover:text-indigo-300" />
-                        <span className="text-slate-200 group-hover:text-white font-bold truncate">
-                          {sop.title}
-                        </span>
+                      <div 
+                        onClick={() => setPopModalKey(item.key)}
+                        className="flex items-center gap-2.5 min-w-0 flex-1 cursor-pointer"
+                        title="Clique para abrir e visualizar o Padrão Operacional completo"
+                      >
+                        <div className="p-2 bg-indigo-500/10 text-indigo-400 rounded-lg border border-indigo-500/20 shrink-0 group-hover:bg-indigo-500/20">
+                          <FileText className="w-4 h-4" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-[9px] font-black uppercase text-amber-400 bg-amber-400/10 border border-amber-400/20 px-1.5 py-0.5 rounded">
+                              {sop.code || item.name}
+                            </span>
+                            {hasPdfFile && (
+                              <span className="text-[9px] font-extrabold uppercase text-emerald-400 bg-emerald-400/10 border border-emerald-400/20 px-1.5 py-0.5 rounded flex items-center gap-1">
+                                <FileText className="w-2.5 h-2.5" /> PDF Anexo
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-slate-200 group-hover:text-white font-bold truncate block text-xs mt-0.5">
+                            {sop.title}
+                          </span>
+                          {sop.fileName && (
+                            <span className="text-[10px] text-slate-400 truncate block font-mono">
+                              📄 {sop.fileName}
+                            </span>
+                          )}
+                        </div>
                       </div>
-                      <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded font-bold shrink-0">
-                        Ativo
-                      </span>
+
+                      <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                        {/* Visualizar Icon/Button */}
+                        <button
+                          type="button"
+                          onClick={() => setPopModalKey(item.key)}
+                          className="px-2.5 py-1.5 bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white border border-emerald-500/30 rounded-lg text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
+                          title="Visualizar Padrão Operacional em Tela Cheia"
+                        >
+                          <Eye className="w-3.5 h-3.5 text-emerald-400" />
+                          <span>Visualizar</span>
+                        </button>
+
+                        {/* Baixar PDF Icon/Button */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (hasPdfFile && sop.fileUrl) {
+                              downloadPdfFile(sop.fileUrl, sop.fileName || `${sop.code || item.name}_Padrao_Operacional.pdf`);
+                            } else {
+                              setPopModalKey(item.key);
+                            }
+                          }}
+                          className="px-2.5 py-1.5 bg-blue-600/20 hover:bg-blue-600 text-blue-300 hover:text-white border border-blue-500/30 rounded-lg text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
+                          title="Baixar Padrão Operacional em PDF"
+                        >
+                          <Download className="w-3.5 h-3.5 text-blue-400" />
+                          <span>Baixar PDF</span>
+                        </button>
+                      </div>
                     </div>
                   );
                 })}
-              </div>
-            </div>
-
-            {/* AÇÕES PENDENTES DESTINADAS AO COLABORADOR */}
-            <div className="bg-[#111a30] border border-slate-800 rounded-2xl p-5 space-y-3">
-              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                <h3 className="text-xs font-black uppercase tracking-wider text-amber-400 flex items-center gap-2">
-                  <Bell className="w-4 h-4 text-amber-400" /> Minhas Ações Pendentes ({userActions.length})
-                </h3>
-              </div>
-
-              <div className="space-y-2">
-                {userActions.map(action => (
-                  <div key={action.id} className="p-3 bg-[#0b1222] rounded-xl border border-amber-500/20 flex items-center justify-between">
-                    <div>
-                      <strong className="text-xs text-white block">{action.titulo}</strong>
-                      <span className="text-[10px] text-slate-400">{action.descricao}</span>
-                    </div>
-                    <span className="text-[10px] bg-amber-500/20 text-amber-300 px-2 py-1 rounded font-bold">
-                      Pendente
-                    </span>
-                  </div>
-                ))}
-                {userActions.length === 0 && (
-                  <div className="p-4 text-center text-xs text-slate-500 italic">
-                    Nenhuma ação pendente atribuída no momento. Excelente trabalho!
-                  </div>
-                )}
               </div>
             </div>
           </div>

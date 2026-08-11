@@ -27,8 +27,11 @@ import {
   TrendingUp,
   HelpCircle,
   Paperclip,
-  Check
+  Check,
+  FileSpreadsheet,
+  RotateCcw
 } from 'lucide-react';
+import { ImportAcoesModal } from './ImportAcoesModal';
 import { 
   AcaoCorretiva, 
   CincoPorques,
@@ -38,6 +41,7 @@ import {
   setActiveDatabaseMode,
   getAcoesAll,
   saveAcoes,
+  clearAllAcoes,
   triggerAutoAcaoCorretiva,
   triggerAutoAcaoMelhoriaPreventiva,
   updateAcaoCorretiva,
@@ -96,8 +100,19 @@ export const ExecutiveActionBoard: React.FC<ExecutiveActionBoardProps> = ({
     impactoEsperado: 'Evitar parada de linha e garantir 100% da meta diária'
   });
 
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+
   useEffect(() => {
     loadData();
+
+    const handleUpdate = () => {
+      loadData();
+    };
+
+    window.addEventListener('af_acoes_updated', handleUpdate);
+    return () => {
+      window.removeEventListener('af_acoes_updated', handleUpdate);
+    };
   }, [dbMode]);
 
   const loadData = () => {
@@ -264,17 +279,36 @@ export const ExecutiveActionBoard: React.FC<ExecutiveActionBoardProps> = ({
         {/* TOP CONTROLS */}
         <div className="flex items-center gap-2 flex-wrap">
           <button
-            onClick={() => setIsCreatingManual(true)}
-            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs uppercase tracking-wider rounded-xl cursor-pointer shadow-md transition-all flex items-center gap-2"
+            onClick={() => setIsImportModalOpen(true)}
+            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs uppercase tracking-wider rounded-xl cursor-pointer shadow-md transition-all flex items-center gap-2 border border-indigo-400/30"
           >
-            <Plus className="w-4 h-4" /> Nova Ação Executiva
+            <FileSpreadsheet className="w-4 h-4 text-indigo-200" /> Importar Planilha de Ações
+          </button>
+
+          <button
+            onClick={() => setIsCreatingManual(true)}
+            className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-100 font-black text-xs uppercase tracking-wider rounded-xl cursor-pointer transition-all flex items-center gap-2 border border-slate-700"
+          >
+            <Plus className="w-4 h-4" /> Nova Ação
           </button>
 
           <button
             onClick={() => exportAcoesCSV(dbMode)}
             className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-black text-xs uppercase tracking-wider rounded-xl cursor-pointer transition-all flex items-center gap-1.5"
           >
-            <Download className="w-3.5 h-3.5" /> Exportar Relatório
+            <Download className="w-3.5 h-3.5" /> Exportar
+          </button>
+
+          <button
+            onClick={() => {
+              if (window.confirm('⚠️ Tem certeza que deseja ZERAR TODAS AS AÇÕES da plataforma?')) {
+                clearAllAcoes();
+              }
+            }}
+            className="px-3 py-2 bg-rose-950/60 hover:bg-rose-900 text-rose-300 border border-rose-500/40 font-black text-xs uppercase tracking-wider rounded-xl cursor-pointer transition-all flex items-center gap-1.5"
+            title="Zerar todas as ações"
+          >
+            <RotateCcw className="w-3.5 h-3.5 text-rose-400" /> Zerar
           </button>
         </div>
       </div>
@@ -287,23 +321,13 @@ export const ExecutiveActionBoard: React.FC<ExecutiveActionBoardProps> = ({
         </div>
 
         <div className={`p-3.5 rounded-xl border ${isDark ? 'bg-[#1e293b]/60 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
-          <span className="text-[10px] font-black uppercase text-rose-400 block">Ações Corretivas</span>
-          <span className="text-xl font-black font-mono text-rose-400">{metrics.corretivas}</span>
-        </div>
-
-        <div className={`p-3.5 rounded-xl border ${isDark ? 'bg-[#1e293b]/60 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
-          <span className="text-[10px] font-black uppercase text-amber-400 block">Ações de Melhoria</span>
-          <span className="text-xl font-black font-mono text-amber-400">{metrics.melhorias}</span>
+          <span className="text-[10px] font-black uppercase text-blue-400 block">Em Andamento</span>
+          <span className="text-xl font-black font-mono text-blue-400">{metrics.pendentes}</span>
         </div>
 
         <div className={`p-3.5 rounded-xl border ${isDark ? 'bg-[#1e293b]/60 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
           <span className="text-[10px] font-black uppercase text-emerald-400 block">Concluídas</span>
           <span className="text-xl font-black font-mono text-emerald-400">{metrics.concluidas}</span>
-        </div>
-
-        <div className={`p-3.5 rounded-xl border ${isDark ? 'bg-[#1e293b]/60 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
-          <span className="text-[10px] font-black uppercase text-blue-400 block">Em Andamento</span>
-          <span className="text-xl font-black font-mono text-blue-400">{metrics.pendentes}</span>
         </div>
 
         <div className={`p-3.5 rounded-xl border ${isDark ? 'bg-[#1e293b]/60 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
@@ -339,17 +363,6 @@ export const ExecutiveActionBoard: React.FC<ExecutiveActionBoardProps> = ({
             {MODULES_LIST.map(m => (
               <option key={m} value={m}>{m}</option>
             ))}
-          </select>
-
-          {/* TIPO DE AÇÃO */}
-          <select
-            value={selectedTipo}
-            onChange={e => setSelectedTipo(e.target.value)}
-            className={`px-3 py-2 rounded-lg text-xs font-bold outline-none border ${isDark ? 'bg-[#0b1222] border-slate-700 text-white' : 'bg-white border-slate-300 text-slate-800'}`}
-          >
-            <option value="todos">Todos os Tipos</option>
-            <option value="Corretiva">Ações Corretivas (Desvio)</option>
-            <option value="Melhoria">Ações de Melhoria (Preventivas)</option>
           </select>
 
           {/* PRIORIDADE */}
@@ -398,7 +411,7 @@ export const ExecutiveActionBoard: React.FC<ExecutiveActionBoardProps> = ({
               isDark ? 'bg-[#1e293b] border-slate-700 text-slate-300' : 'bg-slate-100 border-slate-200 text-slate-700'
             }`}>
               <th className="p-3">Processo / Indicador</th>
-              <th className="p-3">Tipo & Prioridade</th>
+              <th className="p-3">Prioridade</th>
               <th className="p-3">Desvio / Oportunidade</th>
               <th className="p-3">Responsável</th>
               <th className="p-3">Prazo</th>
@@ -416,7 +429,6 @@ export const ExecutiveActionBoard: React.FC<ExecutiveActionBoardProps> = ({
               </tr>
             ) : (
               filteredAcoes.map(item => {
-                const isCorretiva = item.tipoAcao === 'Corretiva';
                 const isApproved = item.aprovacaoGestor === 'Aprovado';
                 const hasAceite = item.aceiteColaborador;
 
@@ -433,11 +445,6 @@ export const ExecutiveActionBoard: React.FC<ExecutiveActionBoardProps> = ({
                     </td>
 
                     <td className="p-3 font-semibold">
-                      <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase inline-block mb-1 ${
-                        isCorretiva ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                      }`}>
-                        {item.tipoAcao}
-                      </span>
                       <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase block w-max ${
                         item.prioridade === 'Alta' ? 'bg-rose-600 text-white' : item.prioridade === 'Média' ? 'bg-amber-600 text-white' : 'bg-slate-600 text-white'
                       }`}>
@@ -532,7 +539,7 @@ export const ExecutiveActionBoard: React.FC<ExecutiveActionBoardProps> = ({
                 <span className={`px-2.5 py-0.5 rounded text-[10px] font-black uppercase ${
                   activeItem.tipoAcao === 'Corretiva' ? 'bg-rose-500/20 text-rose-400 border border-rose-500/40' : 'bg-amber-500/20 text-amber-400 border border-amber-500/40'
                 }`}>
-                  Ação {activeItem.tipoAcao} - {activeItem.processo}
+                  Ação - {activeItem.processo}
                 </span>
                 <h3 className="font-black text-base uppercase mt-1">
                   Tratativa de Governança #{activeItem.id}
@@ -814,18 +821,6 @@ export const ExecutiveActionBoard: React.FC<ExecutiveActionBoardProps> = ({
               </div>
 
               <div>
-                <label className="block text-[10px] text-slate-400 uppercase mb-0.5">Tipo de Ação</label>
-                <select
-                  value={manualForm.tipoAcao}
-                  onChange={e => setManualForm({ ...manualForm, tipoAcao: e.target.value as any })}
-                  className={`w-full p-2 rounded-lg border ${isDark ? 'bg-[#0b1222] border-slate-700' : 'bg-slate-50 border-slate-300'}`}
-                >
-                  <option value="Corretiva">Ação Corretiva (Desvio)</option>
-                  <option value="Melhoria">Ação de Melhoria (Preventiva)</option>
-                </select>
-              </div>
-
-              <div>
                 <label className="block text-[10px] text-slate-400 uppercase mb-0.5">Prioridade</label>
                 <select
                   value={manualForm.prioridade}
@@ -890,6 +885,13 @@ export const ExecutiveActionBoard: React.FC<ExecutiveActionBoardProps> = ({
           </form>
         </div>
       )}
+
+      {/* MODAL DE IMPORTAÇÃO DE AÇÕES RETROATIVAS */}
+      <ImportAcoesModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        currentUser={user?.nome || 'Gestor Executivo'}
+      />
     </div>
   );
 };

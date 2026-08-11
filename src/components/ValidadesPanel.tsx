@@ -20,6 +20,7 @@ import StockAgeIndexTab from './StockAgeIndexTab';
 import FuturoShelfTab from './FuturoShelfTab';
 import GestaoEscoamentoTab from './GestaoEscoamentoTab';
 import { WorkstationCriticosRecolhimento } from './WorkstationCriticosRecolhimento';
+import { getInitialDefaultValidades } from '../utils/fefoDefaultData';
 
 interface ValidadesPanelProps {
   user: Usuario;
@@ -300,7 +301,7 @@ export default function ValidadesPanel({ user, empresa, hideSugerirMelhoria }: V
     }
 
     // Exclude any repack validades so this panel ONLY shows conferente validades
-    const conferenteRows = rows.filter((r: any) => {
+    let conferenteRows = rows.filter((r: any) => {
       const loc = String(r.localizacao || '').toLowerCase();
       const origem = String(r.origem || '').toLowerCase();
       const setor = String(r.setor || '').toLowerCase();
@@ -310,6 +311,14 @@ export default function ValidadesPanel({ user, empresa, hideSugerirMelhoria }: V
       }
       return true;
     });
+
+    if (conferenteRows.length === 0) {
+      conferenteRows = getInitialDefaultValidades(empresaId || 'demo');
+      try {
+        localStorage.setItem(`validades_${empresaId || 'demo'}`, JSON.stringify(conferenteRows));
+        localStorage.setItem(`armazem_validades_${empresaId || 'demo'}`, JSON.stringify(conferenteRows));
+      } catch (e) {}
+    }
 
     setValidadesList(conferenteRows);
     if (!db) {
@@ -783,7 +792,7 @@ export default function ValidadesPanel({ user, empresa, hideSugerirMelhoria }: V
     <div className="flex flex-col gap-6">
       
       {/* Top Header */}
-      <div className="flex items-center justify-between p-4 bg-[#11151c] border-b border-[#222d3a] rounded-t-xl -mx-6 md:-mx-12 -mt-6">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 bg-[#11151c] border border-[#222d3a] rounded-xl w-full gap-3">
         <span className="font-sans font-black text-sm tracking-widest text-[#8b5cf6] uppercase">🏷 CONTROLE DE VALIDADES — GESTÃO FEFO</span>
         <div className="flex gap-2 items-center">
           <label className="py-1 px-3 bg-[#8b5cf6]/15 border border-[#8b5cf6]/30 hover:bg-[#8b5cf6] text-[#c4b5fd] hover:text-white rounded-lg text-[10px] font-bold tracking-wide uppercase transition-colors cursor-pointer flex items-center gap-1">

@@ -34,13 +34,17 @@ import {
   deleteSop,
   canUserManageSop,
   openPdfInNewTab,
-  downloadPdfFile 
+  downloadPdfFile,
+  getCustomSopModules,
+  saveCustomSopModule,
+  getAllSopModulesList,
+  CustomSopModule
 } from '../utils/sopUtils';
 import { Usuario } from '../types';
 
 interface PadraoOperacionalPanelProps {
   user: Usuario;
-  initialModuleFilter?: SopModule | 'todos';
+  initialModuleFilter?: SopModule | string | 'todos';
   theme?: 'light' | 'dark';
 }
 
@@ -53,9 +57,15 @@ export default function PadraoOperacionalPanel({
   const isManager = canUserManageSop(user);
   const [sops, setSops] = useState<SopDocument[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedModule, setSelectedModule] = useState<SopModule | 'todos'>(initialModuleFilter);
+  const [selectedModule, setSelectedModule] = useState<string>(initialModuleFilter);
   const [selectedScope, setSelectedScope] = useState<SopScope | 'todos'>('todos');
   const [selectedStatus, setSelectedStatus] = useState<'Ativo' | 'Inativo' | 'todos'>('Ativo');
+
+  // Custom Processes / Modules State
+  const [customProcesses, setCustomProcesses] = useState<CustomSopModule[]>([]);
+  const [isNewProcessModalOpen, setIsNewProcessModalOpen] = useState(false);
+  const [newProcessName, setNewProcessName] = useState('');
+  const [newProcessCode, setNewProcessCode] = useState('');
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -77,15 +87,67 @@ export default function PadraoOperacionalPanel({
   const [responsavel, setResponsavel] = useState(user.nome || 'Gestor Operacional');
   const [status, setStatus] = useState<'Ativo' | 'Inativo'>('Ativo');
   const [escopo, setEscopo] = useState<SopScope>('global');
-  const [modulosVinculados, setModulosVinculados] = useState<SopModule[]>(SOP_MODULES_LIST.map(m => m.id));
+  const [modulosVinculados, setModulosVinculados] = useState<string[]>(SOP_MODULES_LIST.map(m => m.id));
   const [anexosList, setAnexosList] = useState<{ nome: string; url: string; tipo?: string }[]>([]);
 
   useEffect(() => {
     loadSops();
+    loadCustomProcesses();
+
+    const handleUpdate = () => {
+      loadSops();
+      loadCustomProcesses();
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('af_pop_updated', handleUpdate);
+      window.addEventListener('storage', handleUpdate);
+      return () => {
+        window.removeEventListener('af_pop_updated', handleUpdate);
+        window.removeEventListener('storage', handleUpdate);
+      };
+    }
   }, []);
 
   const loadSops = () => {
     setSops(getAllSops());
+  };
+
+  const loadCustomProcesses = () => {
+    setCustomProcesses(getCustomSopModules());
+  };
+
+  const handleCreateNewProcess = () => {
+    if (!newProcessName.trim()) {
+      alert('Por favor, digite o nome do novo Processo / Célula.');
+      return;
+    }
+
+    const cleanId = (newProcessCode.trim() || newProcessName.trim())
+      .toLowerCase()
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]/g, '_')
+      .replace(/_+/g, '_');
+
+    const procId = cleanId.startsWith('proc_') ? cleanId : `proc_${cleanId}`;
+    const newModuleItem: CustomSopModule = {
+      id: procId,
+      label: newProcessName.trim(),
+      createdAt: new Date().toISOString()
+    };
+
+    saveCustomSopModule(newModuleItem);
+    loadCustomProcesses();
+    setSelectedModule(procId);
+    setIsNewProcessModalOpen(false);
+    setNewProcessName('');
+    setNewProcessCode('');
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('af_pop_updated'));
+    }
+
+    alert(`✅ Novo Processo "${newProcessName.trim()}" criado com sucesso! Agora você pode cadastrar Padrões (POP/SOP) para esta guia.`);
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -108,7 +170,8 @@ export default function PadraoOperacionalPanel({
 
   const handleOpenNewModal = () => {
     setEditingSop(null);
-    setCodigo(`POP-AMB-${Math.floor(100 + Math.random() * 900)}`);
+    const prefix = selectedModule !== 'todos' ? selectedModule.replace(/^proc_/, '').slice(0, 4).toUpperCase() : 'AMB';
+    setCodigo(`POP-${prefix}-${Math.floor(100 + Math.random() * 900)}`);
     setNome('');
     setObjetivo('');
     setDescricao('');
@@ -214,7 +277,7 @@ export default function PadraoOperacionalPanel({
     }
   };
 
-  const toggleModuloVinculado = (modId: SopModule) => {
+  const toggleModuloVinculado = (modId: string) => {
     if (modulosVinculados.includes(modId)) {
       setModulosVinculados(modulosVinculados.filter(m => m !== modId));
     } else {
@@ -222,9 +285,11 @@ export default function PadraoOperacionalPanel({
     }
   };
 
+  const allModulesMap = getAllSopModulesList();
+
   const filteredSops = sops.filter(sop => {
     if (selectedModule !== 'todos') {
-      if (sop.escopo !== 'global' && !sop.modulosVinculados.includes(selectedModule)) return false;
+      if (sop.escopo !== 'global' && !sop.modulosVinculados.includes(selectedModule as any)) return false;
     }
     if (selectedScope !== 'todos' && sop.escopo !== selectedScope) return false;
     if (selectedStatus !== 'todos' && sop.status !== selectedStatus) return false;
@@ -243,6 +308,31 @@ export default function PadraoOperacionalPanel({
 
   // Manual compilation state
   const [showManualModal, setShowManualModal] = useState(false);
+
+  // List of process tabs
+  const defaultTabs = [
+    { id: 'todos', label: '⚡ Todos os Módulos' },
+    { id: 'quebras', label: '💥 Quebras' },
+    { id: 'repack', label: '📦 Repack' },
+    { id: 'despejo', label: '♻️ Despejo' },
+    { id: 'fefo', label: '⏳ FEFO (Validades)' },
+    { id: 'efc_efd', label: '🚚 EFC / EFD' },
+    { id: 'ressuprimento_reabastecimento', label: '🪵 Abastecimento (R&R)' },
+    { id: 'tmr', label: '🏬 TMR (Revendas)' },
+    { id: 'empilhador', label: '🚜 Operação Empilhador' },
+    { id: 'conferente', label: '📋 Conferente / ADM' },
+    { id: 'carregamento', label: '📦 Montagem / Carregamento' }
+  ];
+
+  const processTabs = [
+    ...defaultTabs,
+    ...customProcesses.map(cp => ({
+      id: cp.id,
+      label: `📁 ${cp.label}`
+    }))
+  ];
+
+  const selectedProcessLabel = processTabs.find(p => p.id === selectedModule)?.label || selectedModule;
 
   return (
     <div className="space-y-6">
@@ -288,37 +378,54 @@ export default function PadraoOperacionalPanel({
       </div>
 
 
-      {/* GUIA DE MÓDULOS DE PROCESSOS (ABAS RÁPIDAS) */}
-      <div className={`p-3 rounded-2xl border ${isDark ? 'bg-[#151b23] border-[#222d3a]' : 'bg-white border-slate-200'} space-y-2`}>
-        <span className="text-[10px] font-black uppercase tracking-wider text-amber-400 block px-1">
-          📁 Selecione a Célula / Processo Operacional para Inserir ou Consultar Padrões:
-        </span>
-        <div className="flex flex-wrap items-center gap-2">
-          {[
-            { id: 'todos', label: '⚡ Todos os Módulos' },
-            { id: 'quebras', label: '💥 Quebras' },
-            { id: 'repack', label: '📦 Repack' },
-            { id: 'despejo', label: '♻️ Despejo' },
-            { id: 'fefo', label: '⏳ FEFO (Validades)' },
-            { id: 'efc_efd', label: '🚚 EFC / EFD' },
-            { id: 'ressuprimento_reabastecimento', label: '🪵 Abastecimento & Reabastecimento (R&R)' },
-            { id: 'tmr', label: '🏬 TMR (Revendas)' }
-          ].map(tab => (
+      {/* GUIA DE MÓDULOS DE PROCESSOS (ABAS RÁPIDAS COM CRIAÇÃO DE NOVO PROCESSO) */}
+      <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#151b23] border-[#222d3a]' : 'bg-white border-slate-200'} space-y-3 shadow-sm`}>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#222d3a]/50 pb-2">
+          <span className="text-[11px] font-black uppercase tracking-wider text-amber-400 flex items-center gap-2">
+            <Layers className="w-4 h-4" />
+            📁 Selecione a Célula / Processo Operacional para Inserir ou Consultar Padrões:
+          </span>
+
+          {isManager && (
             <button
-              key={tab.id}
               type="button"
-              onClick={() => setSelectedModule(tab.id as any)}
-              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
-                selectedModule === tab.id
-                  ? 'bg-amber-500 text-slate-950 border-amber-400 font-black shadow-md scale-105'
-                  : isDark 
-                    ? 'bg-[#0d1218] text-slate-300 border-[#222d3a] hover:bg-[#1a222c] hover:text-white' 
-                    : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
-              }`}
+              onClick={() => setIsNewProcessModalOpen(true)}
+              className="px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer border border-dashed border-emerald-500/70 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 hover:border-emerald-400 flex items-center gap-1.5 w-max"
             >
-              {tab.label}
+              <FolderPlus className="w-4 h-4 stroke-[2.5]" />
+              <span>+ Criar Novo Processo</span>
             </button>
-          ))}
+          )}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {processTabs.map(tab => {
+            const countForTab = sops.filter(s => s.status === 'Ativo' && (tab.id === 'todos' || s.escopo === 'global' || (s.modulosVinculados || []).includes(tab.id as any))).length;
+
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setSelectedModule(tab.id)}
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer border flex items-center gap-2 ${
+                  selectedModule === tab.id
+                    ? 'bg-amber-500 text-slate-950 border-amber-400 font-black shadow-md scale-105'
+                    : isDark 
+                      ? 'bg-[#0d1218] text-slate-300 border-[#222d3a] hover:bg-[#1a222c] hover:text-white' 
+                      : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
+                }`}
+              >
+                <span>{tab.label}</span>
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-extrabold ${
+                  selectedModule === tab.id
+                    ? 'bg-slate-950/20 text-slate-950'
+                    : 'bg-slate-800 text-slate-400'
+                }`}>
+                  {countForTab}
+                </span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -343,13 +450,13 @@ export default function PadraoOperacionalPanel({
           <div>
             <select
               value={selectedModule}
-              onChange={(e) => setSelectedModule(e.target.value as any)}
+              onChange={(e) => setSelectedModule(e.target.value)}
               className={`w-full px-3 py-2 border rounded-xl text-xs font-bold focus:outline-none focus:border-amber-400 cursor-pointer ${
                 isDark ? 'bg-[#0d1218] border-[#222d3a] text-amber-300' : 'bg-slate-50 border-slate-200 text-slate-700'
               }`}
             >
               <option value="todos">📂 Todas as Áreas da Plataforma</option>
-              {SOP_MODULES_LIST.map(m => (
+              {allModulesMap.map(m => (
                 <option key={m.id} value={m.id} className={isDark ? 'bg-[#151b23] text-slate-100' : ''}>Module: {m.label}</option>
               ))}
             </select>
@@ -391,102 +498,207 @@ export default function PadraoOperacionalPanel({
       {/* CARDS LIST OF SOPS */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {filteredSops.length === 0 ? (
-          <div className={`col-span-full border rounded-2xl p-12 text-center ${isDark ? 'bg-[#151b23] border-[#222d3a] text-slate-400' : 'bg-white border-slate-200 text-slate-400'}`}>
-            <BookOpen className="w-10 h-10 mx-auto mb-2 text-slate-500" />
-            <p className="font-bold text-sm">Nenhum Padrão Operacional encontrado para estes filtros.</p>
+          <div className={`col-span-full border rounded-2xl p-12 text-center space-y-3 ${isDark ? 'bg-[#151b23] border-[#222d3a] text-slate-400' : 'bg-white border-slate-200 text-slate-400'}`}>
+            <BookOpen className="w-10 h-10 mx-auto text-slate-500" />
+            <p className="font-bold text-sm">Nenhum Padrão Operacional encontrado para a guia {selectedProcessLabel}.</p>
+            {isManager && selectedModule !== 'todos' && (
+              <button
+                onClick={handleOpenNewModal}
+                className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs uppercase rounded-xl transition-all inline-flex items-center gap-1.5 cursor-pointer shadow-md"
+              >
+                <Plus className="w-4 h-4 stroke-[3]" />
+                Cadastrar Padrão para {selectedProcessLabel}
+              </button>
+            )}
           </div>
         ) : (
-          filteredSops.map((sop) => (
-            <div key={sop.id} className={`border rounded-2xl p-5 shadow-xs hover:border-amber-400/80 transition-all flex flex-col justify-between gap-4 ${isDark ? 'bg-[#151b23] border-[#222d3a] text-slate-100' : 'bg-white border-slate-200 text-slate-900'}`}>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between gap-2">
-                  <span className={`font-mono text-[11px] font-black px-2.5 py-0.5 rounded-lg border ${isDark ? 'text-amber-300 bg-amber-500/10 border-amber-500/30' : 'text-emerald-700 bg-emerald-50 border-emerald-200'}`}>
-                    {sop.codigo}
-                  </span>
+          filteredSops.map((sop) => {
+            const hasPdf = sop.anexos && sop.anexos.length > 0;
+            const pdfAnexo = sop.anexos?.[0];
 
-                  <div className="flex items-center gap-1.5">
-                    <span className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md flex items-center gap-1 ${
-                      sop.escopo === 'global' ? 'bg-blue-500/20 text-blue-300 border border-blue-500/40' :
-                      sop.escopo === 'compartilhado' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' :
-                      'bg-purple-500/20 text-purple-300 border border-purple-500/40'
-                    }`}>
-                      {sop.escopo === 'global' ? <Globe className="w-3 h-3" /> : sop.escopo === 'compartilhado' ? <Share2 className="w-3 h-3" /> : <Lock className="w-3 h-3" />}
-                      {sop.escopo}
+            return (
+              <div key={sop.id} className={`border rounded-2xl p-5 shadow-xs hover:border-amber-400/80 transition-all flex flex-col justify-between gap-4 ${isDark ? 'bg-[#151b23] border-[#222d3a] text-slate-100' : 'bg-white border-slate-200 text-slate-900'}`}>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className={`font-mono text-[11px] font-black px-2.5 py-0.5 rounded-lg border ${isDark ? 'text-amber-300 bg-amber-500/10 border-amber-500/30' : 'text-emerald-700 bg-emerald-50 border-emerald-200'}`}>
+                      {sop.codigo}
                     </span>
 
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
-                      sop.status === 'Ativo' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' : 'bg-slate-700 text-slate-300'
-                    }`}>
-                      {sop.status}
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <span className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md flex items-center gap-1 ${
+                        sop.escopo === 'global' ? 'bg-blue-500/20 text-blue-300 border border-blue-500/40' :
+                        sop.escopo === 'compartilhado' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' :
+                        'bg-purple-500/20 text-purple-300 border border-purple-500/40'
+                      }`}>
+                        {sop.escopo === 'global' ? <Globe className="w-3 h-3" /> : sop.escopo === 'compartilhado' ? <Share2 className="w-3 h-3" /> : <Lock className="w-3 h-3" />}
+                        {sop.escopo}
+                      </span>
+
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
+                        sop.status === 'Ativo' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' : 'bg-slate-700 text-slate-300'
+                      }`}>
+                        {sop.status}
+                      </span>
+                    </div>
+                  </div>
+
+                  <h3 className={`font-extrabold text-sm leading-snug ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                    {sop.nome}
+                  </h3>
+
+                  <p className={`text-xs line-clamp-2 font-medium ${isDark ? 'text-slate-300' : 'text-slate-500'}`}>
+                    {sop.objetivo || sop.descricao}
+                  </p>
+
+                  {/* Modulos Vinculados Badges */}
+                  <div className="flex flex-wrap gap-1 pt-1">
+                    {sop.escopo === 'global' ? (
+                      <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md ${isDark ? 'bg-[#0d1218] text-slate-300 border border-[#222d3a]' : 'bg-slate-100 text-slate-600'}`}>
+                        Todas as áreas da plataforma
+                      </span>
+                    ) : (
+                      (sop.modulosVinculados || []).map(modId => {
+                        const modLabel = allModulesMap.find(m => m.id === modId)?.label || modId;
+                        return (
+                          <span key={modId} className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${isDark ? 'bg-[#0d1218] text-amber-300 border border-amber-500/20' : 'bg-slate-100 text-slate-600'}`}>
+                            {modLabel}
+                          </span>
+                        );
+                      })
+                    )}
+                  </div>
+
+                  {/* Attachment Badge */}
+                  {hasPdf && pdfAnexo && (
+                    <div className="p-2 bg-emerald-500/10 border border-emerald-500/20 rounded-xl flex items-center justify-between gap-2 mt-2">
+                      <div className="flex items-center gap-1.5 overflow-hidden">
+                        <FileText className="w-4 h-4 text-emerald-400 shrink-0" />
+                        <span className="text-[11px] font-bold text-emerald-300 truncate">{pdfAnexo.nome}</span>
+                      </div>
+                      <span className="text-[9px] font-black uppercase text-emerald-400 bg-emerald-400/20 px-1.5 py-0.5 rounded shrink-0">PDF</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-500">
+                  <div className="space-y-0.5">
+                    <p className="text-[10px] font-bold text-slate-300">Resp: {sop.responsavel}</p>
+                    <p className="text-[10px] text-slate-400 font-mono">{sop.revisao} • {sop.dataRevisao}</p>
+                  </div>
+
+                  <div className="flex items-center gap-1">
+                    {hasPdf && pdfAnexo?.url && (
+                      <button
+                        onClick={() => openPdfInNewTab(pdfAnexo.url, pdfAnexo.nome)}
+                        className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-[11px] rounded-xl transition-all cursor-pointer flex items-center gap-1 shadow-sm"
+                        title="Visualizar PDF do Padrão"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>PDF</span>
+                      </button>
+                    )}
+
+                    <button
+                      onClick={() => setViewerSop(sop)}
+                      className="p-2 text-slate-400 hover:text-emerald-400 hover:bg-slate-800 rounded-xl transition-all cursor-pointer"
+                      title="Visualizar Detalhes"
+                    >
+                      <Eye className="w-4 h-4" />
+                    </button>
+
+                    {isManager && (
+                      <>
+                        <button
+                          onClick={() => handleOpenEditModal(sop)}
+                          className="p-2 text-slate-400 hover:text-blue-400 hover:bg-slate-800 rounded-xl transition-all cursor-pointer"
+                          title="Editar Padrão"
+                        >
+                          <Edit3 className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(sop)}
+                          className="p-2 text-slate-400 hover:text-rose-400 hover:bg-rose-950/40 rounded-xl transition-all cursor-pointer"
+                          title="Excluir Padrão"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
-
-                <h3 className={`font-extrabold text-sm leading-snug ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                  {sop.nome}
-                </h3>
-
-                <p className={`text-xs line-clamp-2 font-medium ${isDark ? 'text-slate-300' : 'text-slate-500'}`}>
-                  {sop.objetivo || sop.descricao}
-                </p>
-
-                {/* Modulos Vinculados Badges */}
-                <div className="flex flex-wrap gap-1 pt-1">
-                  {sop.escopo === 'global' ? (
-                    <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md ${isDark ? 'bg-[#0d1218] text-slate-300 border border-[#222d3a]' : 'bg-slate-100 text-slate-600'}`}>
-                      Disponível em todas as 17 áreas
-                    </span>
-                  ) : (
-                    sop.modulosVinculados.map(modId => {
-                      const modLabel = SOP_MODULES_LIST.find(m => m.id === modId)?.label || modId;
-                      return (
-                        <span key={modId} className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${isDark ? 'bg-[#0d1218] text-amber-300 border border-amber-500/20' : 'bg-slate-100 text-slate-600'}`}>
-                          {modLabel}
-                        </span>
-                      );
-                    })
-                  )}
-                </div>
               </div>
-
-              <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-                <div className="space-y-0.5">
-                  <p className="text-[10px] font-bold text-slate-700">Resp: {sop.responsavel}</p>
-                  <p className="text-[10px] text-slate-400 font-mono">{sop.revisao} • {sop.dataRevisao}</p>
-                </div>
-
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={() => setViewerSop(sop)}
-                    className="p-2 text-slate-500 hover:text-emerald-600 hover:bg-slate-50 rounded-xl transition-all cursor-pointer"
-                    title="Visualizar Detalhes"
-                  >
-                    <Eye className="w-4 h-4" />
-                  </button>
-                  {isManager && (
-                    <>
-                      <button
-                        onClick={() => handleOpenEditModal(sop)}
-                        className="p-2 text-slate-500 hover:text-blue-600 hover:bg-slate-50 rounded-xl transition-all cursor-pointer"
-                        title="Editar Padrão"
-                      >
-                        <Edit3 className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(sop)}
-                        className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl transition-all cursor-pointer"
-                        title="Excluir Padrão"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
+
+      {/* MODAL CRIAR NOVO PROCESSO / CÉLULA */}
+      {isNewProcessModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-[#151b23] border border-[#222d3a] rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 text-white">
+            <div className="flex items-center justify-between border-b border-[#222d3a] pb-3">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-emerald-500/20 rounded-xl text-emerald-400 border border-emerald-500/30">
+                  <FolderPlus className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-black text-white text-base">Criar Novo Processo / Célula</h3>
+                  <p className="text-xs text-slate-400">Adicione um novo processo operacional (ex: Conferente, Ajudante, Higienização).</p>
+                </div>
+              </div>
+              <button onClick={() => setIsNewProcessModalOpen(false)} className="p-1 text-slate-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-[11px] font-black uppercase text-amber-400 mb-1">
+                  Nome do Processo / Célula Operacional
+                </label>
+                <input
+                  type="text"
+                  value={newProcessName}
+                  onChange={e => setNewProcessName(e.target.value)}
+                  placeholder="Ex: Conferente / ADM, Ajudante, Higienização 5S..."
+                  className="w-full px-3 py-2.5 bg-[#0d1218] border border-[#222d3a] rounded-xl text-xs font-bold text-white focus:outline-none focus:border-emerald-400"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-black uppercase text-slate-400 mb-1">
+                  Código / Sigla Opcional (ex: CONF, AJU, HIG)
+                </label>
+                <input
+                  type="text"
+                  value={newProcessCode}
+                  onChange={e => setNewProcessCode(e.target.value)}
+                  placeholder="Ex: CONF"
+                  className="w-full px-3 py-2.5 bg-[#0d1218] border border-[#222d3a] rounded-xl text-xs font-mono font-bold text-white focus:outline-none focus:border-emerald-400 uppercase"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#222d3a]">
+              <button
+                type="button"
+                onClick={() => setIsNewProcessModalOpen(false)}
+                className="px-4 py-2 bg-slate-800 text-slate-300 font-bold text-xs rounded-xl hover:bg-slate-700"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleCreateNewProcess}
+                className="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl cursor-pointer shadow-md flex items-center gap-1.5"
+              >
+                <FolderPlus className="w-4 h-4 stroke-[2.5]" />
+                <span>Criar Processo</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* MODAL EDIT / CREATE */}
       {isModalOpen && (

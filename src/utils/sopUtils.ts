@@ -48,18 +48,58 @@ export const SOP_MODULES_LIST: { id: SopModule; label: string }[] = [
   { id: 'tmr', label: 'TMR (Revenda)' },
   { id: 'empilhador', label: 'Operação Empilhador' },
   { id: 'conferente', label: 'Conferente / ADM' },
+  { id: 'fefo', label: 'FEFO' },
   { id: 'recebimento', label: 'Recebimento' },
   { id: 'armazenagem', label: 'Armazenagem' },
   { id: 'carregamento', label: 'Montagem' },
   { id: 'efc', label: 'EFC' },
   { id: 'efd', label: 'EFD' },
-  { id: 'fefo', label: 'FEFO' },
   { id: 'estoque_x_estoque', label: 'Estoque x Estoque' },
   { id: 'estoque_x_picking', label: 'Estoque x Picking' },
   { id: 'marketplace', label: 'Marketplace' },
   { id: 'central', label: 'Central' },
   { id: 'contingencia', label: 'Contingência' },
 ];
+
+export interface CustomSopModule {
+  id: string;
+  label: string;
+  icon?: string;
+  createdAt?: string;
+}
+
+export function getCustomSopModules(): CustomSopModule[] {
+  try {
+    const raw = localStorage.getItem('af_sop_custom_processes');
+    if (!raw) return [];
+    return JSON.parse(raw);
+  } catch (e) {
+    return [];
+  }
+}
+
+export function saveCustomSopModule(moduleItem: CustomSopModule): CustomSopModule[] {
+  const current = getCustomSopModules();
+  const exists = current.some(m => m.id === moduleItem.id);
+  let updated: CustomSopModule[];
+  if (exists) {
+    updated = current.map(m => m.id === moduleItem.id ? moduleItem : m);
+  } else {
+    updated = [...current, moduleItem];
+  }
+  try {
+    localStorage.setItem('af_sop_custom_processes', JSON.stringify(updated));
+  } catch (e) {}
+  return updated;
+}
+
+export function getAllSopModulesList(): { id: string; label: string }[] {
+  const custom = getCustomSopModules();
+  const map = new Map<string, string>();
+  SOP_MODULES_LIST.forEach(m => map.set(m.id, m.label));
+  custom.forEach(c => map.set(c.id, c.label));
+  return Array.from(map.entries()).map(([id, label]) => ({ id, label }));
+}
 
 export interface SopAlteracaoHistorico {
   id: string;
@@ -422,7 +462,7 @@ export function getAllSopsForOperationList(operation: string): SopViewOption[] {
           sop.modulosVinculados.includes(targetKey as any) ||
           sop.modulosVinculados.includes('central' as any) ||
           (normKey === 'armazem' && (sop.modulosVinculados.includes('efc' as any) || sop.modulosVinculados.includes('efd' as any) || sop.modulosVinculados.includes('efc_efd' as any))) ||
-          (normKey === 'conferente' && (sop.modulosVinculados.includes('efc_efd' as any) || sop.modulosVinculados.includes('carregamento' as any) || sop.modulosVinculados.includes('despacho' as any)))
+          ((normKey as string) === 'conferente' && (sop.modulosVinculados.includes('efc_efd' as any) || sop.modulosVinculados.includes('carregamento' as any) || sop.modulosVinculados.includes('despacho' as any)))
         )
       );
 
@@ -446,7 +486,7 @@ export function getAllSopsForOperationList(operation: string): SopViewOption[] {
   return result.filter(item => !deletedSet.has(item.id));
 }
 
-export function getSopForOperation(operation: string): { title: string; steps: string[]; fileUrl?: string; fileName?: string; description?: string } {
+export function getSopForOperation(operation: string): { code?: string; title: string; steps: string[]; fileUrl?: string; fileName?: string; description?: string } {
   const normKey = (operation || 'repack').toLowerCase().trim() as OperationalModuleKey;
 
   const aliasMap: Record<string, OperationalModuleKey> = {
@@ -474,6 +514,7 @@ export function getSopForOperation(operation: string): { title: string; steps: s
       const parsed = JSON.parse(rawSaved);
       if (parsed.title || parsed.nome || parsed.fileUrl) {
         return {
+          code: parsed.code,
           title: parsed.code ? `${parsed.code} - ${parsed.title || parsed.nome}` : (parsed.title || parsed.nome || 'Padrão Operacional'),
           steps: Array.isArray(parsed.steps) 
             ? parsed.steps.map((s: any) => typeof s === 'string' ? s : `${s.step || ''}. ${s.title}: ${s.description}`) 
@@ -490,6 +531,7 @@ export function getSopForOperation(operation: string): { title: string; steps: s
   if (DEFAULT_POPS[normKey] || DEFAULT_POPS[targetKey]) {
     const pop = DEFAULT_POPS[normKey] || DEFAULT_POPS[targetKey];
     return {
+      code: pop.code,
       title: `${pop.code} - ${pop.title}`,
       steps: pop.steps ? pop.steps.map(s => `${s.step}. ${s.title}: ${s.description}`) : [],
       fileUrl: pop.fileUrl,
@@ -512,6 +554,7 @@ export function getSopForOperation(operation: string): { title: string; steps: s
     if (specificSop) {
       const firstAnexo = specificSop.anexos?.[0];
       return {
+        code: specificSop.codigo,
         title: `${specificSop.codigo} - ${specificSop.nome}`,
         steps: specificSop.passoAPasso || [],
         fileUrl: firstAnexo?.url,
@@ -522,6 +565,7 @@ export function getSopForOperation(operation: string): { title: string; steps: s
   } catch (e) {}
 
   return {
+    code: `POP-${operation.toUpperCase()}`,
     title: `POP Padronizado - Operação de ${operation.toUpperCase()}`,
     steps: [
       '1. Verificação prévia dos equipamentos e EPIs.',
@@ -757,4 +801,163 @@ export function downloadPdfFile(fileUrl: string, fileName: string = 'Padrao_Oper
   a.click();
   document.body.removeChild(a);
 }
+
+export function openOrDownloadGeneratedSopPdf(popData: any, isDownload: boolean = false): void {
+  if (!popData) return;
+
+  if (popData.fileUrl) {
+    if (isDownload) {
+      downloadPdfFile(popData.fileUrl, popData.fileName || `${popData.code || 'POP'}_Padrao_Operacional.pdf`);
+    } else {
+      openPdfInNewTab(popData.fileUrl, popData.fileName || `${popData.code || 'POP'}_Padrao_Operacional.pdf`);
+    }
+    return;
+  }
+
+  // Generate clean printable HTML view for browser PDF print/view
+  const htmlContent = `
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+    <head>
+      <meta charset="UTF-8">
+      <title>${popData.code || 'POP'} - ${popData.title || 'Padrão Operacional'}</title>
+      <style>
+        body { font-family: system-ui, -apple-system, sans-serif; color: #0f172a; margin: 0; padding: 24px; background: #fff; line-height: 1.5; }
+        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #0284c7; padding-bottom: 12px; margin-bottom: 20px; }
+        .badge { background: #0284c7; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 12px; }
+        .title { font-size: 18px; font-weight: 800; text-transform: uppercase; margin-top: 4px; color: #0f172a; }
+        .meta { font-size: 11px; color: #64748b; }
+        .box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-bottom: 16px; }
+        .box-title { font-size: 12px; font-weight: bold; text-transform: uppercase; color: #0369a1; margin-bottom: 6px; }
+        .epis { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+        .epi-tag { background: #fef3c7; border: 1px solid #fde68a; color: #92400e; font-size: 11px; font-weight: bold; padding: 4px 8px; border-radius: 6px; }
+        .step { display: flex; gap: 12px; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px; margin-bottom: 8px; }
+        .step-num { width: 24px; height: 24px; background: #0284c7; color: white; border-radius: 6px; font-weight: bold; display: flex; align-items: center; justify-content: center; font-size: 12px; flex-shrink: 0; }
+        .step-title { font-size: 12px; font-weight: bold; text-transform: uppercase; color: #0f172a; }
+        .step-desc { font-size: 11px; color: #334155; margin-top: 2px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 11px; }
+        th, td { border: 1px solid #cbd5e1; padding: 6px 8px; text-align: left; }
+        th { background: #f1f5f9; font-weight: bold; text-transform: uppercase; font-size: 10px; }
+        .footer { font-size: 10px; color: #94a3b8; text-align: center; margin-top: 30px; border-top: 1px solid #e2e8f0; padding-top: 10px; font-weight: bold; text-transform: uppercase; }
+        @media print {
+          body { padding: 0; }
+          .no-print { display: none; }
+        }
+      </style>
+    </head>
+    <body>
+      <div class="no-print" style="margin-bottom: 16px; display: flex; gap: 8px;">
+        <button onclick="window.print()" style="background: #0284c7; color: white; border: none; padding: 8px 16px; border-radius: 6px; font-weight: bold; cursor: pointer;">
+          🖨️ Imprimir / Salvar como PDF
+        </button>
+      </div>
+
+      <div class="header">
+        <div>
+          <span class="badge">${popData.code || 'POP-01'}</span>
+          <span class="meta" style="margin-left: 8px;">Versão v${popData.version || '01'} | Atualizado em: ${popData.lastUpdated || ''}</span>
+          <div class="title">${popData.title || 'Padrão Operacional'}</div>
+        </div>
+        <div style="text-align: right;" class="meta">
+          <strong>SISTEMA DE QUALIDADE & SEGURANÇA AMBEV</strong><br>
+          ${popData.updatedBy || 'Pau Brasil Guarabira'}
+        </div>
+      </div>
+
+      ${popData.objetivo ? `
+        <div class="box">
+          <div class="box-title">🎯 Objetivo do Processo</div>
+          <div style="font-size: 12px; color: #1e293b;">${popData.objetivo}</div>
+        </div>
+      ` : ''}
+
+      ${popData.content ? `
+        <div class="box">
+          <div class="box-title">📋 Resumo do Padrão</div>
+          <div style="font-size: 11px; color: #334155;">${popData.content}</div>
+        </div>
+      ` : ''}
+
+      ${popData.safetyEPIs && popData.safetyEPIs.length > 0 ? `
+        <div class="box">
+          <div class="box-title">🛡️ Equipamentos de Proteção Obrigatórios (EPIs)</div>
+          <div class="epis">
+            ${popData.safetyEPIs.map((epi: string) => `<span class="epi-tag">✓ ${epi}</span>`).join('')}
+          </div>
+        </div>
+      ` : ''}
+
+      ${popData.steps && popData.steps.length > 0 ? `
+        <div style="margin-bottom: 16px;">
+          <div class="box-title">📝 Passo a Passo Operacional Padrão</div>
+          ${popData.steps.map((s: any) => `
+            <div class="step">
+              <div class="step-num">${s.step}</div>
+              <div>
+                <div class="step-title">${s.title}</div>
+                <div class="step-desc">${s.description}</div>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      ` : ''}
+
+      ${popData.raciTable && popData.raciTable.length > 0 ? `
+        <div style="margin-bottom: 16px;">
+          <div class="box-title">👥 Matriz RACI do Processo</div>
+          <table>
+            <thead>
+              <tr>
+                <th>Atividade / Etapa</th>
+                ${popData.raciTable[0].god !== undefined ? '<th>GOD</th>' : ''}
+                ${popData.raciTable[0].coa !== undefined ? '<th>COA</th>' : ''}
+                ${popData.raciTable[0].tst !== undefined ? '<th>TST</th>' : ''}
+                ${popData.raciTable[0].analista !== undefined ? '<th>Analista</th>' : ''}
+                ${popData.raciTable[0].conferente !== undefined ? '<th>Conf.</th>' : ''}
+                ${popData.raciTable[0].empilhador !== undefined ? '<th>Empilh.</th>' : ''}
+                ${popData.raciTable[0].ajudante !== undefined ? '<th>Ajud.</th>' : ''}
+              </tr>
+            </thead>
+            <tbody>
+              ${popData.raciTable.map((row: any) => `
+                <tr>
+                  <td>${row.atividade}</td>
+                  ${row.god !== undefined ? `<td>${row.god || '-'}</td>` : ''}
+                  ${row.coa !== undefined ? `<td>${row.coa || '-'}</td>` : ''}
+                  ${row.tst !== undefined ? `<td>${row.tst || '-'}</td>` : ''}
+                  ${row.analista !== undefined ? `<td>${row.analista || '-'}</td>` : ''}
+                  ${row.conferente !== undefined ? `<td>${row.conferente || '-'}</td>` : ''}
+                  ${row.empilhador !== undefined ? `<td>${row.empilhador || '-'}</td>` : ''}
+                  ${row.ajudante !== undefined ? `<td>${row.ajudante || '-'}</td>` : ''}
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      ` : ''}
+
+      <div class="footer">
+        Documento Oficial de Padrão Operacional - Qualidade & Segurança Ambev
+      </div>
+
+      <script>
+        ${isDownload ? 'window.onload = function() { window.print(); };' : ''}
+      </script>
+    </body>
+    </html>
+  `;
+
+  const blob = new Blob([htmlContent], { type: 'text/html' });
+  const blobUrl = URL.createObjectURL(blob);
+  const win = window.open(blobUrl, '_blank');
+  if (!win) {
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.target = '_blank';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
+}
+
 

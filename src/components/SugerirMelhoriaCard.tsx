@@ -168,7 +168,7 @@ export default function SugerirMelhoriaCard({ user, empresa, setor }: SugerirMel
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div>
               <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                Tipo de Ação
+                Categoria FEFO
               </label>
               <select
                 value={categoriaAcao}

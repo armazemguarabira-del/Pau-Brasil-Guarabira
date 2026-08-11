@@ -27,6 +27,7 @@ import { saveJornadaRecord, JornadaRecord } from '../utils/jornadaUtils';
 import { add5PorquesDemand } from '../utils/fiveWhysManager';
 import { OperationalNotificationBell } from './OperationalNotificationBell';
 import { Checklist5SForm, Collaborator5SPerformanceCard } from './Checklist5SModal';
+import { GuiaAcoesOperacionais } from './GuiaAcoesOperacionais';
 import { 
   Truck, 
   Clock, 
@@ -971,89 +972,8 @@ export default function EmpilhadorPanel({ user, empresa }: EmpilhadorPanelProps)
             </div>
           </div>
 
-          {/* QUADRO DE AÇÕES CORRETIVAS ATRIBUÍDAS AO OPERADOR */}
-          {(() => {
-            const allActions = getAcoesAll();
-            const operatorClean = (user.nome || operatorName).toUpperCase().trim();
-            const pendingActions = allActions.filter(a => {
-              const colab = (a.colaboradorResponsavel || '').toUpperCase().trim();
-              return (colab.includes(operatorClean) || colab === 'TODOS' || colab.includes('EMPILHADOR')) && a.status !== 'Concluído';
-            });
-
-            if (pendingActions.length === 0) return null;
-
-            return (
-              <div className="g-card p-5 border-l-4 border-l-sky-500 bg-[#11151c] flex flex-col gap-4">
-                <div className="flex items-center justify-between border-b border-[#222d3a] pb-3">
-                  <div className="flex items-center gap-2">
-                    <AlertTriangle className="w-5 h-5 text-sky-400" />
-                    <div>
-                      <h4 className="text-xs font-black text-sky-400 uppercase tracking-wider">
-                        Ações Corretivas Atribuídas a Você ({pendingActions.length})
-                      </h4>
-                      <p className="text-[10px] text-slate-400">
-                        Gestores designaram tratativas para acompanhamento. Adicione suas observações e confirme ciência.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {pendingActions.map(action => (
-                    <div key={action.id} className="p-4 bg-[#151b23] border border-sky-500/30 rounded-xl flex flex-col gap-3">
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <span className="text-[9px] font-bold text-amber-400 uppercase tracking-widest block">
-                            {action.processo} · {action.indicador}
-                          </span>
-                          <h5 className="text-xs font-black text-white mt-0.5">{action.desvioEncontrado || action.indicador}</h5>
-                        </div>
-                        <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase bg-sky-500/10 text-sky-400 border border-sky-500/20">
-                          Prazo: {action.prazo}
-                        </span>
-                      </div>
-
-                      {action.contramedida && (
-                        <div className="p-2.5 bg-[#0d1218] rounded-lg border border-[#222d3a]">
-                          <span className="text-[9px] font-bold text-emerald-400 uppercase tracking-wider block">Contramedida Solicitada:</span>
-                          <p className="text-xs text-slate-300 font-medium mt-0.5">{action.contramedida}</p>
-                        </div>
-                      )}
-
-                      <div className="flex flex-col gap-1.5 mt-1">
-                        <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">
-                          Observação / Comentário do Operador:
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="Digite seu parecer ou ação realizada..."
-                          value={actionComments[action.id] || ''}
-                          onChange={e => setActionComments({ ...actionComments, [action.id]: e.target.value })}
-                          className="g-input text-xs bg-[#0d1218]"
-                        />
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const comment = actionComments[action.id] || 'Li e estou de acordo. Contramedida cumprida em pátio.';
-                          action.status = 'Concluído';
-                          action.aceiteColaborador = true;
-                          action.comentarioOperador = comment;
-                          updateAcaoCorretiva(action, user.nome || operatorName);
-                          triggerToast('Ação marcada como CIENTE e concluída com sucesso!');
-                        }}
-                        className="py-2.5 px-4 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl cursor-pointer transition-all flex items-center justify-center gap-2 shadow-xs"
-                      >
-                        <CheckCircle2 className="w-4 h-4" />
-                        <span>Li e Estou de Acordo (CIENTE)</span>
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            );
-          })()}
+          {/* QUADRO DE AÇÕES CORRETIVAS E MELHORIAS ATRIBUÍDAS AO OPERADOR DE EMPILHADEIRA */}
+          <GuiaAcoesOperacionais user={user} roleName="Operador de Empilhadeira" />
 
           {/* QUADRO DE DEMANDAS TABS */}
           <div className="g-card p-6 flex flex-col gap-5">

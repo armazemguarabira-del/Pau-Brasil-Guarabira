@@ -11,8 +11,6 @@ export interface JornadaRecord {
   dataISO: string; // "YYYY-MM-DD"
   mesAno: string;  // "MM/YYYY"
   horaInicio: string; // "HH:MM"
-  horaInicioIntervalo?: string; // "HH:MM" (Almoço / Pausa)
-  horaFimIntervalo?: string;    // "HH:MM" (Retorno do Almoço)
   horaFim: string;   // "HH:MM"
   duracaoHoras: number; // e.g. 7.33
   empresaId: string;

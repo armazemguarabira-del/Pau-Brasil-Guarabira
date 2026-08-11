@@ -253,7 +253,7 @@ export default function DespejoPanel({ user, empresa, shiftStarted, onRequireShi
     <div className="flex flex-col gap-6">
       
       {/* Top Header bar with Metadata */}
-      <div className="flex items-center justify-between p-4 bg-[#11151c] border-b border-[#222d3a] rounded-t-xl -mx-6 md:-mx-12 -mt-6">
+      <div className="flex items-center justify-between p-4 bg-[#11151c] border border-[#222d3a] rounded-xl w-full">
         <span className="font-sans font-black text-sm tracking-widest text-[#ef4444] uppercase">🗑 DESPEJO TIMER — PRODUTIVIDADE</span>
         <div className="text-xs text-[#6a7d92] tracking-wider font-semibold">
           META UNIT.: <strong className="text-[#ef4444] font-mono">{activeMeta}</strong>

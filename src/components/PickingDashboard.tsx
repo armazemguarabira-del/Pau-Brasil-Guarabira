@@ -1413,8 +1413,8 @@ A proporção de separação 'Após Carregamento' (${duringVsAfterData.aposPct}%
         }`}>
       
       {/* 1. TOP HEADER BRAND AND SUBTAB TOGGLERS */}
-      <div className={`flex flex-col md:flex-row md:items-center justify-between p-4 border-b rounded-t-2xl -mx-6 -mt-6 gap-4 ${
-        theme === 'dark' ? 'bg-[#111827] border-[#1e293b] text-slate-100' : 'bg-white border-slate-100 text-slate-800'
+      <div className={`flex flex-col md:flex-row md:items-center justify-between p-4 border rounded-xl w-full gap-4 ${
+        theme === 'dark' ? 'bg-[#111827] border-[#1e293b] text-slate-100' : 'bg-white border-slate-200 text-slate-800'
       }`}>
         <div className="flex items-center gap-3">
           {onBack && (

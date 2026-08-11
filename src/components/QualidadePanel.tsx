@@ -515,16 +515,23 @@ export default function QualidadePanel({ user, empresa, theme = 'dark' }: Qualid
   const [selectedTempDayId, setSelectedTempDayId] = useState<string | null>(null);
 
   const [tempLogs, setTempLogs] = useState<ArmazemTemperaturaLog[]>(() => {
-    try {
-      const saved = localStorage.getItem('armazem_temperatura_logs');
-      if (saved) return JSON.parse(saved);
-      const initial = generateInitialTempLogs();
-      localStorage.setItem('armazem_temperatura_logs', JSON.stringify(initial));
-      return initial;
-    } catch {
-      return generateInitialTempLogs();
-    }
+    return getStoredTempLogs();
   });
+
+  const handleRefreshTempLogs = () => {
+    const logs = getStoredTempLogs();
+    setTempLogs(logs);
+    if (logs.length > 0) {
+      const topLog = logs[0];
+      if (topLog && topLog.mesAno) {
+        const [m, y] = topLog.mesAno.split('/');
+        if (m && y) {
+          setSelectedFilterMonth(m);
+          setSelectedFilterYear(y);
+        }
+      }
+    }
+  };
 
   useEffect(() => {
     const syncTemp = () => {
@@ -893,7 +900,7 @@ export default function QualidadePanel({ user, empresa, theme = 'dark' }: Qualid
       {activeSubTab === 'temperatura' && (
         <div className="bg-[#111a30] border border-cyan-500/30 rounded-2xl p-6 space-y-6 shadow-xl">
           {/* Import / Export / Clear Bar */}
-          <TemperaturaImportExportBar onDataChanged={() => setTempLogs(getStoredTempLogs())} />
+          <TemperaturaImportExportBar onDataChanged={handleRefreshTempLogs} />
 
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-800 pb-5">
             <div>
@@ -1227,7 +1234,15 @@ export default function QualidadePanel({ user, empresa, theme = 'dark' }: Qualid
           {/* CARDS DE RESUMO DO MÊS ATIVO */}
           {(() => {
             const targetMonth = `${selectedFilterMonth}/${selectedFilterYear}`;
-            const monthLogs = tempLogs.filter(l => l.mesAno === targetMonth);
+            const monthLogs = tempLogs
+              .filter(l => l.mesAno === targetMonth)
+              .sort((a, b) => {
+                const timeA = (a.hora || '00:00').length === 4 ? `0${a.hora}` : (a.hora || '00:00');
+                const timeB = (b.hora || '00:00').length === 4 ? `0${b.hora}` : (b.hora || '00:00');
+                const keyA = `${a.dataISO || '0000-00-00'}T${timeA}`;
+                const keyB = `${b.dataISO || '0000-00-00'}T${timeB}`;
+                return keyB.localeCompare(keyA);
+              });
             const totalDays = monthLogs.length;
             const avgTemp = totalDays > 0 ? (monthLogs.reduce((acc, curr) => acc + curr.temperatura, 0) / totalDays).toFixed(1) : '0.0';
             const maxTemp = totalDays > 0 ? Math.max(...monthLogs.map(l => l.temperatura)).toFixed(1) : '0.0';

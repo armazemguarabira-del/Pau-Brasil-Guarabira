@@ -231,7 +231,7 @@ export default function AcessosPanel({ user, empresa }: AcessosPanelProps) {
     <div className="flex flex-col gap-6">
       
       {/* HEADER BAR */}
-      <div className="flex items-center justify-between p-4 bg-gradient-to-r from-[#11151c] to-[#18212e] border-b border-[#222d3a] rounded-t-xl -mx-6 md:-mx-12 -mt-6">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 bg-gradient-to-r from-[#11151c] to-[#18212e] border border-[#222d3a] rounded-xl w-full gap-3">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center">
             <Shield className="w-4 h-4 text-indigo-400" />

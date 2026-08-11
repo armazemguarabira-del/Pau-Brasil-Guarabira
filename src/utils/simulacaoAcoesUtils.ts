@@ -93,6 +93,14 @@ export interface AcaoCorretiva {
   dataAbertura?: string; // Data e hora de abertura
   fechadoPor?: string; // Nome e cargo do usuário que concluiu/fechou a ação
   dataFechamento?: string; // Data e hora do fechamento
+
+  // Custom fields for imported retroactions (matching spreadsheet template)
+  area?: string; // Área (ex: Armazém)
+  reuniao?: string; // Reunião (ex: RPS ARMAZEM)
+  onde?: string; // Onde (ex: Guarabira)
+  inicio?: string; // Data Início (DD/MM/YYYY)
+  final?: string; // Data Final (DD/MM/YYYY)
+  obsResponsavel?: string; // Obs do Responsável
 }
 
 export type DatabaseMode = 'simulado' | 'operacional' | 'historico';
@@ -419,13 +427,7 @@ export function getAcoesAll(specificMode?: DatabaseMode): AcaoCorretiva[] {
     console.error('Error loading actions:', e);
   }
 
-  // If simulated mode and empty, auto-generate default 280+ items
-  if (mode === 'simulado') {
-    const defaultSeed = generateFullSimulatedDatabase2026();
-    saveAcoes(defaultSeed, 'simulado');
-    return defaultSeed;
-  }
-
+  // Zero mock by default - return empty list when no human user/imported actions exist
   return [];
 }
 
@@ -448,8 +450,25 @@ export function saveAcoes(list: AcaoCorretiva[], specificMode?: DatabaseMode): v
 
   try {
     localStorage.setItem(storageKey, JSON.stringify(cleanList));
+    // Dispatch event so all UI components update in real time
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('af_acoes_updated'));
+    }
   } catch (e) {
     console.error('Error saving actions:', e);
+  }
+}
+
+export function clearAllAcoes(): void {
+  try {
+    localStorage.removeItem(STORAGE_KEY_SIMULADO);
+    localStorage.removeItem(STORAGE_KEY_OPERACIONAL);
+    localStorage.removeItem(STORAGE_KEY_HISTORICO);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('af_acoes_updated'));
+    }
+  } catch (e) {
+    console.error('Error clearing actions:', e);
   }
 }
 

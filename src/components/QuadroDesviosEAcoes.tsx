@@ -9,8 +9,10 @@ import {
   AcaoCorretiva, 
   getAcoesAll, 
   saveAcoes, 
+  clearAllAcoes,
   MODULES_LIST 
 } from '../utils/simulacaoAcoesUtils';
+import { ImportAcoesModal } from './ImportAcoesModal';
 import { 
   AlertTriangle, 
   CheckCircle2, 
@@ -41,7 +43,8 @@ import {
   Calendar,
   RotateCcw,
   Users,
-  EyeOff
+  EyeOff,
+  FileSpreadsheet
 } from 'lucide-react';
 import { LISTA_COLABORADORES_OFICIAIS } from './RankingModule';
 import { ManualInstrucaoCard } from './ManualInstrucaoCard';
@@ -217,8 +220,17 @@ export const QuadroDesviosEAcoes: React.FC<QuadroDesviosEAcoesProps> = ({
   // Collaborator Workstation Filter & Hide states
   const [colabStatusFilter, setColabStatusFilter] = useState<'pendente' | 'andamento' | 'concluido' | 'todos'>('pendente');
   const [isActionsCollapsed, setIsActionsCollapsed] = useState<boolean>(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState<boolean>(false);
 
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Clear all actions
+  const handleClearAllAcoes = () => {
+    if (window.confirm('⚠️ Tem certeza que deseja ZERAR TODAS AS AÇÕES da plataforma? Esta ação não pode ser desfeita.')) {
+      clearAllAcoes();
+      showToast('🧹 Plataforma zerada com sucesso! Todas as ações foram removidas.');
+    }
+  };
 
   // Operator comment input state for Personal Actions
   const [operatorComments, setOperatorComments] = useState<Record<string, string>>({});
@@ -390,8 +402,7 @@ export const QuadroDesviosEAcoes: React.FC<QuadroDesviosEAcoesProps> = ({
   const loadData = () => {
     const listDemands = getStored5PorquesDemandas(empresaId);
     setDemands(listDemands);
-    let listAcoes = getAcoesAll();
-    listAcoes = seedInitialDataIfNeeded(listAcoes);
+    const listAcoes = getAcoesAll();
 
     // Ensure all actions have explicit open/close tracking values
     const sanitized = listAcoes.map(a => ({
@@ -414,11 +425,13 @@ export const QuadroDesviosEAcoes: React.FC<QuadroDesviosEAcoesProps> = ({
 
     window.addEventListener('5porques_demands_updated', handleUpdate);
     window.addEventListener('local_data_changed', handleUpdate);
+    window.addEventListener('af_acoes_updated', handleUpdate);
     window.addEventListener('storage', handleUpdate);
 
     return () => {
       window.removeEventListener('5porques_demands_updated', handleUpdate);
       window.removeEventListener('local_data_changed', handleUpdate);
+      window.removeEventListener('af_acoes_updated', handleUpdate);
       window.removeEventListener('storage', handleUpdate);
     };
   }, [empresaId]);
@@ -853,11 +866,11 @@ export const QuadroDesviosEAcoes: React.FC<QuadroDesviosEAcoesProps> = ({
     const percentualAtingimentoNoPrazo = totalGeradas > 0 ? (concluidasNoPrazo / totalGeradas) * 100 : 100;
     const metaAtingida = percentualAtingimentoNoPrazo >= 90.0;
 
-    // ETAPA 1: % de Ações Fechadas ÷ Total de Desvios de Meta Identificados na Plataforma
+    // ETAPA 1: % de Ações Fechadas ÷ Total de Ações Atribuídas
     const totalAcoesFechadasGlobal = acoes.filter(a => a.status === 'Concluído').length;
-    const percentualFechadasVsDesvios = totalDesviosIdentificados > 0 
-      ? (totalAcoesFechadasGlobal / totalDesviosIdentificados) * 100 
-      : 0;
+    const percentualFechadasVsDesvios = totalGeradas > 0 
+      ? (concluidasTotal / totalGeradas) * 100 
+      : (totalAcoesFechadasGlobal > 0 ? 100 : 0);
 
     return {
       totalGeradas,
@@ -886,11 +899,12 @@ export const QuadroDesviosEAcoes: React.FC<QuadroDesviosEAcoesProps> = ({
 
       {/* 🚨 ALERTA POPUP/BANNER: AÇÃO GERADA PARA VOCÊ (OPERAÇÃO / WORKSTATION) */}
       {pendingUserAlertAction && (
-        <div className="p-5 bg-gradient-to-r from-amber-950/90 via-[#111a30] to-indigo-950/90 border-2 border-amber-500 rounded-3xl shadow-2xl space-y-3 relative overflow-hidden animate-pulse">
+        <div className="p-4 sm:p-5 bg-gradient-to-r from-amber-950/80 via-[#111a30] to-indigo-950/80 border border-amber-500/60 rounded-2xl shadow-xl space-y-3 relative overflow-hidden">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-amber-500/30 pb-2">
             <div className="flex items-center gap-2.5">
-              <span className="p-2 bg-amber-500 text-slate-950 font-black rounded-xl shadow-md">
-                <Zap className="w-5 h-5 animate-spin" />
+              <span className="relative p-2 bg-amber-500 text-slate-950 font-black rounded-xl shadow-md shrink-0">
+                <Zap className="w-5 h-5" />
+                <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-amber-400 rounded-full animate-ping" />
               </span>
               <div>
                 <span className="text-[10px] font-black uppercase text-amber-400 font-mono block">
@@ -902,13 +916,13 @@ export const QuadroDesviosEAcoes: React.FC<QuadroDesviosEAcoesProps> = ({
               </div>
             </div>
 
-            <span className="text-xs font-mono font-bold text-amber-300 bg-amber-500/20 px-3 py-1 rounded-full border border-amber-500/40">
+            <span className="text-xs font-mono font-bold text-amber-300 bg-amber-500/20 px-3 py-1.5 rounded-xl border border-amber-500/40 whitespace-nowrap">
               Prazo Estipulado: {pendingUserAlertAction.prazo}
             </span>
           </div>
 
-          <div className="p-3 bg-[#080d1a] rounded-2xl border border-slate-800 text-xs space-y-1">
-            <div className="flex justify-between items-center">
+          <div className="p-3 bg-[#080d1a] rounded-xl border border-slate-800/80 text-xs space-y-1">
+            <div className="flex justify-between items-center flex-wrap gap-2">
               <span className="text-[10px] font-bold uppercase text-indigo-400">{pendingUserAlertAction.processo} • Setor: {pendingUserAlertAction.setor}</span>
               <span className="text-[10px] text-slate-400">Atribuído por: {pendingUserAlertAction.responsavelTratativa}</span>
             </div>
@@ -926,93 +940,119 @@ export const QuadroDesviosEAcoes: React.FC<QuadroDesviosEAcoesProps> = ({
               onClick={() => handleIniciarDepois(pendingUserAlertAction.id)}
               className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl transition-all cursor-pointer border border-slate-700 uppercase tracking-wider flex items-center gap-1.5"
             >
-              <Clock className="w-4 h-4 text-amber-400" />
-              Iniciar Depois
+              <Clock className="w-4 h-4 text-amber-400 shrink-0" />
+              <span>Iniciar Depois</span>
             </button>
 
             <button
               type="button"
               onClick={() => handleIniciarAgora(pendingUserAlertAction.id)}
-              className="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs rounded-xl transition-all cursor-pointer shadow-xl uppercase tracking-wider flex items-center gap-2 animate-bounce"
+              className="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs rounded-xl transition-all cursor-pointer shadow-lg uppercase tracking-wider flex items-center gap-2"
             >
-              <Play className="w-4 h-4 fill-slate-950" />
-              Iniciar Agora
+              <Play className="w-4 h-4 fill-slate-950 shrink-0" />
+              <span>Iniciar Agora</span>
             </button>
           </div>
         </div>
       )}
 
       {/* 🚀 HEADER DA GUIA DESVIOS E AÇÕES (WORKSTATION OPERACIONAL) */}
-      <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6 border-b border-slate-800 pb-5">
-        <div className="space-y-1.5">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[10px] font-black uppercase tracking-widest text-amber-400 bg-amber-500/10 px-3 py-1 rounded-full border border-amber-500/20 flex items-center gap-1.5">
-              <ShieldAlert className="w-3.5 h-3.5 text-amber-400" /> Workstation Operacional
-            </span>
-            <span className="text-[10px] font-black uppercase tracking-widest text-teal-400 bg-teal-500/10 px-3 py-1 rounded-full border border-teal-500/20 flex items-center gap-1.5">
-              <Target className="w-3.5 h-3.5 text-teal-400" /> Meta de Atingimento: 90.0%
-            </span>
+      <div className="space-y-4 border-b border-slate-800/80 pb-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div className="space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[10px] font-black uppercase tracking-widest text-amber-400 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/20 flex items-center gap-1.5">
+                <ShieldAlert className="w-3.5 h-3.5 text-amber-400 shrink-0" /> Workstation Operacional
+              </span>
+              <span className="text-[10px] font-black uppercase tracking-widest text-teal-400 bg-teal-500/10 px-2.5 py-0.5 rounded-full border border-teal-500/20 flex items-center gap-1.5">
+                <Target className="w-3.5 h-3.5 text-teal-400 shrink-0" /> Meta de Atingimento: 90.0%
+              </span>
+            </div>
+
+            <h1 className="text-xl sm:text-2xl font-black text-white flex items-center gap-2.5 tracking-tight">
+              <AlertTriangle className="w-6 h-6 text-rose-400 shrink-0" />
+              <span>Desvios e Ações Operacionais</span>
+            </h1>
           </div>
 
-          <h1 className="text-xl sm:text-2xl font-black text-white flex items-center gap-2.5">
-            <AlertTriangle className="w-7 h-7 text-rose-400 shrink-0" />
-            Desvios e Ações Operacionais
-          </h1>
-          
-          <p className="text-xs text-slate-300 max-w-2xl leading-relaxed">
-            Painel direcionado às ações do colaborador e à governança geral de desvios com meta de atingimento de 90% dentro do prazo, alertas de novas ações e reagendamento com justificativa obrigatória.
+          <p className="text-xs text-slate-300 max-w-xl leading-relaxed">
+            Painel direcionado às ações do colaborador e à governança geral de desvios com meta de atingimento de 90% dentro do prazo, alertas e reagendamentos.
           </p>
         </div>
 
-        {/* NAVEGAÇÃO ENTRE ABAS INTERNAS DO WORKSTATION */}
-        <div className="flex flex-wrap items-center gap-2 bg-[#111a30] p-1.5 rounded-2xl border border-slate-800 shrink-0">
-          <button
-            type="button"
-            onClick={() => setActiveTab('minhas_acoes')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 ${
-              activeTab === 'minhas_acoes'
-                ? 'bg-amber-500 text-slate-950 shadow-md font-black'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            <User className="w-4 h-4 text-slate-950" />
-            Minhas Ações ({minhasAcoes.length})
-          </button>
+        {/* TOOLBAR DE ABAS E AÇÕES - FULL WIDTH LINHA PRÓPRIA (SEM ESTOURE) */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 bg-[#111a30] p-1.5 rounded-2xl border border-slate-800/80">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setActiveTab('minhas_acoes')}
+              className={`px-3.5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap ${
+                activeTab === 'minhas_acoes'
+                  ? 'bg-amber-500 text-slate-950 shadow-md font-black'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+              }`}
+            >
+              <User className={`w-4 h-4 shrink-0 ${activeTab === 'minhas_acoes' ? 'text-slate-950' : 'text-amber-400'}`} />
+              <span>Minhas Ações ({minhasAcoes.length})</span>
+            </button>
 
-          <button
-            type="button"
-            onClick={() => setActiveTab('governanca')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 ${
-              activeTab === 'governanca'
-                ? 'bg-teal-600 text-white shadow-md'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            <BarChart3 className="w-4 h-4 text-teal-300" />
-            Governança & Filtros 90%
-          </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('governanca')}
+              className={`px-3.5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap ${
+                activeTab === 'governanca'
+                  ? 'bg-teal-600 text-white shadow-md'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+              }`}
+            >
+              <BarChart3 className={`w-4 h-4 shrink-0 ${activeTab === 'governanca' ? 'text-white' : 'text-teal-400'}`} />
+              <span>Governança & Filtros 90%</span>
+            </button>
 
-          <button
-            type="button"
-            onClick={() => setActiveTab('desvios')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 ${
-              activeTab === 'desvios'
-                ? 'bg-rose-600 text-white shadow-md'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            <AlertTriangle className="w-4 h-4 text-rose-300" />
-            Desvios de Meta ({totalDesviosIdentificados})
-          </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('desvios')}
+              className={`px-3.5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap ${
+                activeTab === 'desvios'
+                  ? 'bg-rose-600 text-white shadow-md'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+              }`}
+            >
+              <AlertTriangle className={`w-4 h-4 shrink-0 ${activeTab === 'desvios' ? 'text-white' : 'text-rose-400'}`} />
+              <span>Desvios de Meta ({totalDesviosIdentificados})</span>
+            </button>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-800">
+            <button
+              type="button"
+              onClick={() => setIsImportModalOpen(true)}
+              className="px-3.5 py-2 rounded-xl text-xs font-black uppercase tracking-wider bg-indigo-600 hover:bg-indigo-500 text-white shadow-md transition-all cursor-pointer flex items-center gap-1.5 border border-indigo-400/30 whitespace-nowrap"
+              title="Importar planilha de ações retroativas ou cadastrar manualmente"
+            >
+              <FileSpreadsheet className="w-4 h-4 text-indigo-200 shrink-0" />
+              <span>Importar Ações Retroativas</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleClearAllAcoes}
+              className="px-3 py-2 rounded-xl text-xs font-bold uppercase tracking-wider bg-rose-950/60 hover:bg-rose-900 text-rose-300 border border-rose-500/40 transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap"
+              title="Zerar todas as ações da plataforma"
+            >
+              <RotateCcw className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+              <span>Zerar Ações</span>
+            </button>
+          </div>
         </div>
       </div>
 
       {/* 🎯 PAINEL DE PERFORMANCE E RESOLUÇÃO DE DESVIOS (ETAPA 1) */}
       <div className="space-y-3">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+        <div className={`grid grid-cols-1 sm:grid-cols-2 ${activeTab === 'minhas_acoes' ? 'lg:grid-cols-4' : 'lg:grid-cols-5'} gap-3`}>
           
           {/* KPI CARD 1: TOTAL DE DESVIOS IDENTIFICADOS */}
-          <div className="p-3.5 bg-[#111a30] border border-rose-500/30 rounded-2xl space-y-1">
+          <div className="p-4 bg-[#111a30] border border-rose-500/30 rounded-2xl space-y-1.5 flex flex-col justify-between h-full shadow-sm">
             <span className="text-[10px] font-black uppercase tracking-wider text-rose-400 block">Desvios Identificados</span>
             <div className="flex items-baseline gap-2">
               <span className="text-2xl font-black text-rose-400 font-mono">{totalDesviosIdentificados}</span>
@@ -1022,7 +1062,7 @@ export const QuadroDesviosEAcoes: React.FC<QuadroDesviosEAcoesProps> = ({
           </div>
 
           {/* KPI CARD 2: TOTAL AÇÕES GERADAS */}
-          <div className="p-3.5 bg-[#111a30] border border-slate-800 rounded-2xl space-y-1">
+          <div className="p-4 bg-[#111a30] border border-slate-800 rounded-2xl space-y-1.5 flex flex-col justify-between h-full shadow-sm">
             <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">Ações Atribuídas</span>
             <div className="flex items-baseline gap-2">
               <span className="text-2xl font-black text-white font-mono">{estatisticasGovernança.totalGeradas}</span>
@@ -1032,7 +1072,7 @@ export const QuadroDesviosEAcoes: React.FC<QuadroDesviosEAcoesProps> = ({
           </div>
 
           {/* KPI CARD 3: AÇÕES FECHADAS */}
-          <div className="p-3.5 bg-[#111a30] border border-emerald-500/30 rounded-2xl space-y-1">
+          <div className="p-4 bg-[#111a30] border border-emerald-500/30 rounded-2xl space-y-1.5 flex flex-col justify-between h-full shadow-sm">
             <span className="text-[10px] font-black uppercase tracking-wider text-emerald-400 block">Ações Fechadas</span>
             <div className="flex items-baseline gap-2">
               <span className="text-2xl font-black text-emerald-400 font-mono">{estatisticasGovernança.totalAcoesFechadasGlobal}</span>
@@ -1041,30 +1081,32 @@ export const QuadroDesviosEAcoes: React.FC<QuadroDesviosEAcoesProps> = ({
             <p className="text-[10px] text-slate-400">Resoluções efetuadas</p>
           </div>
 
-          {/* KPI CARD 4: % AÇÕES FECHADAS ÷ TOTAL DESVIOS */}
-          <div className="p-3.5 bg-gradient-to-br from-[#0c1a30] to-[#122342] border border-indigo-500/40 rounded-2xl space-y-1 shadow-md">
-            <span className="text-[10px] font-black uppercase tracking-wider text-indigo-300 block">
-              % Ações Fechadas
-            </span>
-            <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-black text-indigo-300 font-mono">
-                {estatisticasGovernança.percentualFechadasVsDesvios.toFixed(1)}%
+          {/* KPI CARD 4: % AÇÕES FECHADAS ÷ TOTAL DE AÇÕES (EXIBIDO NA GOVERNANÇA) */}
+          {activeTab !== 'minhas_acoes' && (
+            <div className="p-4 bg-gradient-to-br from-[#0c1a30] to-[#122342] border border-indigo-500/40 rounded-2xl space-y-1.5 flex flex-col justify-between h-full shadow-sm">
+              <span className="text-[10px] font-black uppercase tracking-wider text-indigo-300 block">
+                % Ações Fechadas
               </span>
-              <span className="text-[10px] text-slate-300">
-                ({estatisticasGovernança.totalAcoesFechadasGlobal} ÷ {totalDesviosIdentificados})
-              </span>
+              <div className="flex items-baseline gap-2">
+                <span className="text-2xl font-black text-indigo-300 font-mono">
+                  {estatisticasGovernança.percentualFechadasVsDesvios.toFixed(1)}%
+                </span>
+                <span className="text-[10px] text-slate-300">
+                  ({estatisticasGovernança.concluidasTotal} ÷ {estatisticasGovernança.totalGeradas})
+                </span>
+              </div>
+              <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden mt-1">
+                <div 
+                  className="h-full bg-indigo-400 rounded-full transition-all duration-500" 
+                  style={{ width: `${Math.min(estatisticasGovernança.percentualFechadasVsDesvios, 100)}%` }}
+                />
+              </div>
+              <p className="text-[9px] text-indigo-200 font-medium pt-0.5">Fechadas ÷ Total de Ações</p>
             </div>
-            <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden mt-1">
-              <div 
-                className="h-full bg-indigo-400 rounded-full transition-all duration-500" 
-                style={{ width: `${Math.min(estatisticasGovernança.percentualFechadasVsDesvios, 100)}%` }}
-              />
-            </div>
-            <p className="text-[9px] text-indigo-200 font-medium pt-0.5">Fechadas ÷ Total Desvios</p>
-          </div>
+          )}
 
           {/* KPI CARD 5: % ATINGIMENTO NO PRAZO (META 90%) */}
-          <div className={`p-3.5 rounded-2xl space-y-1 border shadow-md relative overflow-hidden ${
+          <div className={`p-4 rounded-2xl space-y-1.5 flex flex-col justify-between h-full border shadow-sm relative overflow-hidden ${
             estatisticasGovernança.metaAtingida
               ? 'bg-gradient-to-br from-emerald-950 via-slate-900 to-teal-950 border-emerald-500/50'
               : 'bg-gradient-to-br from-rose-950 via-slate-900 to-amber-950 border-rose-500/50'
@@ -1089,7 +1131,7 @@ export const QuadroDesviosEAcoes: React.FC<QuadroDesviosEAcoesProps> = ({
               </span>
             </div>
 
-            <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden mt-1">
+            <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
               <div 
                 className={`h-full transition-all duration-500 rounded-full ${
                   estatisticasGovernança.metaAtingida ? 'bg-emerald-500' : 'bg-rose-500'
@@ -1141,21 +1183,23 @@ export const QuadroDesviosEAcoes: React.FC<QuadroDesviosEAcoesProps> = ({
       {activeTab === 'minhas_acoes' && (
         <div className="space-y-4">
           {/* HEADER DA SEÇÃO DE AÇÕES DO COLABORADOR */}
-          <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 max-w-full overflow-hidden">
-            <div className="flex items-center gap-3 min-w-0">
-              <User className="w-6 h-6 text-amber-400 shrink-0" />
-              <div className="min-w-0">
-                <strong className="text-xs text-white block uppercase tracking-wider truncate">
+          <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3.5 w-full">
+            <div className="flex items-center gap-3 min-w-0 flex-1">
+              <div className="p-2.5 bg-amber-500/20 rounded-xl border border-amber-500/30 flex items-center justify-center shrink-0">
+                <User className="w-5 h-5 text-amber-400" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <strong className="text-xs sm:text-sm text-white block font-black uppercase tracking-wider break-words">
                   Ações Corretivas Direcionadas a Você ({userName})
                 </strong>
-                <p className="text-[11px] text-slate-300 line-clamp-2">
+                <p className="text-[11px] text-slate-300 font-medium mt-0.5 leading-tight">
                   Pegue suas ações para dar andamento, inicie o atendimento, justifique atrasos e reagende se necessário.
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto flex-wrap">
-              <span className="text-xs font-mono font-bold text-amber-300 bg-amber-500/20 px-3 py-1 rounded-xl border border-amber-500/30">
+            <div className="flex items-center gap-2 shrink-0 self-stretch sm:self-auto justify-between sm:justify-end flex-wrap">
+              <span className="text-xs font-mono font-bold text-amber-300 bg-amber-500/20 px-3 py-1.5 rounded-xl border border-amber-500/30">
                 {colabCounts.pendentes} Pendente(s) / {colabCounts.total} Total
               </span>
 
@@ -1966,6 +2010,13 @@ export const QuadroDesviosEAcoes: React.FC<QuadroDesviosEAcoesProps> = ({
           </div>
         </div>
       )}
+
+      {/* MODAL DE IMPORTAÇÃO DE AÇÕES RETROATIVAS */}
+      <ImportAcoesModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        currentUser={userName}
+      />
     </div>
   );
 };

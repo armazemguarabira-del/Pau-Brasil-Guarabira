@@ -1087,7 +1087,7 @@ export default function ControlePanel({ user, empresa, initialSection }: Control
     <div className="flex flex-col gap-6">
       
       {/* ── TOP ACTION BRAND HEADER ── */}
-      <div className="flex items-center justify-between p-4 bg-gradient-to-r from-[#11151c] to-[#1a212d] border-b border-[#222d3a] rounded-t-xl -mx-6 md:-mx-12 -mt-6">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 bg-gradient-to-r from-[#11151c] to-[#1a212d] border border-[#222d3a] rounded-xl w-full gap-3">
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-lg bg-[#f5a623]/10 border border-[#f5a623]/20 flex items-center justify-center">
             <Zap className="w-4 h-4 text-[#f5a623]" />

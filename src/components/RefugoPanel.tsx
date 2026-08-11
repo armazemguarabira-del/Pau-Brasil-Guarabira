@@ -312,7 +312,7 @@ export default function RefugoPanel({ user, empresa }: RefugoPanelProps) {
     <div className="flex flex-col gap-6">
       
       {/* Top Header */}
-      <div className="flex items-center justify-between p-4 bg-[#11151c] border-b border-[#222d3a] rounded-t-xl -mx-6 md:-mx-12 -mt-6">
+      <div className="flex items-center justify-between p-4 bg-[#11151c] border border-[#222d3a] rounded-xl w-full">
         <span className="font-sans font-black text-sm tracking-widest text-[#eab308] uppercase">🍾 BLITZ DE REFUGO — AFERIÇÃO RETORNÁVEIS</span>
       </div>
 

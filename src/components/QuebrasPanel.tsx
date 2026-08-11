@@ -697,7 +697,7 @@ export default function QuebrasPanel({ user, empresa, shiftStarted, onRequireShi
   return (
     <div className="flex flex-col gap-6">
       
-      <div className="flex items-center justify-between p-4 bg-[#11151c] border-b border-[#222d3a] rounded-t-xl -mx-6 md:-mx-12 -mt-6">
+      <div className="flex items-center justify-between p-4 bg-[#11151c] border border-[#222d3a] rounded-xl w-full">
         <span className="font-sans font-black text-sm tracking-widest text-[#ef4444] uppercase">💥 CONTROLE DE QUEBRAS E AVARIAS</span>
       </div>
 

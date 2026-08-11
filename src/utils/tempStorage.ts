@@ -1,23 +1,107 @@
 import * as XLSX from 'xlsx';
 import { ArmazemTemperaturaLog } from '../types';
+import { BASE_TEMPERATURA_CSV } from '../data/baseTemperaturaCsv';
 
 export const TEMP_STORAGE_KEY = 'armazem_temperatura_logs';
 
 /**
- * Retrieves the current temperature logs from localStorage.
+ * Parses the official base CSV data (Jan 15 to Aug 07, 2026).
+ */
+export function parseBaseCsvData(): ArmazemTemperaturaLog[] {
+  const lines = BASE_TEMPERATURA_CSV.trim().split('\n');
+  const logs: ArmazemTemperaturaLog[] = [];
+
+  lines.slice(1).forEach((line, idx) => {
+    const parts = line.split(';');
+    if (parts.length < 4) return;
+
+    const rawData = parts[0].trim();
+    const rawTemp = parts[1].trim().replace(',', '.');
+    const conferente = parts[2].trim();
+    const rawHora = parts[3].trim();
+
+    const dateParts = rawData.split('/');
+    if (dateParts.length < 3) return;
+
+    const dd = dateParts[0].padStart(2, '0');
+    const mm = dateParts[1].padStart(2, '0');
+    let yyyy = dateParts[2];
+    if (yyyy.length === 2) yyyy = '20' + yyyy;
+
+    const dataISO = `${yyyy}-${mm}-${dd}`;
+    const dataFormatted = `${dd}/${mm}/${yyyy}`;
+    const mesAno = `${mm}/${yyyy}`;
+
+    const hourParts = rawHora.split(':');
+    const h = hourParts[0].padStart(2, '0');
+    const m = (hourParts[1] || '00').padStart(2, '0');
+    const horaStr = `${h}:${m}`;
+
+    const tempNum = parseFloat(rawTemp);
+    if (isNaN(tempNum)) return;
+
+    const isCrit = tempNum > 28.0 || tempNum < 18.0;
+
+    logs.push({
+      id: `temp-base-${idx}-${dataISO}-${horaStr.replace(':', '')}`,
+      dataISO,
+      dataFormatted,
+      mesAno,
+      hora: horaStr,
+      temperatura: Math.round(tempNum * 10) / 10,
+      umidade: 55,
+      setor: 'Armazém Central',
+      conferenteNome: conferente,
+      registradoPor: conferente,
+      observacao: 'Aferição de temperatura registrada via planilha oficial',
+      alertaCritico: isCrit
+    });
+  });
+
+  return sortTempLogsDescending(logs);
+}
+
+/**
+ * Sorts temperature logs strictly from most recent to oldest (dataISO then hora descending).
+ */
+export function sortTempLogsDescending(logs: ArmazemTemperaturaLog[]): ArmazemTemperaturaLog[] {
+  return [...logs].sort((a, b) => {
+    const timeA = (a.hora || '00:00').length === 4 ? `0${a.hora}` : (a.hora || '00:00');
+    const timeB = (b.hora || '00:00').length === 4 ? `0${b.hora}` : (b.hora || '00:00');
+    const keyA = `${a.dataISO || '0000-00-00'}T${timeA}`;
+    const keyB = `${b.dataISO || '0000-00-00'}T${timeB}`;
+    if (keyA !== keyB) {
+      return keyB.localeCompare(keyA);
+    }
+    return (b.id || '').localeCompare(a.id || '');
+  });
+}
+
+/**
+ * Retrieves the current temperature logs from localStorage (sorted most recent first).
+ * If empty or using outdated mock data, populates with the real base dataset (Jan to Aug 2026).
  */
 export function getStoredTempLogs(): ArmazemTemperaturaLog[] {
   try {
     const saved = localStorage.getItem(TEMP_STORAGE_KEY);
-    if (!saved) return [];
-    const parsed = JSON.parse(saved);
-    if (Array.isArray(parsed)) {
-      return parsed;
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        // Check if old mock data or misparsed December data is present
+        const hasDec = parsed.some(l => l.mesAno === '12/2026' || l.mesAno === '11/2026' || l.mesAno === '10/2026' || l.mesAno === '09/2026');
+        if (!hasDec) {
+          return sortTempLogsDescending(parsed);
+        }
+      }
     }
   } catch (e) {
     console.error('Erro ao ler logs de temperatura do localStorage:', e);
   }
-  return [];
+
+  // Populate default database with exact CSV records
+  const initial = parseBaseCsvData();
+  saveTempLogs(initial);
+  return initial;
 }
 
 /**
@@ -25,8 +109,9 @@ export function getStoredTempLogs(): ArmazemTemperaturaLog[] {
  */
 export function saveTempLogs(logs: ArmazemTemperaturaLog[]): void {
   try {
-    localStorage.setItem(TEMP_STORAGE_KEY, JSON.stringify(logs));
-    window.dispatchEvent(new CustomEvent('armazem_temp_logs_updated', { detail: logs }));
+    const sorted = sortTempLogsDescending(logs);
+    localStorage.setItem(TEMP_STORAGE_KEY, JSON.stringify(sorted));
+    window.dispatchEvent(new CustomEvent('armazem_temp_logs_updated', { detail: sorted }));
     window.dispatchEvent(new Event('storage'));
   } catch (e) {
     console.error('Erro ao salvar logs de temperatura no localStorage:', e);
@@ -113,14 +198,14 @@ export async function importarPlanilhaTemperatura(file: File): Promise<{ count: 
         }
 
         const data = new Uint8Array(buffer);
-        const workbook = XLSX.read(data, { type: 'array', cellDates: true });
+        const workbook = XLSX.read(data, { type: 'array', cellDates: false, raw: true });
         if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
           reject(new Error('Planilha vazia ou sem abas válidas.'));
           return;
         }
 
         const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-        const rawJson: any[] = XLSX.utils.sheet_to_json(firstSheet, { defval: '' });
+        const rawJson: any[] = XLSX.utils.sheet_to_json(firstSheet, { defval: '', raw: false });
 
         if (!rawJson || rawJson.length === 0) {
           reject(new Error('Nenhum registro encontrado na planilha.'));
@@ -129,31 +214,41 @@ export async function importarPlanilhaTemperatura(file: File): Promise<{ count: 
 
         const importedLogs: ArmazemTemperaturaLog[] = [];
 
+        // Helper to normalize strings for comparisons
+        const cleanStr = (s: any): string => {
+          return String(s || '')
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .replace(/[^a-z0-9]/g, '');
+        };
+
         rawJson.forEach((row, idx) => {
           if (!row || typeof row !== 'object') return;
 
           const keys = Object.keys(row);
           const getVal = (candidates: string[]): any => {
-            const matchKey = keys.find(k => {
-              const cleanK = k.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
-              return candidates.some(c => {
-                const cleanC = c.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
-                return cleanK === cleanC;
-              });
+            let matchKey = keys.find(k => {
+              const cleanK = cleanStr(k);
+              return candidates.some(c => cleanStr(c) === cleanK);
             });
-            return matchKey ? row[matchKey] : '';
+            if (!matchKey) {
+              matchKey = keys.find(k => {
+                const cleanK = cleanStr(k);
+                return candidates.some(c => {
+                  const cleanC = cleanStr(c);
+                  return (cleanK.length >= 2 && cleanC.length >= 2) && (cleanK.includes(cleanC) || cleanC.includes(cleanK));
+                });
+              });
+            }
+            return matchKey ? row[matchKey] : undefined;
           };
 
-          const rawData = getVal(['data', 'date', 'data medicao', 'data afericao', 'data da medicao']);
-          const rawHora = getVal(['hora', 'horario', 'time', 'hora afericao']);
-          const rawTemp = getVal(['temperatura', 'temp', 'temperatura c', 'temperatura (c)', 'temp c', 'valor']);
-          const rawColab = getVal(['colaborador', 'conferente', 'operador', 'responsavel', 'registrado por', 'usuario', 'nome']);
-          const rawObs = getVal(['observacao', 'observacoes', 'obs', 'observacao/justificativa', 'detalhe']);
-
-          if ((rawData === '' || rawData === null || rawData === undefined) && 
-              (rawTemp === '' || rawTemp === null || rawTemp === undefined)) {
-            return;
-          }
+          let rawData = getVal(['data', 'date', 'data medicao', 'data afericao', 'data da medicao', 'dt']);
+          let rawHora = getVal(['hora', 'horario', 'horrio', 'horio', 'time', 'hora afericao', 'horariomedicao', 'hr', 'hor']);
+          let rawTemp = getVal(['temperatura', 'temp', 'temperatura c', 'temperatura (c)', 'temp c', 'valor', 'grau']);
+          let rawColab = getVal(['colaborador', 'conferente', 'operador', 'responsavel', 'registrado por', 'usuario', 'nome']);
+          let rawObs = getVal(['observacao', 'observacoes', 'obs', 'observacao/justificativa', 'detalhe', 'nota']);
 
           // --- Parse Data ---
           let dataISO = '';
@@ -169,57 +264,133 @@ export async function importarPlanilhaTemperatura(file: File): Promise<{ count: 
             mesAno = `${mm}/${yyyy}`;
           } else {
             const strData = String(rawData || '').trim();
-            if (strData.match(/^\d{1,2}[\/\.-]\d{1,2}[\/\.-]\d{2,4}$/)) {
-              const parts = strData.split(/[\/\.-]/);
-              const dd = parts[0].padStart(2, '0');
-              const mm = parts[1].padStart(2, '0');
-              let yyyy = parts[2];
+            const dmMatch = strData.match(/^(\d{1,2})[\/\.-](\d{1,2})[\/\.-](\d{2,4})$/);
+            const ymdMatch = strData.match(/^(\d{4})[\/\.-](\d{1,2})[\/\.-](\d{1,2})$/);
+
+            if (dmMatch) {
+              const dd = dmMatch[1].padStart(2, '0');
+              const mm = dmMatch[2].padStart(2, '0');
+              let yyyy = dmMatch[3];
               if (yyyy.length === 2) yyyy = '20' + yyyy;
               dataISO = `${yyyy}-${mm}-${dd}`;
               dataFormatted = `${dd}/${mm}/${yyyy}`;
               mesAno = `${mm}/${yyyy}`;
-            } else if (strData.match(/^\d{4}[\/\.-]\d{1,2}[\/\.-]\d{1,2}$/)) {
-              const parts = strData.split(/[\/\.-]/);
-              const yyyy = parts[0];
-              const mm = parts[1].padStart(2, '0');
-              const dd = parts[2].padStart(2, '0');
+            } else if (ymdMatch) {
+              const yyyy = ymdMatch[1];
+              const mm = ymdMatch[2].padStart(2, '0');
+              const dd = ymdMatch[3].padStart(2, '0');
               dataISO = `${yyyy}-${mm}-${dd}`;
               dataFormatted = `${dd}/${mm}/${yyyy}`;
               mesAno = `${mm}/${yyyy}`;
             } else {
-              // Fallback today
-              const today = new Date();
-              const yyyy = today.getFullYear();
-              const mm = String(today.getMonth() + 1).padStart(2, '0');
-              const dd = String(today.getDate()).padStart(2, '0');
-              dataISO = `${yyyy}-${mm}-${dd}`;
-              dataFormatted = `${dd}/${mm}/${yyyy}`;
-              mesAno = `${mm}/${yyyy}`;
+              // Value scan fallback for date
+              for (const k of keys) {
+                const val = String(row[k] || '').trim();
+                const mDate = val.match(/^(\d{1,2})[\/\.-](\d{1,2})[\/\.-](\d{2,4})$/);
+                if (mDate) {
+                  const dd = mDate[1].padStart(2, '0');
+                  const mm = mDate[2].padStart(2, '0');
+                  let yyyy = mDate[3];
+                  if (yyyy.length === 2) yyyy = '20' + yyyy;
+                  dataISO = `${yyyy}-${mm}-${dd}`;
+                  dataFormatted = `${dd}/${mm}/${yyyy}`;
+                  mesAno = `${mm}/${yyyy}`;
+                  break;
+                }
+              }
             }
           }
 
+          if (!dataISO) {
+            // Skip rows without any parseable date
+            return;
+          }
+
           // --- Parse Hora ---
-          let horaStr = String(rawHora || '09:00').trim();
-          if (horaStr.match(/^\d{1,2}:\d{2}/)) {
-            const hp = horaStr.split(':');
-            horaStr = `${hp[0].padStart(2, '0')}:${hp[1].padStart(2, '0')}`;
-          } else if (!isNaN(Number(horaStr)) && Number(horaStr) > 0 && Number(horaStr) < 1) {
-            const totalSec = Math.round(Number(horaStr) * 86400);
-            const h = Math.floor(totalSec / 3600);
-            const m = Math.floor((totalSec % 3600) / 60);
-            horaStr = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-          } else {
+          let horaStr = '';
+          if (rawHora instanceof Date && !isNaN(rawHora.getTime())) {
+            const h = String(rawHora.getHours()).padStart(2, '0');
+            const m = String(rawHora.getMinutes()).padStart(2, '0');
+            horaStr = `${h}:${m}`;
+          } else if (typeof rawHora === 'string' || typeof rawHora === 'number') {
+            const strVal = String(rawHora).trim();
+            const timeMatch = strVal.match(/^(\d{1,2}):(\d{2})/);
+            if (timeMatch) {
+              const h = String(parseInt(timeMatch[1], 10)).padStart(2, '0');
+              const m = timeMatch[2].padStart(2, '0');
+              horaStr = `${h}:${m}`;
+            } else if (!isNaN(Number(strVal)) && Number(strVal) > 0 && Number(strVal) < 1) {
+              const totalSec = Math.round(Number(strVal) * 86400);
+              const h = Math.floor(totalSec / 3600);
+              const m = Math.floor((totalSec % 3600) / 60);
+              horaStr = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+            }
+          }
+
+          // Value scan fallback for Hora
+          if (!horaStr) {
+            for (const k of keys) {
+              const val = String(row[k] || '').trim();
+              const timeMatch = val.match(/^(\d{1,2}):(\d{2})/);
+              if (timeMatch) {
+                const h = String(parseInt(timeMatch[1], 10)).padStart(2, '0');
+                const m = timeMatch[2].padStart(2, '0');
+                horaStr = `${h}:${m}`;
+                break;
+              }
+            }
+          }
+
+          // Date time component fallback
+          if (!horaStr && rawData instanceof Date && !isNaN(rawData.getTime())) {
+            const h = rawData.getHours();
+            const m = rawData.getMinutes();
+            if (h !== 0 || m !== 0) {
+              horaStr = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+            }
+          }
+
+          if (!horaStr) {
             horaStr = '09:00';
           }
 
           // --- Parse Temperatura ---
-          const cleanedTempStr = String(rawTemp || '').replace('°C', '').replace('°', '').replace(',', '.').trim();
-          const tempNum = parseFloat(cleanedTempStr);
-          if (isNaN(tempNum)) {
-            return; // Skip invalid temperature rows
+          let tempNum = NaN;
+          if (typeof rawTemp === 'number') {
+            tempNum = rawTemp;
+          } else {
+            const strTemp = String(rawTemp || '').replace('°C', '').replace('°', '').replace(',', '.').trim();
+            tempNum = parseFloat(strTemp);
           }
 
-          const colabStr = String(rawColab || 'Operador / Conferente').trim();
+          if (isNaN(tempNum)) {
+            for (const k of keys) {
+              const val = String(row[k] || '').replace('°C', '').replace('°', '').replace(',', '.').trim();
+              const parsedVal = parseFloat(val);
+              if (!isNaN(parsedVal) && parsedVal >= 10 && parsedVal <= 50) {
+                tempNum = parsedVal;
+                break;
+              }
+            }
+          }
+
+          if (isNaN(tempNum)) {
+            return; // Skip row if no valid temperature
+          }
+
+          // --- Parse Colaborador & Observacao ---
+          let colabStr = String(rawColab || '').trim();
+          if (!colabStr) {
+            for (const k of keys) {
+              const val = String(row[k] || '').trim();
+              if (val && !val.match(/^\d{1,2}[\/\.-]/) && !val.match(/^(\d{1,2}):(\d{2})/) && isNaN(Number(val.replace(',', '.')))) {
+                colabStr = val;
+                break;
+              }
+            }
+          }
+          if (!colabStr) colabStr = 'Conferente Responsável';
+
           const obsStr = String(rawObs || 'Importado via planilha Excel retroativa').trim();
           const isCrit = tempNum > 28.0 || tempNum < 18.0;
 
@@ -240,19 +411,15 @@ export async function importarPlanilhaTemperatura(file: File): Promise<{ count: 
         });
 
         if (importedLogs.length === 0) {
-          reject(new Error('Nenhuma linha de medição válida encontrada na planilha. Verifique as colunas (Data, Hora, Temperatura, Colaborador, Observação).'));
+          reject(new Error('Nenhuma linha de medição válida encontrada na planilha. Verifique a estrutura do arquivo.'));
           return;
         }
 
-        // Sort descending by dataISO then hora
-        importedLogs.sort((a, b) => {
-          if (b.dataISO !== a.dataISO) return b.dataISO.localeCompare(a.dataISO);
-          return b.hora.localeCompare(a.hora);
-        });
+        const sortedLogs = sortTempLogsDescending(importedLogs);
 
         // Overwrite database
-        saveTempLogs(importedLogs);
-        resolve({ count: importedLogs.length, logs: importedLogs });
+        saveTempLogs(sortedLogs);
+        resolve({ count: sortedLogs.length, logs: sortedLogs });
       } catch (err: any) {
         reject(err || new Error('Falha ao processar a planilha.'));
       }
@@ -262,3 +429,4 @@ export async function importarPlanilhaTemperatura(file: File): Promise<{ count: 
     reader.readAsArrayBuffer(file);
   });
 }
+

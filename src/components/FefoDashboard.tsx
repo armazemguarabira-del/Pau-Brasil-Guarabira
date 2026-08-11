@@ -64,6 +64,7 @@ import StockAgeIndexTab from './StockAgeIndexTab';
 import FuturoShelfTab from './FuturoShelfTab';
 import GestaoEscoamentoTab from './GestaoEscoamentoTab';
 import { WorkstationCriticosRecolhimento } from './WorkstationCriticosRecolhimento';
+import { getInitialDefaultValidades } from '../utils/fefoDefaultData';
 import { triggerAutoAcaoCorretiva, triggerAutoAcaoMelhoriaPreventiva } from '../utils/simulacaoAcoesUtils';
 import html2canvas from 'html2canvas';
 import { syncFefoDemandsFromValidades, getStoredFefoDemands, updateFefoDemandStatus } from '../utils/fefoDemandManager';
@@ -492,14 +493,17 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
       }
     });
 
-    const combinedValidades = Array.from(map.values());
-    if (combinedValidades.length > 0) {
-      setActualValidades(combinedValidades);
-      syncFefoDemandsFromValidades(companyId, combinedValidades);
-    } else {
-      setActualValidades([]);
-      syncFefoDemandsFromValidades(companyId, []);
+    let combinedValidades = Array.from(map.values());
+    if (combinedValidades.length === 0) {
+      combinedValidades = getInitialDefaultValidades(companyId);
+      try {
+        localStorage.setItem(`validades_${companyId}`, JSON.stringify(combinedValidades));
+        localStorage.setItem(`armazem_validades_${companyId}`, JSON.stringify(combinedValidades));
+      } catch (e) {}
     }
+
+    setActualValidades(combinedValidades);
+    syncFefoDemandsFromValidades(companyId, combinedValidades);
   }, [empresaData.validades, companyId]);
 
   // Sync other sub-tables with localstorage (to keep editing interactive and high fidelity)
