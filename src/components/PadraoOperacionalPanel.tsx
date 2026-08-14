@@ -22,7 +22,9 @@ import {
   ChevronDown,
   ChevronRight,
   Eye,
-  Printer
+  Printer,
+  Layers,
+  FolderPlus
 } from 'lucide-react';
 import { 
   SopDocument, 

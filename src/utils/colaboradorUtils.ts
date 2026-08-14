@@ -140,3 +140,87 @@ export function normalizeCollaboratorNamesInRecords<T extends Record<string, any
     return updated;
   });
 }
+
+/**
+ * Checks if a collaborator exists in the official list or stored custom list, returning official cargo and name
+ */
+export function getCollaboratorOfficialInfo(rawOrNormName: string, empresaId: string = 'demo'): { isRegistered: boolean; cargo: string; nomeOficial: string } {
+  const norm = normalizeCollaboratorName(rawOrNormName);
+  if (!norm) return { isRegistered: false, cargo: '', nomeOficial: rawOrNormName };
+
+  // 1. Check custom colaboradores saved in localStorage (contains updated cargos from imports/edits)
+  try {
+    const saved = localStorage.getItem(`colaboradores_${empresaId}`);
+    if (saved) {
+      const list = JSON.parse(saved);
+      if (Array.isArray(list)) {
+        const match = list.find((c: any) => c.nome && String(c.nome).toUpperCase().trim() === norm.toUpperCase().trim());
+        if (match && match.cargo) {
+          let cUpper = String(match.cargo).toUpperCase();
+          let cForm = match.cargo;
+          if (cUpper.includes('EMPILHA')) cForm = 'Empilhador';
+          else if (cUpper.includes('CONFEREN')) cForm = 'Conferente';
+          else if (cUpper.includes('AJUDAN') || cUpper.includes('AUXILIAR')) cForm = 'Ajudante';
+          return { isRegistered: true, cargo: cForm, nomeOficial: match.nome };
+        }
+      }
+    }
+  } catch (e) {}
+
+  // 2. Check official static list
+  const official = LISTA_COLABORADORES_OFICIAIS.find(c => c.nome.toUpperCase().trim() === norm.toUpperCase().trim());
+  if (official) {
+    return { isRegistered: true, cargo: official.cargo, nomeOficial: official.nome };
+  }
+
+  return { isRegistered: false, cargo: '', nomeOficial: norm };
+}
+
+/**
+ * Performs a quick registration or cargo update for a collaborator
+ */
+export function registerQuickCollaborator(nome: string, cargo: string, empresaId: string = 'demo'): void {
+  const cleanName = nome.toUpperCase().trim();
+  let cleanCargo = (cargo || 'Ajudante').trim();
+  const upperC = cleanCargo.toUpperCase();
+  if (upperC.includes('EMPILHA')) cleanCargo = 'Empilhador';
+  else if (upperC.includes('CONFEREN')) cleanCargo = 'Conferente';
+  else if (upperC.includes('AJUDAN') || upperC.includes('AUXILIAR')) cleanCargo = 'Ajudante';
+
+  if (!cleanName) return;
+
+  const key = `colaboradores_${empresaId}`;
+  let list: any[] = [];
+  try {
+    const saved = localStorage.getItem(key);
+    if (saved) list = JSON.parse(saved);
+  } catch (e) {}
+
+  if (!Array.isArray(list)) list = [];
+
+  const existingIdx = list.findIndex(c => String(c.nome).toUpperCase().trim() === cleanName);
+  const funcaoGrp = cleanCargo === 'Empilhador' ? 'Empilhador' : (cleanCargo === 'Conferente' ? 'Operador' : 'Ajudante');
+
+  if (existingIdx >= 0) {
+    list[existingIdx] = { 
+      ...list[existingIdx], 
+      cargo: cleanCargo,
+      funcaoGroup: funcaoGrp,
+      atualizadoEm: new Date().toISOString()
+    };
+  } else {
+    list.push({
+      matricula: `G${1100 + list.length + Math.floor(Math.random() * 800)}`,
+      nome: cleanName,
+      cargo: cleanCargo,
+      turno: 'MANHÃ',
+      funcaoGroup: funcaoGrp,
+      criadoEm: new Date().toISOString()
+    });
+  }
+
+  localStorage.setItem(key, JSON.stringify(list));
+  window.dispatchEvent(new Event('colaboradores_updated'));
+  window.dispatchEvent(new Event('storage'));
+}
+

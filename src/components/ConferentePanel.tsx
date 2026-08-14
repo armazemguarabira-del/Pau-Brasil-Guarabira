@@ -18,8 +18,9 @@ import {
   calculateEfdMetrics 
 } from '../utils/efcEfdManager';
 import { addTmrDemand, getStoredTmrDemands, deleteTmrDemand, updateTmrDemandOperators } from '../utils/tmrManager';
-import { Upload, FileSpreadsheet, CheckCircle2, Clock, AlertTriangle, Truck, Play, Check, Filter, Trash2, Edit3, Plus, X, Calendar, Thermometer, Droplets, AlertCircle, ShieldAlert, Users, Search, ArrowRight } from 'lucide-react';
+import { Upload, FileSpreadsheet, CheckCircle2, Clock, AlertTriangle, Truck, Play, Check, Filter, Trash2, Edit3, Plus, X, Calendar, Thermometer, Droplets, AlertCircle, ShieldAlert, Users, Search, ArrowRight, ExternalLink } from 'lucide-react';
 import ValidadesPanel from './ValidadesPanel';
+import RefugoPanel from './RefugoPanel';
 import TemperaturaImportExportBar from './TemperaturaImportExportBar';
 import { Checklist5SForm, Collaborator5SPerformanceCard } from './Checklist5SModal';
 import { GuiaAcoesOperacionais } from './GuiaAcoesOperacionais';
@@ -47,10 +48,10 @@ interface ConferentePanelProps {
   user: Usuario;
   empresa: Empresa | null;
   theme?: 'light' | 'dark';
-  initialTab?: 'import_placas' | 'rr' | 'tmr' | 'validade';
+  initialTab?: 'import_placas' | 'rr' | 'tmr' | 'validade' | 'retorno_rota' | 'refugo';
 }
 
-export default function ConferentePanel({ user, empresa, initialTab }: ConferentePanelProps) {
+export default function ConferentePanel({ user, empresa, initialTab, theme = 'dark' }: ConferentePanelProps) {
   const empresaId = empresa?.id || 'demo';
   const draftKey = `conferente_draft_${empresaId}_${user.nome || 'guest'}`;
 
@@ -356,8 +357,10 @@ export default function ConferentePanel({ user, empresa, initialTab }: Conferent
     setShowAddAvulsaModal(false);
   };
 
-  // Subtab navigation: 'import_placas' | 'rr' | 'tmr' | 'validade' | 'temperatura' | 'wlp' | '5s'
-  const [panelTab, setPanelTab] = useState<'import_placas' | 'rr' | 'tmr' | 'validade' | 'temperatura' | 'wlp' | '5s'>(initialTab || 'import_placas');
+  // Subtab navigation: 'import_placas' | 'rr' | 'tmr' | 'validade' | 'temperatura' | 'wlp' | '5s' | 'retorno_rota'
+  const [panelTab, setPanelTab] = useState<'import_placas' | 'rr' | 'tmr' | 'validade' | 'temperatura' | 'wlp' | '5s' | 'retorno_rota'>(
+    initialTab === 'refugo' ? 'retorno_rota' : (initialTab as any) || 'import_placas'
+  );
   const [importTableFilter, setImportTableFilter] = useState<'Todos' | 'EFC' | 'EFD' | 'Pernoites'>('Todos');
   const [placaSearchFilter, setPlacaSearchFilter] = useState('');
 
@@ -1277,8 +1280,8 @@ export default function ConferentePanel({ user, empresa, initialTab }: Conferent
         </div>
       </div>
 
-      {/* NAV TABS: Importar Placas (03.11.49.02) | R&R | TMR | Validade | Temp | WLP | 5S */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2 bg-[#151b23] border border-[#222d3a] p-2 rounded-xl w-full">
+      {/* NAV TABS: Importar Placas (03.11.49.02) | R&R | TMR | Validade | Temp | WLP | 5S | Retorno de Rota */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2 bg-[#151b23] border border-[#222d3a] p-2 rounded-xl w-full">
         <button
           onClick={() => setPanelTab('import_placas')}
           className={`px-3 py-2.5 rounded-lg font-sans font-bold text-xs uppercase tracking-wider transition-all border-none cursor-pointer flex items-center justify-center gap-1.5 ${
@@ -1370,6 +1373,18 @@ export default function ConferentePanel({ user, empresa, initialTab }: Conferent
         >
           <CheckCircle2 className="w-4 h-4 shrink-0" />
           <span className="truncate">7. Realização 5S</span>
+        </button>
+
+        <button
+          onClick={() => setPanelTab('retorno_rota')}
+          className={`px-3 py-2.5 rounded-lg font-sans font-bold text-xs uppercase tracking-wider transition-all border-none cursor-pointer flex items-center justify-center gap-1.5 ${
+            panelTab === 'retorno_rota'
+              ? 'bg-indigo-600 text-white font-black shadow-md'
+              : 'text-[#6a7d92] hover:text-white bg-transparent'
+          }`}
+        >
+          <Truck className="w-4 h-4 shrink-0 text-emerald-400" />
+          <span className="truncate">8. Retorno Rota</span>
         </button>
       </div>
 
@@ -3760,6 +3775,90 @@ export default function ConferentePanel({ user, empresa, initialTab }: Conferent
               }} 
             />
           </div>
+        </div>
+      )}
+
+      {/* ── ABA 8: RETORNO DE ROTA ── */}
+      {panelTab === 'retorno_rota' && (
+        <div className="bg-[#11151c] border border-[#222d3a] rounded-2xl p-6 shadow-xl flex flex-col gap-6">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#222d3a] pb-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <Truck className="w-6 h-6 text-emerald-400" />
+                <h3 className="text-lg font-black uppercase tracking-wider text-white">
+                  Retorno de Rota — Operação Conferente / ADM
+                </h3>
+                <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full">
+                  Link Oficial Anexado
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 mt-1">
+                O Conferente/ADM inicia a jornada, clica no link e é redirecionado diretamente para a plataforma de Retorno de Rota.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className={`text-xs font-mono font-bold px-3 py-1.5 rounded-lg border ${
+                shiftStarted 
+                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' 
+                  : 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+              }`}>
+                {shiftStarted ? `✓ Jornada Iniciada às ${shiftStartTime}` : '⚠️ Jornada Não Iniciada'}
+              </span>
+            </div>
+          </div>
+
+          {/* LINK ACCESSIBLE CARD */}
+          <div className="bg-[#151b23] border border-emerald-500/30 rounded-2xl p-6 md:p-8 flex flex-col md:flex-row items-center justify-between gap-6 shadow-xl relative overflow-hidden">
+            <div className="absolute -right-10 -bottom-10 opacity-5 pointer-events-none">
+              <Truck className="w-64 h-64 text-emerald-400" />
+            </div>
+
+            <div className="flex items-start gap-4 z-10">
+              <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl text-emerald-400 shrink-0">
+                <ExternalLink className="w-8 h-8" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-mono font-bold text-amber-400 uppercase tracking-widest">
+                  SISTEMA OFICIAL DE RETORNO DE ROTA
+                </span>
+                <h4 className="text-xl font-black text-white">
+                  PLATAFORMA RETORNO DE ROTA DOS VEÍCULOS
+                </h4>
+                <p className="text-xs text-slate-300 max-w-xl leading-relaxed">
+                  Acesse o sistema externo definitivo para registro de chegada, conferência de vasilhames e checklists de prestação de contas de rotas.
+                </p>
+                <div className="mt-3 inline-flex items-center gap-2 text-[11px] font-mono text-slate-300 bg-[#0d1117] px-3.5 py-2 rounded-xl border border-[#222d3a] w-fit">
+                  <span className="text-emerald-400 font-bold">URL:</span>
+                  <span className="text-emerald-300 underline">https://nixonhenriquegit.github.io/RETORNO-DE-ROTA/</span>
+                </div>
+              </div>
+            </div>
+
+            <a
+              href="https://nixonhenriquegit.github.io/RETORNO-DE-ROTA/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="z-10 py-4 px-6 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-sm uppercase tracking-wider rounded-xl cursor-pointer transition-all shadow-xl shadow-emerald-950/50 flex items-center gap-3 shrink-0 border border-emerald-300 hover:scale-105"
+            >
+              <span>ACESSAR PLATAFORMA DE RETORNO DE ROTA</span>
+              <ExternalLink className="w-5 h-5" />
+            </a>
+          </div>
+
+          {!shiftStarted && (
+            <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-center justify-between text-xs text-amber-300">
+              <span>
+                💡 <strong>Dica Operacional:</strong> Lembre-se de clicar em <strong>INICIAR JORNADA</strong> no topo da página ao começar seu turno para sincronizar seus apontamentos.
+              </span>
+              <button
+                onClick={handleStartShift}
+                className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs uppercase tracking-wider rounded-lg cursor-pointer shrink-0 ml-2"
+              >
+                Iniciar Jornada
+              </button>
+            </div>
+          )}
         </div>
       )}
 

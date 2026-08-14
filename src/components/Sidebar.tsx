@@ -88,7 +88,7 @@ export default function Sidebar({
       label: 'Produtividade',
       subtitle: 'Apontamento & Operações',
       icon: <Zap className="w-5 h-5 text-amber-400" />,
-      subItems: ['ajudante', 'empilhador', 'conferente', 'wlp-dashboard']
+      subItems: ['ajudante', 'empilhador', 'conferente']
     },
     {
       id: 'cat-dashboards',
@@ -108,7 +108,7 @@ export default function Sidebar({
       icon: <Sliders className="w-5 h-5 text-purple-400" />,
       subItems: [
         'plataformas-externas', 'auditoria-dpo', 'treinamentos-qualidade', 'bloqueio-armazem', 'devolucao', 
-        'contagem-inventario', 'gestao-ativos', 'qualidade-puxada', 'gestao-wlp', 
+        'contagem-inventario', 'gestao-ativos', 'qualidade-puxada', 
         'ciclo-carretas', 'politica-estoque', 'simulador-ressuprimento', 'importacao-contagens', 
         'venda-media', 'area-contingencia', 'padronizacao-processos', 'simulacao-acoes', 
         'dn-swot', 'controle', 'dados-retroativos', 'agenda-executiva', 'diario-bordo', 'reunioes', 'semana-qualidade'

@@ -5,6 +5,13 @@ import { Usuario, Empresa, RepackRow, DespejoRow, QuebraRow, ValidadeRow, Armaze
 import { useEmpresaData } from '../context/EmpresaDataContext';
 import * as XLSX from 'xlsx';
 import { 
+  exportWlpModelExcel, 
+  parseWlpExcelFile, 
+  commitWlpImport, 
+  WlpImportPreviewResult, 
+  WlpImportParsedRow 
+} from '../utils/jornadaUtils';
+import { 
   Calendar, 
   ArrowRight, 
   Download, 
@@ -28,7 +35,10 @@ import {
   Target,
   Flame,
   Check,
-  X
+  X,
+  Clock,
+  TrendingUp,
+  Info
 } from 'lucide-react';
 
 interface ExportarPanelProps {
@@ -70,11 +80,19 @@ export default function ExportarPanel({ user, empresa, theme = 'light', onNaviga
   const [opTargetToClear, setOpTargetToClear] = useState<string>('repack');
   const [clearingOp, setClearingOp] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
-  const [importTarget, setImportTarget] = useState<'repack' | 'despejo' | 'quebras' | 'validades' | 'armazem' | 'picking' | 'montagem'>('repack');
+  const [importTarget, setImportTarget] = useState<string>('repack');
   const [replacePrevious, setReplacePrevious] = useState<boolean>(true);
   const [importing, setImporting] = useState(false);
   const [importPreview, setImportPreview] = useState<any[]>([]);
   const [importHeaders, setImportHeaders] = useState<string[]>([]);
+
+  // ── WLP RETROACTIVE JOURNEYS IMPORT STATE ──
+  const [wlpFile, setWlpFile] = useState<File | null>(null);
+  const [wlpParsing, setWlpParsing] = useState(false);
+  const [wlpPreview, setWlpPreview] = useState<WlpImportPreviewResult | null>(null);
+  const [wlpImportSuccessMsg, setWlpImportSuccessMsg] = useState<string | null>(null);
+  const [wlpFilterTerm, setWlpFilterTerm] = useState('');
+  const [committingWlp, setCommittingWlp] = useState(false);
 
   // ── 5. EXPORTAR RELATÓRIOS & BACKUP STATE ──
   const [repack, setRepack] = useState<RepackRow[]>([]);
@@ -128,23 +146,71 @@ export default function ExportarPanel({ user, empresa, theme = 'light', onNaviga
     else if (key === 'armazem') keys.push(`armazem_${empresaId}`, `armazem_rows_${empresaId}`);
     else if (key === 'picking') keys.push(`tasks_${empresaId}`, `picking_rows_${empresaId}`, `tarefas_${empresaId}`);
     else if (key === 'blitz') keys.push(`blitz_${empresaId}`, `blitz_refugo_${empresaId}`);
+    else if (key === 'jornadas') keys.push(`colaboradores_jornadas_${empresaId}`, `wlp_daily_faturado_${empresaId}`);
 
-    const colName = key === 'armazem' ? 'armazem' : key === 'picking' ? 'tarefas' : key === 'blitz' ? 'blitz_refugo' : key;
+    const colName = key === 'armazem' ? 'armazem' : key === 'picking' ? 'tarefas' : key === 'blitz' ? 'blitz_refugo' : key === 'jornadas' ? 'jornadas_colaboradores' : key;
     keys.push(`sync:${empresaId}:${colName}`);
     return { keys, colName };
+  };
+
+  // ── WLP HANDLERS ──
+  const handleWlpFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] || null;
+    if (!file) return;
+    setWlpFile(file);
+    setWlpParsing(true);
+    setWlpImportSuccessMsg(null);
+    try {
+      const res = await parseWlpExcelFile(file, empresaId);
+      setWlpPreview(res);
+    } catch (err: any) {
+      setWlpPreview({
+        success: false,
+        totalRows: 0,
+        novosCount: 0,
+        sobrescreverCount: 0,
+        datasIntervalo: '',
+        colaboradoresUnicosCount: 0,
+        tempoMedioGeralHoras: 0,
+        rendimentoMedioHL: 0,
+        mediaPorCargo: [],
+        rendimentoPorDia: [],
+        rows: [],
+        validationError: 'Erro ao processar planilha: ' + (err?.message || err)
+      });
+    } finally {
+      setWlpParsing(false);
+    }
+  };
+
+  const handleConfirmWlpImport = () => {
+    if (!wlpPreview || !wlpPreview.success) return;
+    setCommittingWlp(true);
+    try {
+      const result = commitWlpImport(wlpPreview, empresaId);
+      setWlpImportSuccessMsg(
+        `✅ Importação de Jornadas concluída com sucesso! ${result.importedCount} registros gravados (${result.newCount} novos e ${result.overwrittenCount} sobrescritos/atualizados). Os dashboards de Produtividade e WLP foram atualizados!`
+      );
+      setWlpPreview(null);
+      setWlpFile(null);
+    } catch (err: any) {
+      alert('Erro ao gravar importação: ' + (err?.message || err));
+    } finally {
+      setCommittingWlp(false);
+    }
   };
 
   // ── APAGAR BASE DE OPERAÇÃO & IMPORTAR NOVA ──
   const handleApagarBaseOperacao = async (opKey: string) => {
     if (opKey === 'ALL') {
       const confirmAll = confirm(
-        '🚨 ATENÇÃO CRÍTICA: Deseja realmente APAGAR TODA A BASE OPERACIONAL DE TODOS OS PROCESSOS DA PLATAFORMA?\n\nEsta ação apagará todo o histórico de Repack, Despejo, Quebras, Validades, Armazém, Picking e Blitz para permitir importar novos arquivos a partir do início do ano!'
+        '🚨 ATENÇÃO CRÍTICA: Deseja realmente APAGAR TODA A BASE OPERACIONAL DE TODOS OS PROCESSOS DA PLATAFORMA?\n\nEsta ação apagará todo o histórico de Repack, Despejo, Quebras, Validades, Armazém, Picking, Blitz e Jornadas WLP para permitir importar novos arquivos a partir do início do ano!'
       );
       if (!confirmAll) return;
 
       setClearingOp(true);
       try {
-        const allOps = ['repack', 'despejo', 'quebras', 'validades', 'armazem', 'picking', 'blitz'];
+        const allOps = ['repack', 'despejo', 'quebras', 'validades', 'armazem', 'picking', 'blitz', 'jornadas'];
         for (const op of allOps) {
           const { keys, colName } = getKeysForOp(op);
           if (db) {
@@ -177,7 +243,8 @@ export default function ExportarPanel({ user, empresa, theme = 'light', onNaviga
       validades: 'Validades (FEFO)',
       armazem: 'Armazém / Carretas (EFC/EFD)',
       picking: 'Picking & Separação',
-      blitz: 'Blitz de Refugo'
+      blitz: 'Blitz de Refugo',
+      jornadas: 'Jornadas / WLP (Pontos & Volume Faturado)'
     };
 
     const opName = mapNames[opKey] || opKey.toUpperCase();
@@ -233,6 +300,11 @@ export default function ExportarPanel({ user, empresa, theme = 'light', onNaviga
   };
 
   const handleDownloadHistoricalSample = (targetKey: string) => {
+    if (targetKey === 'jornadas') {
+      exportWlpModelExcel();
+      return;
+    }
+
     let sampleData: any[] = [];
     let fileName = `Modelo_Importacao_${targetKey.toUpperCase()}_Ano2026.xlsx`;
 
@@ -599,6 +671,7 @@ export default function ExportarPanel({ user, empresa, theme = 'light', onNaviga
                   <option value="armazem">🚛 Armazém e Carretas (EFC/EFD)</option>
                   <option value="picking">📦 Picking e Separação</option>
                   <option value="blitz">🔍 Blitz de Refugo</option>
+                  <option value="jornadas">⏱️ Jornadas / WLP (Pontos & Volume Faturado)</option>
                 </select>
               </div>
 
@@ -657,46 +730,377 @@ export default function ExportarPanel({ user, empresa, theme = 'light', onNaviga
                   <option value="armazem">🚛 Armazém (EFC/EFD)</option>
                   <option value="picking">📦 Picking</option>
                   <option value="blitz">🔍 Blitz de Refugo</option>
+                  <option value="jornadas">⏱️ Jornadas / WLP (Aba Única - Horários & Volume)</option>
                 </select>
               </div>
 
-              <div className="flex items-end">
-                <label className="flex items-center gap-2 cursor-pointer bg-[#0b1222] p-2.5 border border-slate-800 rounded-xl w-full">
+              {importTarget !== 'jornadas' && (
+                <div className="flex items-end">
+                  <label className="flex items-center gap-2 cursor-pointer bg-[#0b1222] p-2.5 border border-slate-800 rounded-xl w-full">
+                    <input
+                      type="checkbox"
+                      checked={replacePrevious}
+                      onChange={(e) => setReplacePrevious(e.target.checked)}
+                      className="accent-rose-500 rounded"
+                    />
+                    <span className="text-xs font-bold text-slate-300">Apagar dados anteriores antes de importar</span>
+                  </label>
+                </div>
+              )}
+            </div>
+
+            {/* IF JORNADAS WLP IS SELECTED */}
+            {importTarget === 'jornadas' ? (
+              <div className="space-y-5 pt-2">
+                {/* WLP FORMAT GUIDELINE BOX */}
+                <div className="bg-[#0b1222] border border-sky-500/30 rounded-2xl p-4 space-y-2">
+                  <div className="flex items-center gap-2 text-sky-400">
+                    <Info className="w-4 h-4" />
+                    <span className="text-xs font-black uppercase tracking-wider">Regras & Formato Obrigatório da Planilha de Jornadas (WLP)</span>
+                  </div>
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    A planilha deve possuir uma <strong>aba única</strong> com os seguintes cabeçalhos na <strong>Linha 1</strong>:
+                  </p>
+                  <div className="bg-[#111a30] p-3 rounded-xl border border-slate-800 text-[11px] font-mono text-sky-300 overflow-x-auto flex flex-wrap gap-2">
+                    <span className="bg-slate-800 px-2 py-1 rounded">Data (DD/MM/AAAA)</span>
+                    <span className="bg-slate-800 px-2 py-1 rounded">Volume Faturado (HL)</span>
+                    <span className="bg-slate-800 px-2 py-1 rounded">Nome Colaborador</span>
+                    <span className="bg-slate-800 px-2 py-1 rounded">Cargo</span>
+                    <span className="bg-slate-800 px-2 py-1 rounded">Hora Inicio (HH:MM)</span>
+                    <span className="bg-slate-800 px-2 py-1 rounded">Hora Fim (HH:MM)</span>
+                    <span className="bg-slate-800 px-2 py-1 rounded">Observações</span>
+                  </div>
+                  <div className="text-[11px] text-slate-400 space-y-1 pt-1">
+                    <p>• <strong>Virada de Dia (Turno Noturno):</strong> Se Hora Fim &lt; Hora Início (ex: 18:00 às 01:30), a duração é calculada automaticamente (7h30 = 7.50h).</p>
+                    <p>• <strong>Normalização de Nomes:</strong> Os nomes são higienizados sem acentos/caracteres para evitar cadastros duplicados no sistema.</p>
+                    <p>• <strong>Sobrescrita Automática:</strong> Se já existir lançamento para o mesmo dia e colaborador, os dados anteriores serão atualizados sem duplicar registros.</p>
+                  </div>
+                </div>
+
+                {/* SUCCESS MESSAGE */}
+                {wlpImportSuccessMsg && (
+                  <div className="bg-emerald-500/10 border border-emerald-500/30 p-4 rounded-2xl flex items-start gap-3">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+                    <div className="text-xs text-emerald-300 font-medium">
+                      {wlpImportSuccessMsg}
+                    </div>
+                  </div>
+                )}
+
+                {/* FILE INPUT */}
+                <div className="relative border-2 border-dashed border-sky-500/40 hover:border-sky-400 rounded-2xl p-6 text-center bg-[#0b1222]/80 transition-colors">
                   <input
-                    type="checkbox"
-                    checked={replacePrevious}
-                    onChange={(e) => setReplacePrevious(e.target.checked)}
-                    className="accent-rose-500 rounded"
+                    type="file"
+                    accept=".csv, .xlsx, .xls"
+                    onChange={handleWlpFileChange}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                   />
-                  <span className="text-xs font-bold text-slate-300">Apagar dados anteriores antes de importar</span>
-                </label>
-              </div>
-            </div>
+                  <FileSpreadsheet className="w-10 h-10 text-sky-400 mx-auto mb-2" />
+                  <span className="text-xs font-black text-white block uppercase tracking-wider">
+                    {wlpFile ? wlpFile.name : 'Clique ou arraste a planilha de Jornadas (.xlsx / .csv) aqui'}
+                  </span>
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Análise determinística em client-side — sem envio para servidores externos.
+                  </p>
+                </div>
 
-            <div className="relative border-2 border-dashed border-slate-700 hover:border-emerald-500 rounded-2xl p-6 text-center bg-[#0b1222]/50 transition-colors">
-              <input
-                type="file"
-                accept=".csv, .xlsx, .xls"
-                onChange={handleFileUpload}
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-              />
-              <FileSpreadsheet className="w-8 h-8 text-slate-400 mx-auto mb-2" />
-              <span className="text-xs font-bold text-white block">
-                {importFile ? importFile.name : 'Clique ou arraste a planilha (CSV/XLSX) aqui'}
-              </span>
-            </div>
+                {/* PARSING SPINNER */}
+                {wlpParsing && (
+                  <div className="bg-[#0b1222] p-6 rounded-2xl border border-slate-800 text-center space-y-2">
+                    <RefreshCw className="w-6 h-6 text-sky-400 animate-spin mx-auto" />
+                    <p className="text-xs font-bold text-white uppercase tracking-wider">Analisando e validando arquivo Excel...</p>
+                  </div>
+                )}
 
-            {importFile && (
-              <div className="flex justify-end pt-2">
-                <button
-                  onClick={handleImportSubmit}
-                  disabled={importing}
-                  className="px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs uppercase tracking-wider rounded-xl cursor-pointer shadow-md flex items-center gap-2"
-                >
-                  {importing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-                  Confirmar e Salvar Nova Base
-                </button>
+                {/* VALIDATION ERROR DISPLAY */}
+                {wlpPreview && !wlpPreview.success && (
+                  <div className="bg-rose-500/10 border border-rose-500/30 p-5 rounded-2xl space-y-2">
+                    <div className="flex items-center gap-2 text-rose-400 font-black text-xs uppercase tracking-wider">
+                      <AlertTriangle className="w-5 h-5" />
+                      Falha na Validação da Planilha
+                    </div>
+                    <p className="text-xs text-rose-200 font-mono bg-[#0b1222] p-3 rounded-xl border border-rose-900/40">
+                      {wlpPreview.validationError}
+                    </p>
+                    <p className="text-[11px] text-slate-400">
+                      Corrija a linha informada no arquivo e faça o upload novamente para prosseguir.
+                    </p>
+                  </div>
+                )}
+
+                {/* PREVIEW DASHBOARD & CONFIRMATION */}
+                {wlpPreview && wlpPreview.success && (
+                  <div className="bg-[#0b1222] border border-slate-800 rounded-2xl p-5 space-y-5">
+                    {/* LARGE FILE WARNING ALERT */}
+                    {wlpPreview.warningLargeFile && (
+                      <div className="bg-amber-500/10 border border-amber-500/30 p-4 rounded-2xl flex items-center gap-3">
+                        <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
+                        <span className="text-xs text-amber-200 font-bold">{wlpPreview.warningLargeFile}</span>
+                      </div>
+                    )}
+
+                    {/* TOP HEADER */}
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
+                      <div>
+                        <h4 className="text-xs font-black text-white uppercase tracking-wider flex items-center gap-2">
+                          <Clock className="w-4 h-4 text-sky-400" />
+                          Prévia da Importação — Intervalo: {wlpPreview.datasIntervalo}
+                        </h4>
+                        <p className="text-[10px] text-slate-400">
+                          Revise as linhas válidas, pendências e estatísticas calculadas antes de gravar na base.
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => { setWlpPreview(null); setWlpFile(null); }}
+                          className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl cursor-pointer"
+                        >
+                          Cancelar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleConfirmWlpImport}
+                          disabled={committingWlp}
+                          className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs uppercase tracking-wider rounded-xl cursor-pointer shadow-lg flex items-center gap-2"
+                        >
+                          {committingWlp ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                          Confirmar e Gravar ({wlpPreview.importedCount} Válidos)
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* KPI CARDS GRID */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2.5">
+                      <div className="bg-[#111a30] p-3 rounded-xl border border-slate-800 text-center">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase block">Linhas Lidas</span>
+                        <span className="text-lg font-black text-white">{wlpPreview.totalRows}</span>
+                      </div>
+
+                      <div className="bg-emerald-500/10 p-3 rounded-xl border border-emerald-500/20 text-center">
+                        <span className="text-[9px] font-bold text-emerald-400 uppercase block">✨ Válidas (Importar)</span>
+                        <span className="text-lg font-black text-emerald-300">{wlpPreview.importedCount}</span>
+                      </div>
+
+                      <div className={`p-3 rounded-xl border text-center ${wlpPreview.pendenciasCount > 0 ? 'bg-amber-500/10 border-amber-500/30' : 'bg-[#111a30] border-slate-800'}`}>
+                        <span className={`text-[9px] font-bold uppercase block ${wlpPreview.pendenciasCount > 0 ? 'text-amber-400' : 'text-slate-400'}`}>⚠️ Pendências</span>
+                        <span className={`text-lg font-black ${wlpPreview.pendenciasCount > 0 ? 'text-amber-300' : 'text-slate-400'}`}>{wlpPreview.pendenciasCount}</span>
+                      </div>
+
+                      <div className="bg-amber-500/10 p-3 rounded-xl border border-amber-500/20 text-center">
+                        <span className="text-[9px] font-bold text-amber-400 uppercase block">🔄 Sobrescrever</span>
+                        <span className="text-lg font-black text-amber-300">{wlpPreview.sobrescreverCount}</span>
+                      </div>
+
+                      <div className="bg-[#111a30] p-3 rounded-xl border border-slate-800 text-center">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase block">Colaboradores</span>
+                        <span className="text-lg font-black text-sky-400">{wlpPreview.colaboradoresUnicosCount}</span>
+                      </div>
+
+                      <div className="bg-[#111a30] p-3 rounded-xl border border-slate-800 text-center">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase block">Duração Média</span>
+                        <span className="text-lg font-black text-purple-400">{wlpPreview.tempoMedioGeralHoras}h</span>
+                      </div>
+
+                      <div className="bg-[#111a30] p-3 rounded-xl border border-slate-800 text-center">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase block">Rendimento Médio</span>
+                        <span className="text-lg font-black text-emerald-400">{wlpPreview.rendimentoMedioHL} <span className="text-[9px]">HL/colab</span></span>
+                      </div>
+                    </div>
+
+                    {/* ALERTA DE COLABORADORES NÃO CADASTRADOS */}
+                    {wlpPreview.colaboradoresNaoCadastrados && wlpPreview.colaboradoresNaoCadastrados.length > 0 && (
+                      <div className="bg-sky-500/10 border border-sky-500/30 p-3.5 rounded-2xl space-y-2">
+                        <div className="flex items-center gap-2 text-sky-300 text-xs font-black uppercase tracking-wider">
+                          <Users className="w-4 h-4" />
+                          Colaboradores não encontrados no cadastro oficial ({wlpPreview.colaboradoresNaoCadastrados.length}):
+                        </div>
+                        <p className="text-[11px] text-slate-300">
+                          Estes colaboradores receberam cargo padrão e serão <strong>cadastrados automaticamente</strong> ao confirmar a importação:
+                        </p>
+                        <div className="flex flex-wrap gap-1.5 pt-1">
+                          {wlpPreview.colaboradoresNaoCadastrados.map(name => (
+                            <span key={name} className="px-2.5 py-1 bg-[#111a30] border border-sky-500/30 text-sky-200 text-[11px] font-bold rounded-lg font-mono">
+                              {name}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* PENDÊNCIAS LISTING IF ANY */}
+                    {wlpPreview.pendencias && wlpPreview.pendencias.length > 0 && (
+                      <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2 text-amber-400 font-black text-xs uppercase tracking-wider">
+                            <AlertTriangle className="w-4 h-4" />
+                            Linhas com Pendência / Incompletas ({wlpPreview.pendencias.length}) — Não Descartadas
+                          </div>
+                          <span className="text-[10px] text-amber-300 font-bold">
+                            Estas linhas serão ignoradas na gravação automática até correção
+                          </span>
+                        </div>
+
+                        <div className="overflow-x-auto max-h-48 rounded-xl border border-amber-500/20 bg-[#111a30]">
+                          <table className="w-full text-left text-xs text-slate-300">
+                            <thead className="bg-[#0b1222] text-[10px] uppercase font-bold text-amber-400 sticky top-0">
+                              <tr>
+                                <th className="p-2">Linha</th>
+                                <th className="p-2">Data</th>
+                                <th className="p-2">Colaborador</th>
+                                <th className="p-2">Início/Fim</th>
+                                <th className="p-2">Motivo da Pendência</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-800 font-mono text-[11px]">
+                              {wlpPreview.pendencias.map(p => (
+                                <tr key={`pend-${p.lineNum}-${p.colaboradorNomeOriginal}`} className="hover:bg-slate-800/50">
+                                  <td className="p-2 text-amber-300 font-bold">{p.lineNum}</td>
+                                  <td className="p-2">{p.dataStr}</td>
+                                  <td className="p-2 font-sans font-bold text-white">{p.colaboradorNomeOriginal}</td>
+                                  <td className="p-2 text-slate-400">{p.horaInicio || '--:--'} às {p.horaFim || '--:--'}</td>
+                                  <td className="p-2 text-rose-300 font-sans font-bold">{p.motivo}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* MEDIAS POR CARGO */}
+                    <div className="space-y-2">
+                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">
+                        ⏱️ Média de Tempo de Jornada por Cargo:
+                      </span>
+                      <div className="flex flex-wrap gap-2">
+                        {wlpPreview.mediaPorCargo.map(c => (
+                          <div key={c.cargo} className="bg-[#111a30] border border-slate-800 px-3 py-1.5 rounded-xl text-xs font-bold text-slate-200 flex items-center gap-2">
+                            <span className="text-sky-400">{c.cargo}:</span>
+                            <span className="text-white font-mono">{c.mediaHoras}h</span>
+                            <span className="text-[10px] text-slate-400 font-normal">({c.count} reg)</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* RENDIMENTO POR DIA */}
+                    <div className="space-y-2">
+                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">
+                        📦 Rendimento Calculado por Dia (Volume Faturado ÷ Nº Colaboradores Ativos):
+                      </span>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 max-h-48 overflow-y-auto pr-1">
+                        {wlpPreview.rendimentoPorDia.map(d => (
+                          <div key={d.dataISO} className="bg-[#111a30] border border-slate-800 p-2.5 rounded-xl text-xs flex items-center justify-between">
+                            <div>
+                              <span className="font-bold text-white block">{d.dataStr}</span>
+                              <span className="text-[10px] text-slate-400">{d.volumeHL} HL • {d.colabsCount} colabs</span>
+                            </div>
+                            <span className="font-black text-emerald-400 font-mono">{d.rendimentoHL} HL/colab</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* DETAILED ROWS TABLE PREVIEW */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">
+                          📋 Registros Válidos a Importar ({wlpPreview.rows.length}):
+                        </span>
+
+                        <div className="relative w-48 sm:w-64">
+                          <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+                          <input
+                            type="text"
+                            placeholder="Filtrar por nome ou cargo..."
+                            value={wlpFilterTerm}
+                            onChange={(e) => setWlpFilterTerm(e.target.value)}
+                            className="w-full bg-[#111a30] border border-slate-800 text-white text-xs pl-8 pr-3 py-1.5 rounded-xl outline-none"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="overflow-x-auto max-h-64 rounded-xl border border-slate-800">
+                        <table className="w-full text-left text-xs text-slate-300">
+                          <thead className="bg-[#111a30] text-[10px] uppercase font-bold text-slate-400 sticky top-0">
+                            <tr>
+                              <th className="p-2.5">Linha</th>
+                              <th className="p-2.5">Data</th>
+                              <th className="p-2.5">Colaborador</th>
+                              <th className="p-2.5">Cargo</th>
+                              <th className="p-2.5">Horário</th>
+                              <th className="p-2.5">Duração</th>
+                              <th className="p-2.5">Rendimento Dia</th>
+                              <th className="p-2.5">Status Base</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-800/60 font-mono">
+                            {wlpPreview.rows
+                              .filter(r => !wlpFilterTerm || r.colaboradorNomeNormalizado.toLowerCase().includes(wlpFilterTerm.toLowerCase()) || r.cargo.toLowerCase().includes(wlpFilterTerm.toLowerCase()))
+                              .map(r => (
+                                <tr key={`${r.lineNum}-${r.dataISO}-${r.colaboradorNomeNormalizado}`} className="hover:bg-slate-800/40">
+                                  <td className="p-2.5 text-slate-500">{r.lineNum}</td>
+                                  <td className="p-2.5 font-bold text-white">{r.dataStr}</td>
+                                  <td className="p-2.5 font-sans font-bold text-sky-200">
+                                    {r.colaboradorNomeNormalizado}
+                                  </td>
+                                  <td className="p-2.5 font-sans text-slate-300">{r.cargo}</td>
+                                  <td className="p-2.5 text-slate-200">
+                                    {r.horaInicio} – {r.horaFim} {r.isOvernight && <span className="text-[10px] text-amber-400 font-sans font-bold">(Noturno)</span>}
+                                  </td>
+                                  <td className="p-2.5 font-bold text-purple-300">{r.duracaoHoras}h</td>
+                                  <td className="p-2.5 text-emerald-400 font-bold">{r.rendimentoDiaHL} HL</td>
+                                  <td className="p-2.5 font-sans">
+                                    {r.isOverwrite ? (
+                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                                        🔄 SOBRESCREVER
+                                      </span>
+                                    ) : (
+                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                                        ✨ NOVO
+                                      </span>
+                                    )}
+                                  </td>
+                                </tr>
+                              ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
+            ) : (
+              /* STANDARD FILE INPUT FOR OTHER OPERATIONS */
+              <>
+                <div className="relative border-2 border-dashed border-slate-700 hover:border-emerald-500 rounded-2xl p-6 text-center bg-[#0b1222]/50 transition-colors">
+                  <input
+                    type="file"
+                    accept=".csv, .xlsx, .xls"
+                    onChange={handleFileUpload}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                  />
+                  <FileSpreadsheet className="w-8 h-8 text-slate-400 mx-auto mb-2" />
+                  <span className="text-xs font-bold text-white block">
+                    {importFile ? importFile.name : 'Clique ou arraste a planilha (CSV/XLSX) aqui'}
+                  </span>
+                </div>
+
+                {importFile && (
+                  <div className="flex justify-end pt-2">
+                    <button
+                      onClick={handleImportSubmit}
+                      disabled={importing}
+                      className="px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs uppercase tracking-wider rounded-xl cursor-pointer shadow-md flex items-center gap-2"
+                    >
+                      {importing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                      Confirmar e Salvar Nova Base
+                    </button>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>

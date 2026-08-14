@@ -84,6 +84,7 @@ import { DiarioBordoComponent } from './DiarioBordoComponent';
 import { ReunioesComponent } from './ReunioesComponent';
 import { FluxogramaDemandasComponent } from './FluxogramaDemandasComponent';
 import { WlpDashboard } from './WlpDashboard';
+import { WorkstationGatilhosBoard } from './WorkstationGatilhosBoard';
 import { collection, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useEmpresaData } from '../context/EmpresaDataContext';
@@ -265,7 +266,7 @@ export default function DashboardOverview({
   });
 
   // Workstation Subtab Navigation
-  const [workstationTab, setWorkstationTab] = useState<'operacao' | '5s' | 'matriz' | 'desvios' | 'agenda' | 'diario_bordo' | 'reunioes' | 'fluxograma' | 'wlp'>(() => {
+  const [workstationTab, setWorkstationTab] = useState<'operacao' | '5s' | 'matriz' | 'desvios' | 'gatilhos' | 'agenda' | 'diario_bordo' | 'reunioes' | 'fluxograma' | 'wlp'>(() => {
     if (initialTab && (initialTab !== 'desvios' || isSupervisorOrAdmin)) {
       return initialTab;
     }
@@ -1008,6 +1009,19 @@ export default function DashboardOverview({
           </button>
         )}
 
+        <button
+          type="button"
+          onClick={() => setWorkstationTab('gatilhos')}
+          className={`px-3 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2 shadow-sm ${
+            workstationTab === 'gatilhos'
+              ? 'bg-[#032b5e] text-white border-2 border-amber-500 shadow-md ring-2 ring-amber-500/20'
+              : 'bg-[#0b1222] text-slate-400 hover:text-white border border-slate-800 hover:border-slate-700'
+          }`}
+        >
+          <Zap className="w-4 h-4 text-amber-400 shrink-0" />
+          <span className="truncate">Gatilhos</span>
+        </button>
+
         {viewMode !== 'operacional' && (
           <>
             <button
@@ -1048,30 +1062,9 @@ export default function DashboardOverview({
               <BookOpen className="w-4 h-4 text-amber-400 shrink-0" />
               <span className="truncate">Diário de Bordo</span>
             </button>
-
-            <button
-              type="button"
-              onClick={() => setWorkstationTab('wlp')}
-              className={`px-3 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2 shadow-sm ${
-                workstationTab === 'wlp'
-                  ? 'bg-[#032b5e] text-white border-2 border-amber-500 shadow-md ring-2 ring-amber-500/20'
-                  : 'bg-[#0b1222] text-slate-400 hover:text-white border border-slate-800 hover:border-slate-700'
-              }`}
-            >
-              <BarChart3 className="w-4 h-4 text-amber-400 shrink-0" />
-              <span className="truncate">Dashboard WLP</span>
-            </button>
           </>
         )}
       </div>
-
-      {/* TELA DA GUIA WLP */}
-      {workstationTab === 'wlp' && (
-        <WlpDashboard
-          user={user}
-          empresaId={empresa?.id}
-        />
-      )}
 
       {/* TELA DA GUIA 5S */}
       {workstationTab === '5s' && (
@@ -1162,6 +1155,15 @@ export default function DashboardOverview({
       {/* TELA DA GUIA DESVIOS E AÇÕES */}
       {workstationTab === 'desvios' && isSupervisorOrAdmin && viewMode !== 'operacional' && (
         <QuadroDesviosEAcoes empresaId={empresa?.id} user={user} onNavigateToAcoes={() => onNavigate && onNavigate('acoes')} />
+      )}
+
+      {/* TELA DA GUIA GATILHOS (QUADRO DE DESVIOS DIÁRIOS E GATILHOS OPERACIONAIS) */}
+      {workstationTab === 'gatilhos' && (
+        <WorkstationGatilhosBoard
+          user={user}
+          empresaId={empresa?.id}
+          onNavigateToAcoes={() => onNavigate && onNavigate('acoes')}
+        />
       )}
 
       {/* TELA DA GUIA AGENDA EXECUTIVA */}

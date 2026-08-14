@@ -91,14 +91,6 @@ export const CATEGORY_DEFINITIONS: Record<
         icon: <ClipboardCheck className="w-5 h-5 text-teal-400" />,
         badge: 'Conferência',
         color: 'border-teal-500/30 bg-teal-500/5 hover:border-teal-500/60'
-      },
-      {
-        id: 'wlp-dashboard',
-        label: 'Dashboard WLP (HL/HH)',
-        description: 'Produtividade Workload Planning, jornadas de trabalho, faturamento diário (21h) e desvios DPO.',
-        icon: <Clock className="w-5 h-5 text-amber-400" />,
-        badge: 'WLP & DPO',
-        color: 'border-amber-500/30 bg-amber-500/5 hover:border-amber-500/60'
       }
     ]
   },
@@ -275,14 +267,6 @@ export const CATEGORY_DEFINITIONS: Record<
         icon: <Truck className="w-5 h-5 text-teal-400" />,
         badge: 'Puxada',
         color: 'border-teal-500/30 bg-teal-500/5 hover:border-teal-500/60'
-      },
-      {
-        id: 'gestao-wlp',
-        label: 'Gestão do WLP',
-        description: 'Nivelamento de carga de trabalho e planejamento de jornada (WLP).',
-        icon: <Clock className="w-5 h-5 text-sky-400" />,
-        badge: 'WLP',
-        color: 'border-sky-500/30 bg-sky-500/5 hover:border-sky-500/60'
       },
       {
         id: 'ciclo-carretas',

@@ -37,6 +37,7 @@ import EficienciaMontagemPanel from './components/EficienciaMontagemPanel';
 import TreeKpiViewer from './components/TreeKpiViewer';
 import CadastrosPanel from './components/CadastrosPanel';
 import QualidadePanel from './components/QualidadePanel';
+import SemanaQualidadePanel from './components/SemanaQualidadePanel';
 import DnSwotPanel from './components/DnSwotPanel';
 import AuditoriaDpoPanel from './components/AuditoriaDpoPanel';
 import CategoryIndexPanel from './components/CategoryIndexPanel';
@@ -775,6 +776,8 @@ export default function App() {
         return <RankingModule user={user} />;
       case 'qualidade':
         return <QualidadePanel user={user} empresa={empresa} theme={theme} />;
+      case 'semana-qualidade':
+        return <SemanaQualidadePanel user={user} theme={theme} />;
       case 'eficiencia-montagem':
         return <EficienciaMontagemPanel user={user} />;
       case 'kpi-arvore':
@@ -902,6 +905,13 @@ export default function App() {
           title: 'QUALIDADE - 5S, Temperatura & Pragas',
           subtitle: 'Gestão integrada do Controle de Temperatura do Armazém, Programa 5S de 14 Setores e Laudos Quinzenais de Pragas (PDF).',
           color: 'from-amber-500/10 to-transparent'
+        };
+      case 'semana-qualidade':
+        return {
+          breadcrumbs: ['Ferramentas de Gestão', 'Semana da Qualidade'],
+          title: 'Dashboard Semana da Qualidade (1º e 2º Semestre)',
+          subtitle: 'Gestão das edições semestrais, registro de assuntos, datas, caminhos no gerenciador de arquivos e anexos de atas.',
+          color: 'from-emerald-500/10 to-transparent'
         };
       case 'repack-dashboard':
         return {

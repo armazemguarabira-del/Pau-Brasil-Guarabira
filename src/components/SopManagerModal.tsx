@@ -11,7 +11,7 @@ interface SopManagerModalProps {
 }
 
 export function SopManagerModal({ operation, operationName, isOpen, onClose, theme = 'light' }: SopManagerModalProps) {
-  const [sop, setSop] = useState<SopDocument>(() => getSopForOperation(operation));
+  const [sop, setSop] = useState<any>(() => getSopForOperation(operation));
   const [newStepText, setNewStepText] = useState('');
   const [uploadedFileName, setUploadedFileName] = useState<string | undefined>(sop.fileName);
   const [savedSuccess, setSavedSuccess] = useState(false);
