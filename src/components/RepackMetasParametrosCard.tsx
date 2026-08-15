@@ -24,7 +24,6 @@ interface RepackMetasParametrosCardProps {
   onUpdateEmbalagemMeta: (key: string, newSec: number) => void;
   onResetEmbalagens: () => void;
   isManager?: boolean;
-  processo?: 'repack' | 'despejo';
 }
 
 export function RepackMetasParametrosCard({
@@ -34,11 +33,8 @@ export function RepackMetasParametrosCard({
   embalagensConfig,
   onUpdateEmbalagemMeta,
   onResetEmbalagens,
-  isManager = true,
-  processo = 'repack'
+  isManager = true
 }: RepackMetasParametrosCardProps) {
-  const isDespejo = processo === 'despejo';
-  const processLabel = isDespejo ? 'Despejo' : 'Repack';
   const [isExpanded, setIsExpanded] = useState(true);
 
   // Edit states for Meta 1 (Produtividade cx/h)
@@ -91,7 +87,7 @@ export function RepackMetasParametrosCard({
           <div>
             <div className="flex items-center gap-2">
               <h3 className="text-sm font-black tracking-wide text-white">
-                Manual de Instrução & Parâmetros de Meta — Processo de {processLabel}
+                Manual de Instrução & Parâmetros de Meta — Processo de Repack
               </h3>
               <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
                 PADRÃO DPO
@@ -118,10 +114,10 @@ export function RepackMetasParametrosCard({
       {isExpanded && (
         <div className="p-4 sm:p-5 space-y-5 bg-slate-50/60 dark:bg-slate-950/50">
           
-          {/* AS 2 METAS OFICIAIS (APENAS ESTAS DUAS) */}
+          {/* AS 2 METAS OFICIAIS DE REPACK (APENAS ESTAS DUAS) */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
             
-            {/* META 1: PRODUTIVIDADE (CAIXAS POR HORA) */}
+            {/* META 1: PRODUTIVIDADE REPACK (CAIXAS POR HORA) */}
             <div className="lg:col-span-5 p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xs flex flex-col justify-between space-y-3">
               <div className="space-y-2.5">
                 <div className="flex items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-800 pb-2">
@@ -134,7 +130,7 @@ export function RepackMetasParametrosCard({
                         Meta 1 • Ritmo Operacional
                       </span>
                       <span className="text-xs font-black text-slate-900 dark:text-slate-100">
-                        Produtividade {processLabel}
+                        Produtividade Repack
                       </span>
                     </div>
                   </div>

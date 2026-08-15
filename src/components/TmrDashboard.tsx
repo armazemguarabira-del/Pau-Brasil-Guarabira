@@ -6,7 +6,6 @@ import { useSystemTargets } from '../utils/useSystemTargets';
 import { ManualInstrucaoCard, MetricDefinition } from './ManualInstrucaoCard';
 import { IndicatorMetaHeader } from './IndicatorMetaHeader';
 import { SopBannerViewer } from './SopBannerViewer';
-import { IndicatorActionModal } from './IndicatorActionModal';
 import { 
   Clock, 
   Truck, 
@@ -52,7 +51,6 @@ export default function TmrDashboard({ user, empresa, theme = 'dark', onBack }: 
   const [tmrDemands, setTmrDemands] = useState<TmrDemand[]>(() => getStoredTmrDemands(empresaId));
   const [efcVehicles, setEfcVehicles] = useState<EfcEfdVehicle[]>(() => getStoredEfcVehicles(empresaId));
   const [showPopModal, setShowPopModal] = useState(false);
-  const [isActionModalOpen, setIsActionModalOpen] = useState(false);
   const [dateFilter, setDateFilter] = useState<'hoje' | '7dias' | 'mes' | 'todos'>('todos');
 
   useEffect(() => {
@@ -294,13 +292,6 @@ export default function TmrDashboard({ user, empresa, theme = 'dark', onBack }: 
             className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600/20 text-blue-300 border border-blue-500/30 hover:bg-blue-600/30 rounded-xl text-xs font-bold transition-all cursor-pointer"
           >
             <FileText className="w-4 h-4 text-blue-400" /> POP TMR
-          </button>
-
-          <button
-            onClick={() => setIsActionModalOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-xs font-black transition-all cursor-pointer border border-blue-400/30 shadow-xs uppercase tracking-wider"
-          >
-            <CheckCircle2 className="w-4 h-4 text-emerald-300" /> Plano de Ações (Operadores)
           </button>
 
           {/* DATE FILTER */}
@@ -684,20 +675,6 @@ export default function TmrDashboard({ user, empresa, theme = 'dark', onBack }: 
           operationName="TMR (Tempo Médio de Revenda)"
         />
       )}
-
-      {/* DEDICATED ACTION MODAL (FILTERED FOR OPERADORES / RESSUPRIMENTO / TMR / EFC / EFD) */}
-      <IndicatorActionModal
-        isOpen={isActionModalOpen}
-        onClose={() => setIsActionModalOpen(false)}
-        indicatorTitle="Operadores, Ressuprimento & TMR"
-        indicatorSubtitle="Visualizando e gerenciando apenas os planos de ação e contramedidas 5W2H direcionados a Ressuprimento, Reabastecimento, EFC/EFD e TMR."
-        indicatorBadge="TMR & OPERADORES"
-        allowedProcessos={['Ressuprimento', 'Reabastecimento', 'EFC', 'EFD', 'TMR', 'Produtividade Operador', 'Empilhador', 'Conferente', 'Ajudante']}
-        defaultProcesso="TMR"
-        defaultIndicador="Tempo Médio de Revenda e Produtividade de Ressuprimento"
-        defaultMeta="≤ 50 min (Recargas) / ≤ 150 min (Carretas)"
-        user={user}
-      />
     </div>
   );
 }

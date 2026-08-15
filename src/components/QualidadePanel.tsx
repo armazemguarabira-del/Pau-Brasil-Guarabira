@@ -33,7 +33,6 @@ import {
 import { Usuario, Empresa } from '../types';
 import { Checklist5SModal, ImportExport5SModal } from './Checklist5SModal';
 import { RondaGsaComponent } from './RondaGsaComponent';
-import { IndicatorActionModal } from './IndicatorActionModal';
 import { OperationalNotificationBell } from './OperationalNotificationBell';
 import { db } from '../firebase';
 import { collection, addDoc, doc, setDoc } from 'firebase/firestore';
@@ -396,7 +395,6 @@ export default function QualidadePanel({ user, empresa, theme = 'dark' }: Qualid
   const [is5SModalOpen, setIs5SModalOpen] = useState(false);
   const [is5SImportModalOpen, setIs5SImportModalOpen] = useState(false);
   const [selected5SSetor, setSelected5SSetor] = useState('PICKING');
-  const [isActionModalOpen, setIsActionModalOpen] = useState(false);
   const [audits5S, setAudits5S] = useState<any[]>(() => {
     try {
       const saved = localStorage.getItem('af_5s_audits') || localStorage.getItem('5s_audits_history');
@@ -851,59 +849,49 @@ export default function QualidadePanel({ user, empresa, theme = 'dark' }: Qualid
         </div>
 
         {/* NAVEGAÇÃO DE SUB-ABAS DE QUALIDADE */}
-        <div className="flex flex-wrap items-center justify-between gap-2 mt-6 pt-4 border-t border-slate-800">
-          <div className="flex items-center gap-2 overflow-x-auto">
-            <button
-              onClick={() => setActiveSubTab('temperatura')}
-              className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap ${
-                activeSubTab === 'temperatura'
-                  ? 'bg-cyan-500 text-slate-950 font-black shadow-lg shadow-cyan-500/20'
-                  : 'bg-[#0b1222] text-slate-400 hover:text-white border border-slate-800'
-              }`}
-            >
-              <Thermometer className="w-4 h-4" /> 1. Controle de Temperatura do Armazém
-            </button>
-
-            <button
-              onClick={() => setActiveSubTab('5s')}
-              className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap ${
-                activeSubTab === '5s'
-                  ? 'bg-amber-500 text-slate-950 font-black shadow-lg shadow-amber-500/20'
-                  : 'bg-[#0b1222] text-slate-400 hover:text-white border border-slate-800'
-              }`}
-            >
-              <ShieldCheck className="w-4 h-4" /> 2. Programa 5S & Desempenho por Área (14 Locais)
-            </button>
-
-            <button
-              onClick={() => setActiveSubTab('pragas')}
-              className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap ${
-                activeSubTab === 'pragas'
-                  ? 'bg-emerald-500 text-slate-950 font-black shadow-lg shadow-emerald-500/20'
-                  : 'bg-[#0b1222] text-slate-400 hover:text-white border border-slate-800'
-              }`}
-            >
-              <Bug className="w-4 h-4" /> 3. Controle Quinzenal de Pragas (Importação PDF)
-            </button>
-
-            <button
-              onClick={() => setActiveSubTab('ronda_gsa')}
-              className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap ${
-                activeSubTab === 'ronda_gsa'
-                  ? 'bg-blue-600 text-white font-black shadow-lg shadow-blue-500/20'
-                  : 'bg-[#0b1222] text-slate-400 hover:text-white border border-slate-800'
-              }`}
-            >
-              <ClipboardList className="w-4 h-4 text-blue-400" /> 4. Ronda de Qualidade Semanal GSA
-            </button>
-          </div>
+        <div className="flex items-center gap-2 mt-6 pt-4 border-t border-slate-800 overflow-x-auto">
+          <button
+            onClick={() => setActiveSubTab('temperatura')}
+            className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap ${
+              activeSubTab === 'temperatura'
+                ? 'bg-cyan-500 text-slate-950 font-black shadow-lg shadow-cyan-500/20'
+                : 'bg-[#0b1222] text-slate-400 hover:text-white border border-slate-800'
+            }`}
+          >
+            <Thermometer className="w-4 h-4" /> 1. Controle de Temperatura do Armazém
+          </button>
 
           <button
-            onClick={() => setIsActionModalOpen(true)}
-            className="px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-lg border border-blue-400/30 shrink-0"
+            onClick={() => setActiveSubTab('5s')}
+            className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap ${
+              activeSubTab === '5s'
+                ? 'bg-amber-500 text-slate-950 font-black shadow-lg shadow-amber-500/20'
+                : 'bg-[#0b1222] text-slate-400 hover:text-white border border-slate-800'
+            }`}
           >
-            <CheckCircle2 className="w-4 h-4 text-emerald-300" />
-            Plano de Ações (Qualidade & 5S)
+            <ShieldCheck className="w-4 h-4" /> 2. Programa 5S & Desempenho por Área (14 Locais)
+          </button>
+
+          <button
+            onClick={() => setActiveSubTab('pragas')}
+            className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap ${
+              activeSubTab === 'pragas'
+                ? 'bg-emerald-500 text-slate-950 font-black shadow-lg shadow-emerald-500/20'
+                : 'bg-[#0b1222] text-slate-400 hover:text-white border border-slate-800'
+            }`}
+          >
+            <Bug className="w-4 h-4" /> 3. Controle Quinzenal de Pragas (Importação PDF)
+          </button>
+
+          <button
+            onClick={() => setActiveSubTab('ronda_gsa')}
+            className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap ${
+              activeSubTab === 'ronda_gsa'
+                ? 'bg-blue-600 text-white font-black shadow-lg shadow-blue-500/20'
+                : 'bg-[#0b1222] text-slate-400 hover:text-white border border-slate-800'
+            }`}
+          >
+            <ClipboardList className="w-4 h-4 text-blue-400" /> 4. Ronda de Qualidade Semanal GSA
           </button>
         </div>
       </div>
@@ -2307,20 +2295,6 @@ export default function QualidadePanel({ user, empresa, theme = 'dark' }: Qualid
         isOpen={is5SImportModalOpen}
         onClose={() => setIs5SImportModalOpen(false)}
         onDataUpdated={reloadAudits}
-      />
-
-      {/* DEDICATED ACTION MODAL (FILTERED FOR QUALIDADE, 5S, TEMPERATURA, RODA DE QUALIDADE, CONTROLE DE PRAGAS) */}
-      <IndicatorActionModal
-        isOpen={isActionModalOpen}
-        onClose={() => setIsActionModalOpen(false)}
-        indicatorTitle="Qualidade, 5S & Conformidade"
-        indicatorSubtitle="Visualizando e gerenciando apenas os planos de ação e contramedidas 5W2H de 5S, Temperatura, Roda de Qualidade, Ronda GSA e Controle de Pragas."
-        indicatorBadge="QUALIDADE DPO"
-        allowedProcessos={['5S', 'Temperatura', 'Roda de Qualidade', 'Ronda GSA', 'Controle de Pragas', 'Qualidade', 'GSA', 'Pragas']}
-        defaultProcesso="Qualidade"
-        defaultIndicador="Conformidade de Qualidade (5S, Temperatura, Ronda GSA e Pragas)"
-        defaultMeta="100% Conformidade / 5S ≥ 80%"
-        user={user}
       />
     </div>
   );

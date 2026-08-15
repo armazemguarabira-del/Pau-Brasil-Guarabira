@@ -1,6 +1,5 @@
 import { ManualInstrucaoCard } from './ManualInstrucaoCard';
 import { SopBannerViewer } from './SopBannerViewer';
-import { IndicatorActionModal } from './IndicatorActionModal';
 import React, { useState, useEffect, useMemo } from 'react';
 import { calculateStockAgeIndex, calculateStockAgeSummary } from '../utils/calculateStockAgeIndex';
 import { MATRIZ_BLOCOS_CONFIG, validarPosicionamentoLayout, getDistanciaPickingScore, getBlocoIdealParaCurva, calcularQuebrasFefoEstoqueXEstoque, calcularQuebrasFefoEstoqueXPicking } from '../utils/matrizBlocos';
@@ -292,7 +291,6 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
   const [viewUnit, setViewUnit] = useState<'u' | 'he'>('u');
   const [selectedBlock, setSelectedBlock] = useState<string>('A4');
   const [showSopViewer, setShowSopViewer] = useState(false);
-  const [isActionModalOpen, setIsActionModalOpen] = useState(false);
 
   // Recontagem Modal state
   const [recontagemModal, setRecontagemModal] = useState<{
@@ -1606,7 +1604,7 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
           </div>
 
           {/* Unit Selector Toggle & SOP Button */}
-          <div className="flex items-center gap-2.5 shrink-0 self-end sm:self-auto">
+          <div className="flex items-center gap-3 shrink-0 self-end sm:self-auto">
             <button
               type="button"
               onClick={() => setShowSopViewer(true)}
@@ -1614,15 +1612,6 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
             >
               <FileText className="w-4 h-4 text-slate-950" />
               <span>Padrão</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setIsActionModalOpen(true)}
-              className="px-3.5 py-2 rounded-xl font-black text-xs uppercase bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white flex items-center gap-1.5 transition-all cursor-pointer shadow-xs border border-blue-400/30"
-            >
-              <CheckCircle className="w-4 h-4 text-emerald-300" />
-              <span>Plano de Ações (FEFO)</span>
             </button>
 
             <div className="flex flex-col">
@@ -3997,20 +3986,6 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
           operationName="FEFO (Validades)"
         />
       )}
-
-      {/* DEDICATED ACTION MODAL (FILTERED EXCLUSIVELY FOR FEFO) */}
-      <IndicatorActionModal
-        isOpen={isActionModalOpen}
-        onClose={() => setIsActionModalOpen(false)}
-        indicatorTitle="Gestão FEFO"
-        indicatorSubtitle="Visualizando e gerenciando apenas os planos de ação e contramedidas 5W2H do controle de FEFO e Validades."
-        indicatorBadge="FEFO DPO"
-        allowedProcessos={['Gestão FEFO', 'FEFO', 'Validades', 'Vencimento', 'Lotes']}
-        defaultProcesso="Gestão FEFO"
-        defaultIndicador="Aderência FEFO e Risco de Shelf Life"
-        defaultMeta="≥ 98%"
-        user={user}
-      />
 
     </div>
   );

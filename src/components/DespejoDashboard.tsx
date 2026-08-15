@@ -1,3 +1,4 @@
+import { ManualInstrucaoCard } from './ManualInstrucaoCard';
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   BarChart, 
@@ -10,9 +11,8 @@ import {
   Cell,
   LineChart,
   Line,
-  PieChart,
-  Pie,
-  LabelList
+  AreaChart,
+  Area
 } from 'recharts';
 import { 
   Calendar, 
@@ -37,28 +37,18 @@ import {
   AlertTriangle,
   SlidersHorizontal,
   CheckCircle2,
-  BarChart2,
-  FileSpreadsheet,
-  Layers,
-  Sparkles,
-  HelpCircle,
-  Play,
-  Pause,
-  RotateCcw,
-  Plus
+  BarChart2
 } from 'lucide-react';
-import * as XLSX from 'xlsx';
-import { Usuario, Empresa, DespejoRow } from '../types';
-import { db } from '../firebase';
+import { Usuario, Empresa, DespejoRow, QuebraRow } from '../types';
+import { db, isCustomFirebaseConnected } from '../firebase';
 import { deleteDoc, doc, collection, addDoc } from 'firebase/firestore';
 import { useEmpresaData } from '../context/EmpresaDataContext';
-import { useSystemTargets } from '../utils/useSystemTargets';
+import { analisarQuebraParaDespejo } from '../utils/quebrasDespejoUtils';
+import A3BoardComponent from './A3BoardComponent';
 import CalendarFilter from './CalendarFilter';
 import { SimuladorAgilidadeMeta } from './SimuladorAgilidadeMeta';
-import { RepackMetasParametrosCard } from './RepackMetasParametrosCard';
 import { PadraoOperacionalModal } from './PadraoOperacionalModal';
-import { IndicatorActionModal } from './IndicatorActionModal';
-import A3BoardComponent from './A3BoardComponent';
+import { SopManagerModal } from './SopManagerModal';
 
 interface DespejoDashboardProps {
   user: Usuario;
@@ -67,125 +57,81 @@ interface DespejoDashboardProps {
   theme?: 'light' | 'dark';
 }
 
-const DEFAULT_EMBALAGENS_CONFIG: Record<string, { metaSec: number; label: string }> = {
-  'LATA 250': { metaSec: 270, label: 'Lata 250 (Meta: 04:30)' },
-  'LATA 269': { metaSec: 270, label: 'Lata 269 (Meta: 04:30)' },
-  'LATA 350': { metaSec: 330, label: 'Lata 350 (Meta: 05:30)' },
-  'LATA 473': { metaSec: 330, label: 'Lata 473 (Meta: 05:30)' },
-  'LONG NECK': { metaSec: 360, label: 'Long Neck (Meta: 06:00)' },
-  'PET 1L': { metaSec: 330, label: 'Pet 1L (Meta: 05:30)' },
-  'PET 2L': { metaSec: 300, label: 'Pet 2L (Meta: 05:00)' },
-  'PET 500ml': { metaSec: 300, label: 'Pet 500ml (Meta: 05:00)' },
-  'PET 200ml': { metaSec: 270, label: 'Pet 200ml (Meta: 04:30)' },
-  'PET 2,5L': { metaSec: 270, label: 'Pet 2,5L (Meta: 04:30)' },
-  'PET 3,3L': { metaSec: 240, label: 'Pet 3,3L (Meta: 04:00)' },
-  '600 OW': { metaSec: 300, label: '600 OW (Meta: 05:00)' },
-  '300 OW': { metaSec: 240, label: '300 OW (Meta: 04:00)' },
-  'GARRAFA 600ml': { metaSec: 255, label: 'Garrafa 600ml (Meta: 04:15)' },
-  'GARRAFA 1L': { metaSec: 285, label: 'Garrafa 1L (Meta: 04:45)' }
+// Meta times in seconds per box for standard packaging
+const EMBALAGENS_CONFIG: Record<string, { label: string; metaSec: number }> = {
+  'LATA 250': { label: 'LATA 250', metaSec: 43 },
+  'LATA 269': { label: 'LATA 269', metaSec: 45 },
+  'LATA 350': { label: 'LATA 350', metaSec: 50 },
+  'LATA 473': { label: 'LATA 473', metaSec: 55 },
+  'LONG NECK': { label: 'LONG NECK', metaSec: 65 },
+  'PET 1L': { label: 'PET 1L', metaSec: 55 },
+  'PET 2L': { label: 'PET 2L', metaSec: 50 },
+  'PET 500': { label: 'PET 500', metaSec: 45 },
+  '300OW': { label: '300OW', metaSec: 75 },
 };
 
-const DEFAULT_OPERADORES = [
-  'Carlos Silva',
-  'Fernanda Lima',
-  'Roberto Souza',
-  'Aline Mendes',
-  'Marcos Oliveira',
-  'Juliana Costa',
-  'Paulo Santos',
-  'Gilson Ferreira',
-  'Matheus Barbosa',
-  'Ronildo Paiva'
-];
-
 export default function DespejoDashboard({ user, empresa, onBack }: DespejoDashboardProps) {
-  const { targets, updateTarget } = useSystemTargets();
-  const metaProdutividadeCxH = targets.despejo_produtividade ?? 10;
-
   const [activeSubTab, setActiveSubTab] = useState<'produtividade' | 'boarda3'>('produtividade');
+  // Database rows
   const [despejoRows, setDespejoRows] = useState<DespejoRow[]>([]);
-  const empresaData = useEmpresaData();
-
-  // Packaging Configs from localStorage with fallback
-  const [embalagensConfig, setEmbalagensConfig] = useState<Record<string, { metaSec: number; label: string }>>(() => {
-    const saved = localStorage.getItem(`despejo_embalagens_config_${empresa?.id || 'demo'}`);
-    if (saved) {
-      try { return JSON.parse(saved); } catch (e) { console.error(e); }
-    }
-    return DEFAULT_EMBALAGENS_CONFIG;
-  });
-
-  const handleUpdateEmbalagemMeta = (key: string, newSec: number) => {
-    setEmbalagensConfig(prev => {
-      const current = prev[key] || { label: key, metaSec: 270 };
-      const m = Math.floor(newSec / 60);
-      const s = newSec % 60;
-      const timeStr = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-      const baseLabel = current.label.split('(')[0].trim();
-      const updated = {
-        ...prev,
-        [key]: {
-          metaSec: newSec,
-          label: `${baseLabel} (Meta: ${timeStr})`
-        }
-      };
-      localStorage.setItem(`despejo_embalagens_config_${empresa?.id || 'demo'}`, JSON.stringify(updated));
-      return updated;
-    });
-  };
-
-  const handleResetEmbalagens = () => {
-    setEmbalagensConfig(DEFAULT_EMBALAGENS_CONFIG);
-    localStorage.setItem(`despejo_embalagens_config_${empresa?.id || 'demo'}`, JSON.stringify(DEFAULT_EMBALAGENS_CONFIG));
-  };
-
-  // Modals
-  const [isActionModalOpen, setIsActionModalOpen] = useState(false);
-  const [isPopModalOpen, setIsPopModalOpen] = useState(false);
-  const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
 
   // Filter UI states
-  const [filterColaborador, setFilterColaborador] = useState('todos');
-  const [filterEmbalagem, setFilterEmbalagem] = useState('todos');
-  const [filterStartDate, setFilterStartDate] = useState('');
-  const [filterEndDate, setFilterEndDate] = useState('');
-  const [filterMeta, setFilterMeta] = useState<'todos' | 'dentro' | 'fora'>('todos');
+  const [colaboradorVal, setColaboradorVal] = useState('Todos');
+  const [embalagemVal, setEmbalagemVal] = useState('Todos');
+  const [horaVal, setHoraVal] = useState('');
+  const [startDate, setStartDate] = useState<string>('');
+  const [endDate, setEndDate] = useState<string>('');
 
-  // Applied Filter states
-  const [activeColaborador, setActiveColaborador] = useState('todos');
-  const [activeEmbalagem, setActiveEmbalagem] = useState('todos');
-  const [activeStartDate, setActiveStartDate] = useState('');
-  const [activeEndDate, setActiveEndDate] = useState('');
-  const [activeMeta, setActiveMeta] = useState<'todos' | 'dentro' | 'fora'>('todos');
+  // Applied filter states
+  const [appliedFilters, setAppliedFilters] = useState({
+    colaborador: 'Todos',
+    embalagem: 'Todos',
+    hora: '',
+    startDate: '',
+    endDate: ''
+  });
 
-  // Pagination & Search
+  // Table search & pagination
   const [tableSearch, setTableSearch] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
-  const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
   const itemsPerPage = 8;
 
-  // New Record Form State
-  const [newOperador, setNewOperador] = useState(user?.nome || DEFAULT_OPERADORES[0]);
-  const [newEmbalagem, setNewEmbalagem] = useState('LATA 350');
-  const [newQuantidade, setNewQuantidade] = useState<number>(1);
-  const [stopwatchSeconds, setStopwatchSeconds] = useState(0);
-  const [isStopwatchRunning, setIsStopwatchRunning] = useState(false);
-  const [newMotivoFalha, setNewMotivoFalha] = useState('');
+  // POP Modal State
+  const [isPopModalOpen, setIsPopModalOpen] = useState(false);
 
-  // Stopwatch Timer
-  useEffect(() => {
-    let interval: any = null;
-    if (isStopwatchRunning) {
-      interval = setInterval(() => {
-        setStopwatchSeconds(sec => sec + 1);
-      }, 1000);
-    } else {
-      clearInterval(interval);
+  // Selected row for real-time audit details
+  const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
+
+  // Simulator states
+  const [simUnidade, setSimUnidade] = useState<'HE' | 'SKUs'>('HE');
+  const [simMetaCustom, setSimMetaCustom] = useState<number | null>(null);
+  const [simMediaCustom, setSimMediaCustom] = useState<number | null>(null);
+  const [simVolumeCustom, setSimVolumeCustom] = useState<number | null>(null);
+
+  // Helper helper operations
+  const pad2 = (num: number) => String(num).padStart(2, '0');
+  const toSec = (hms: string) => {
+    if (!hms) return 0;
+    const parts = String(hms).split(':').map(Number);
+    if (parts.length === 3) {
+      return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    } else if (parts.length === 2) {
+      return parts[0] * 60 + parts[1];
     }
-    return () => clearInterval(interval);
-  }, [isStopwatchRunning]);
+    return Number(hms) || 0;
+  };
 
-  // Load despejo rows from Firestore or context
+  const toHMS = (sec: number) => {
+    sec = Math.max(0, Math.floor(sec));
+    const h = Math.floor(sec / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    const s = sec % 60;
+    return [h, m, s].map(pad2).join(':');
+  };
+
+  const empresaData = useEmpresaData();
+
+  // Listen to Firestore real-time updates
   useEffect(() => {
     const companyId = empresa?.id || 'demo';
     if (!db) {
@@ -205,112 +151,118 @@ export default function DespejoDashboard({ user, empresa, onBack }: DespejoDashb
     setDespejoRows(rows);
   }, [empresaData.despejo, empresa?.id]);
 
-  // Helpers
-  const pad2 = (num: number) => String(num).padStart(2, '0');
-  const toSec = (hms: string | number) => {
-    if (typeof hms === 'number') return hms;
-    if (!hms) return 0;
-    const parts = String(hms).split(':').map(Number);
-    if (parts.length === 3) {
-      return (parts[0] * 3600) + (parts[1] * 60) + (parts[2] || 0);
-    }
-    if (parts.length === 2) {
-      return (parts[0] * 60) + (parts[1] || 0);
-    }
-    return Number(hms) || 0;
-  };
-
-  const toHMS = (sec: number) => {
-    sec = Math.max(0, Math.floor(sec));
-    const h = Math.floor(sec / 3600);
-    const m = Math.floor((sec % 3600) / 60);
-    const s = sec % 60;
-    return [h, m, s].map(pad2).join(':');
-  };
-
-  // Distinct Lists for Selects
-  const distinctOperadores = useMemo(() => {
-    const ops = new Set<string>();
-    despejoRows.forEach(r => {
-      if (r.operador) {
-        const cleanName = r.operador.split('(')[0].trim();
-        if (cleanName) ops.add(cleanName);
-      }
-    });
-    DEFAULT_OPERADORES.forEach(op => ops.add(op));
-    return Array.from(ops).sort();
+  // Combine real database rows
+  const activeRows = useMemo(() => {
+    return despejoRows;
   }, [despejoRows]);
 
-  const embalagensList = useMemo(() => {
-    return Object.keys(embalagensConfig);
-  }, [embalagensConfig]);
-
-  // Apply & Clear Filters
-  const handleApplyFilters = () => {
-    setActiveColaborador(filterColaborador);
-    setActiveEmbalagem(filterEmbalagem);
-    setActiveStartDate(filterStartDate);
-    setActiveEndDate(filterEndDate);
-    setActiveMeta(filterMeta);
-    setCurrentPage(1);
-    setSelectedRowId(null);
-  };
-
-  const handleClearFilters = () => {
-    setFilterColaborador('todos');
-    setFilterEmbalagem('todos');
-    setFilterStartDate('');
-    setFilterEndDate('');
-    setFilterMeta('todos');
-
-    setActiveColaborador('todos');
-    setActiveEmbalagem('todos');
-    setActiveStartDate('');
-    setActiveEndDate('');
-    setActiveMeta('todos');
-    setCurrentPage(1);
-    setSelectedRowId(null);
-  };
-
-  // Filtered rows
-  const filteredRows = useMemo(() => {
-    return despejoRows.filter(row => {
-      // 1. Colaborador
-      if (activeColaborador !== 'todos') {
-        const rowOpClean = (row.operador || '').toUpperCase();
-        const filterOpClean = activeColaborador.toUpperCase();
-        if (!rowOpClean.includes(filterOpClean)) return false;
+  // Unique lists for the filters
+  const colaboradoresList = useMemo(() => {
+    const names = new Set<string>();
+    activeRows.forEach(r => {
+      if (r.operador) {
+        const cleanName = r.operador.split('(')[0].trim().toUpperCase();
+        if (cleanName) {
+          names.add(cleanName);
+        }
       }
+    });
+    return Array.from(names).sort();
+  }, [activeRows]);
 
-      // 2. Embalagem
-      if (activeEmbalagem !== 'todos' && row.embalagem !== activeEmbalagem) return false;
+  const embalagensList = useMemo(() => {
+    const list = new Set<string>();
+    activeRows.forEach(r => {
+      if (r.embalagem) list.add(r.embalagem);
+    });
+    return Array.from(list).sort();
+  }, [activeRows]);
 
-      // 3. Date range
-      const rowDate = (row.data ? row.data.split('/').reverse().map(p => p.padStart(2, '0')).join('-') : '') || row.dataISO || '';
-      if (activeStartDate && rowDate && rowDate < activeStartDate) return false;
-      if (activeEndDate && rowDate && rowDate > activeEndDate) return false;
+  // Apply Filters Action
+  const handleApplyFilters = () => {
+    setAppliedFilters({
+      colaborador: colaboradorVal,
+      embalagem: embalagemVal,
+      hora: horaVal,
+      startDate: startDate,
+      endDate: endDate
+    });
+    setCurrentPage(1);
+    setSelectedRowId(null);
+  };
 
-      // 4. Meta status
-      if (activeMeta !== 'todos') {
-        const config = embalagensConfig[row.embalagem] || { metaSec: 270 };
-        const totalExpectedSec = config.metaSec * (Number(row.quantidade) || 1);
-        const actualSec = toSec(row.duracao || row.tempo || 0);
-        const isWithin = actualSec <= totalExpectedSec;
+  // Reset Filters Action
+  const handleResetFilters = () => {
+    setColaboradorVal('Todos');
+    setEmbalagemVal('Todos');
+    setHoraVal('');
+    const defaultStart = (() => {
+      const d = new Date();
+      d.setDate(d.getDate() - 30);
+      return d.toISOString().split('T')[0];
+    })();
+    const defaultEnd = new Date().toISOString().split('T')[0];
+    setStartDate(defaultStart);
+    setEndDate(defaultEnd);
+    setAppliedFilters({
+      colaborador: 'Todos',
+      embalagem: 'Todos',
+      hora: '',
+      startDate: defaultStart,
+      endDate: defaultEnd
+    });
+    setCurrentPage(1);
+    setSelectedRowId(null);
+  };
 
-        if (activeMeta === 'dentro' && !isWithin) return false;
-        if (activeMeta === 'fora' && isWithin) return false;
+  // Filtered rows for calculations
+  const filteredRows = useMemo(() => {
+    return activeRows.filter(row => {
+      // 1. Colaborador filter
+      if (appliedFilters.colaborador !== 'Todos') {
+        const rowOpClean = row.operador?.split('(')[0].trim().toUpperCase() || '';
+        const filterOpClean = appliedFilters.colaborador.toUpperCase();
+        if (rowOpClean !== filterOpClean && !row.operador?.toUpperCase().includes(filterOpClean)) {
+          return false;
+        }
+      }
+      // 2. Embalagem filter
+      if (appliedFilters.embalagem !== 'Todos' && row.embalagem !== appliedFilters.embalagem) {
+        return false;
+      }
+      // 3. Date range filter
+      if (appliedFilters.startDate || appliedFilters.endDate) {
+        if (row.data) {
+          const parts = row.data.split('/');
+          if (parts.length === 3) {
+            const rowISO = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+            if (appliedFilters.startDate && rowISO < appliedFilters.startDate) return false;
+            if (appliedFilters.endDate && rowISO > appliedFilters.endDate) return false;
+          }
+        } else if (row.dataISO) {
+          if (appliedFilters.startDate && row.dataISO < appliedFilters.startDate) return false;
+          if (appliedFilters.endDate && row.dataISO > appliedFilters.endDate) return false;
+        }
+      }
+      // 4. Hora filter (check if row's start time contains or matches)
+      if (appliedFilters.hora) {
+        if (!row.inicio?.startsWith(appliedFilters.hora)) {
+          return false;
+        }
       }
 
       return true;
     });
-  }, [despejoRows, activeColaborador, activeEmbalagem, activeStartDate, activeEndDate, activeMeta, embalagensConfig]);
+  }, [activeRows, appliedFilters]);
 
-  // Working days info for simulation
+  // Working days of current month calculation (mês vigente)
   const workingDaysInfo = useMemo(() => {
     const now = new Date();
     const year = now.getFullYear();
-    const month = now.getMonth();
+    const month = now.getMonth(); // 0-indexed (e.g. 6 is July)
     
+    // Total business days in this month (Monday to Friday)
+    const firstDay = new Date(year, month, 1);
     const lastDay = new Date(year, month + 1, 0);
     const totalDaysInMonth = lastDay.getDate();
     
@@ -319,7 +271,7 @@ export default function DespejoDashboard({ user, empresa, onBack }: DespejoDashb
     
     for (let d = 1; d <= totalDaysInMonth; d++) {
       const date = new Date(year, month, d);
-      const dayOfWeek = date.getDay();
+      const dayOfWeek = date.getDay(); // 0 = Sunday, 6 = Saturday
       const isWorkingDay = dayOfWeek !== 0 && dayOfWeek !== 6;
       
       if (isWorkingDay) {
@@ -333,36 +285,23 @@ export default function DespejoDashboard({ user, empresa, onBack }: DespejoDashb
     elapsedWorkingDays = Math.max(1, elapsedWorkingDays);
     const remainingWorkingDays = Math.max(0, totalWorkingDays - elapsedWorkingDays);
     
+    const monthName = now.toLocaleString('pt-BR', { month: 'long' });
+    const capitalizedMonthName = monthName.charAt(0).toUpperCase() + monthName.slice(1);
+    
     return {
       totalWorkingDays,
       elapsedWorkingDays,
       remainingWorkingDays,
-      monthName: now.toLocaleString('pt-BR', { month: 'long' }),
+      monthName: capitalizedMonthName,
       year
     };
   }, []);
 
-  // Core KPI Calculations
+  // Derived core KPIs and Metrics matching Repack's Cockpit
   const totalSkus = useMemo(() => {
     return filteredRows.reduce((sum, r) => sum + (Number(r.quantidade) || 0), 0);
   }, [filteredRows]);
 
-  const totalTempoGastoSec = useMemo(() => {
-    return filteredRows.reduce((sum, r) => sum + toSec(r.duracao || r.tempo || 0), 0);
-  }, [filteredRows]);
-
-  const tempoMedioPorSkuSec = useMemo(() => {
-    return totalSkus > 0 ? Math.round(totalTempoGastoSec / totalSkus) : 0;
-  }, [totalTempoGastoSec, totalSkus]);
-
-  const tempoMedioPorSkuStr = useMemo(() => toHMS(tempoMedioPorSkuSec), [tempoMedioPorSkuSec]);
-
-  const produtividadeSkuHora = useMemo(() => {
-    if (totalTempoGastoSec === 0) return 0;
-    return Math.round((totalSkus / (totalTempoGastoSec / 3600)) * 10) / 10;
-  }, [totalSkus, totalTempoGastoSec]);
-
-  // Volume in Hectoliters
   const totalHE = useMemo(() => {
     const EMBALAGENS_VOLUME: Record<string, number> = {
       'LATA 250': 6.0,
@@ -372,12 +311,9 @@ export default function DespejoDashboard({ user, empresa, onBack }: DespejoDashb
       'LONG NECK': 8.52,
       'PET 1L': 12.0,
       'PET 2L': 12.0,
+      'PET 500': 6.0,
       'PET 500ml': 6.0,
-      'PET 200ml': 4.8,
-      '600 OW': 7.2,
-      '300 OW': 7.2,
-      'GARRAFA 600ml': 7.2,
-      'GARRAFA 1L': 12.0
+      '300OW': 7.2
     };
     const totalLiters = filteredRows.reduce((sum, r) => {
       const factor = EMBALAGENS_VOLUME[r.embalagem] || 10.0;
@@ -386,955 +322,1498 @@ export default function DespejoDashboard({ user, empresa, onBack }: DespejoDashb
     return Math.round((totalLiters / 100) * 100) / 100;
   }, [filteredRows]);
 
+  const totalTempoGastoSec = useMemo(() => {
+    return filteredRows.reduce((sum, r) => sum + toSec(r.tempo), 0);
+  }, [filteredRows]);
+
+  const tempoMedioPorSkuSec = useMemo(() => {
+    return totalSkus > 0 ? totalTempoGastoSec / totalSkus : 0;
+  }, [totalTempoGastoSec, totalSkus]);
+
+  const tempoMedioPorSkuStr = useMemo(() => {
+    return toHMS(tempoMedioPorSkuSec);
+  }, [tempoMedioPorSkuSec]);
+
+  const totalTempoTrabalhadoStr = useMemo(() => {
+    const h = Math.floor(totalTempoGastoSec / 3600);
+    const m = Math.floor((totalTempoGastoSec % 3600) / 60);
+    const s = totalTempoGastoSec % 60;
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${pad(h)}:${pad(m)}:${pad(s)}`;
+  }, [totalTempoGastoSec]);
+
   const totalTempoEsperadoSec = useMemo(() => {
     return filteredRows.reduce((sum, r) => {
-      const config = embalagensConfig[r.embalagem] || { metaSec: 270 };
-      return sum + (config.metaSec * (Number(r.quantidade) || 0));
+      const config = EMBALAGENS_CONFIG[r.embalagem];
+      const unitMeta = config ? config.metaSec : 43;
+      return sum + (unitMeta * (Number(r.quantidade) || 0));
     }, 0);
-  }, [filteredRows, embalagensConfig]);
+  }, [filteredRows]);
 
-  const tempoEsperadoMedioStr = useMemo(() => {
-    return totalSkus > 0 ? toHMS(Math.round(totalTempoEsperadoSec / totalSkus)) : '00:00:00';
-  }, [totalTempoEsperadoSec, totalSkus]);
-
-  const eficienciaGeral = useMemo(() => {
+  const eficienciaMedia = useMemo(() => {
     if (totalTempoGastoSec === 0) return 0;
     return Math.round((totalTempoEsperadoSec / totalTempoGastoSec) * 100);
   }, [totalTempoEsperadoSec, totalTempoGastoSec]);
 
-  // Chart 1: Daily Productivity vs Meta (10 cx/h)
-  const chartProdutividadeDia = useMemo(() => {
-    const dayMap = new Map<string, { totalQty: number; totalSec: number }>();
+  const produtividadeRealHE = useMemo(() => {
+    const totalHours = totalTempoGastoSec / 3600;
+    if (totalHours === 0) return 0;
+    return totalHE / totalHours;
+  }, [totalHE, totalTempoGastoSec]);
+
+  const diasTrabalhadosFiltrados = useMemo(() => {
+    const uniqueDays = new Set<string>();
     filteredRows.forEach(r => {
-      const d = r.data || (r.dataISO ? r.dataISO.split('-').reverse().join('/') : 'Hoje');
-      const prev = dayMap.get(d) || { totalQty: 0, totalSec: 0 };
-      dayMap.set(d, {
-        totalQty: prev.totalQty + (Number(r.quantidade) || 0),
-        totalSec: prev.totalSec + toSec(r.duracao || r.tempo || 0)
-      });
+      if (r.data) {
+        uniqueDays.add(r.data);
+      }
     });
-
-    const list = Array.from(dayMap.entries()).map(([dia, data]) => {
-      const horas = data.totalSec / 3600;
-      const realCxH = horas > 0 ? Math.round((data.totalQty / horas) * 10) / 10 : 0;
-      return {
-        dia,
-        realCxH,
-        metaCxH: metaProdutividadeCxH
-      };
-    });
-
-    return list.slice(-14);
-  }, [filteredRows, metaProdutividadeCxH]);
-
-  // Chart 2: Packaging Distribution
-  const chartDistribuicaoEmbalagem = useMemo(() => {
-    const map = new Map<string, number>();
-    filteredRows.forEach(r => {
-      const emb = r.embalagem || 'Outros';
-      map.set(emb, (map.get(emb) || 0) + (Number(r.quantidade) || 0));
-    });
-    const colors = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316', '#64748b'];
-    return Array.from(map.entries()).map(([name, value], idx) => ({
-      name,
-      value,
-      color: colors[idx % colors.length]
-    }));
+    return uniqueDays.size;
   }, [filteredRows]);
 
-  // Paginated Rows
-  const searchedRows = useMemo(() => {
-    if (!tableSearch.trim()) return filteredRows;
-    const q = tableSearch.toLowerCase();
-    return filteredRows.filter(r => 
-      (r.operador || '').toLowerCase().includes(q) ||
-      (r.embalagem || '').toLowerCase().includes(q) ||
-      (r.data || '').toLowerCase().includes(q) ||
-      (r.motivo || '').toLowerCase().includes(q)
-    );
-  }, [filteredRows, tableSearch]);
-
-  const totalPages = Math.max(1, Math.ceil(searchedRows.length / itemsPerPage));
-  const paginatedRows = useMemo(() => {
-    const start = (currentPage - 1) * itemsPerPage;
-    return searchedRows.slice(start, start + itemsPerPage);
-  }, [searchedRows, currentPage, itemsPerPage]);
-
-  // Selected Row Object
-  const selectedRowObj = useMemo(() => {
-    if (!selectedRowId) return null;
-    return despejoRows.find(r => (r as any)._docId === selectedRowId || r.id === selectedRowId) || null;
-  }, [selectedRowId, despejoRows]);
-
-  // Delete Row Handler
-  const handleDeleteRow = async (rowId: string) => {
-    if (!window.confirm('Tem certeza que deseja excluir este registro de Despejo?')) return;
-    try {
-      if (db) {
-        await deleteDoc(doc(db, 'despejo', rowId));
-      } else {
-        const companyId = empresa?.id || 'demo';
-        const updated = despejoRows.filter(r => (r as any)._docId !== rowId && r.id !== rowId);
-        setDespejoRows(updated);
-        localStorage.setItem(`despejo_rows_${companyId}`, JSON.stringify(updated));
+  const mesesTrabalhadosFiltrados = useMemo(() => {
+    const uniqueMonths = new Set<string>();
+    filteredRows.forEach(r => {
+      if (r.data) {
+        const parts = r.data.split('/');
+        if (parts.length === 3) {
+          uniqueMonths.add(`${parts[2]}-${parts[1]}`);
+        }
       }
-      setSelectedRowId(null);
-    } catch (e) {
-      console.error(e);
-      alert('Erro ao excluir registro.');
+    });
+    return uniqueMonths.size;
+  }, [filteredRows]);
+
+  const produtividadeMetaHE = useMemo(() => {
+    const totalHours = totalTempoGastoSec / 3600;
+    if (totalHours === 0 || diasTrabalhadosFiltrados === 0 || mesesTrabalhadosFiltrados === 0) return 0;
+    const realProd = totalHE / totalHours;
+    return ((realProd / diasTrabalhadosFiltrados) / mesesTrabalhadosFiltrados) * 1.10;
+  }, [totalHE, totalTempoGastoSec, diasTrabalhadosFiltrados, mesesTrabalhadosFiltrados]);
+
+  const nivelFiltroProdutividade = useMemo(() => {
+    if ((appliedFilters as any).periodo && (appliedFilters as any).periodo !== 'Todos') {
+      return 'Período';
     }
-  };
+    return 'Geral';
+  }, [(appliedFilters as any).periodo]);
 
-  // Submit New Production Record
-  const handleCreateRecord = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const config = embalagensConfig[newEmbalagem] || { metaSec: 270 };
-    const expectedSec = config.metaSec * newQuantidade;
-    const duracaoHMS = toHMS(stopwatchSeconds > 0 ? stopwatchSeconds : expectedSec);
-    const duracaoSec = stopwatchSeconds > 0 ? stopwatchSeconds : expectedSec;
-    const isWithin = duracaoSec <= expectedSec;
-
-    if (!isWithin && !newMotivoFalha.trim()) {
-      alert('O tempo de despejo excedeu a meta calculada. Por favor, especifique a justificativa operacional / motivo da falha.');
-      return;
-    }
-
+  const tendenciaMensal = useMemo(() => {
     const now = new Date();
-    const newRecord: Partial<DespejoRow> = {
+    const currentMonthStr = String(now.getMonth() + 1).padStart(2, '0');
+    const currentYearStr = String(now.getFullYear());
+    
+    const currentMonthRows = activeRows.filter(r => {
+      if (!r.data) return false;
+      const parts = r.data.split('/');
+      return parts.length === 3 && parts[1] === currentMonthStr && parts[2] === currentYearStr;
+    });
+
+    const rowsToAnalyze = currentMonthRows.length > 0 ? currentMonthRows : filteredRows;
+
+    if (rowsToAnalyze.length === 0) {
+      return { percent: 0, status: 'SEM DADOS', colorClass: 'text-gray-400', label: 'Sem registros' };
+    }
+
+    const totalActualSec = rowsToAnalyze.reduce((sum, r) => sum + toSec(r.tempo), 0);
+    const totalExpectedSec = rowsToAnalyze.reduce((sum, r) => {
+      const config = EMBALAGENS_CONFIG[r.embalagem];
+      const metaUnit = config ? config.metaSec : 43;
+      return sum + (metaUnit * (Number(r.quantidade) || 0));
+    }, 0);
+
+    if (totalActualSec === 0) {
+      return { percent: 0, status: 'SEM DADOS', colorClass: 'text-gray-400', label: 'Sem registros' };
+    }
+
+    const percent = Math.round((totalExpectedSec / totalActualSec) * 100);
+    const vaiBater = percent >= 100;
+
+    return {
+      percent,
+      status: vaiBater ? 'DENTRO DA META' : 'FORA DA META',
+      label: vaiBater ? 'Meta Tendência OK' : 'Risco de não bater',
+      colorClass: vaiBater ? 'text-emerald-500' : 'text-rose-500',
+    };
+  }, [activeRows, filteredRows]);
+
+  // Monthly live values for simulator
+  const simLiveValores = useMemo(() => {
+    const now = new Date();
+    const currentMonthStr = String(now.getMonth() + 1).padStart(2, '0');
+    const currentYearStr = String(now.getFullYear());
+
+    const currentMonthRows = activeRows.filter(r => {
+      if (!r.data) return false;
+      const parts = r.data.split('/');
+      return parts.length === 3 && parts[1] === currentMonthStr && parts[2] === currentYearStr;
+    });
+
+    const rowsToUse = currentMonthRows.length > 0 ? currentMonthRows : activeRows;
+
+    if (rowsToUse.length === 0) {
+      return {
+        diasTrabalhados: workingDaysInfo.elapsedWorkingDays,
+        totalHE: 0,
+        totalSKUs: 0,
+        mediaHE: 0,
+        mediaSKUs: 0,
+        defaultMetaHE: 0,
+        defaultMetaSKUs: 0
+      };
+    }
+
+    // 1. Volume in HE and SKUs
+    const totalSKUs = rowsToUse.reduce((sum, r) => sum + (Number(r.quantidade) || 0), 0);
+
+    const EMBALAGENS_VOLUME_MAP: Record<string, number> = {
+      'LATA 250': 6.0,
+      'LATA 269': 6.456,
+      'LATA 350': 8.4,
+      'LATA 473': 11.352,
+      'LONG NECK': 8.52,
+      'PET 1L': 12.0,
+      'PET 2L': 12.0,
+      'PET 500': 6.0,
+      'PET 500ml': 6.0,
+      '300OW': 7.2
+    };
+
+    const totalLiters = rowsToUse.reduce((sum, r) => {
+      const factor = EMBALAGENS_VOLUME_MAP[r.embalagem] || 10.0;
+      return sum + (factor * (Number(r.quantidade) || 0));
+    }, 0);
+    const totalHEVal = Math.round((totalLiters / 100) * 100) / 100;
+
+    // Use elapsed working days from the current month
+    const elapsedDays = Math.max(1, workingDaysInfo.elapsedWorkingDays);
+
+    // 3. Daily averages
+    const mediaHEVal = Math.round((totalHEVal / elapsedDays) * 100) / 100;
+    const mediaSKUsVal = Math.round((totalSKUs / elapsedDays) * 10) / 10;
+
+    // 4. Default meta (1.3x current month's trend)
+    const defaultMetaHEVal = Math.round(totalHEVal * 1.3);
+    const defaultMetaSKUsVal = Math.round(totalSKUs * 1.3);
+
+    return {
+      diasTrabalhados: elapsedDays,
+      totalHE: totalHEVal,
+      totalSKUs: totalSKUs,
+      mediaHE: mediaHEVal,
+      mediaSKUs: mediaSKUsVal,
+      defaultMetaHE: defaultMetaHEVal,
+      defaultMetaSKUs: defaultMetaSKUsVal
+    };
+  }, [activeRows, workingDaysInfo]);
+
+  // Derived simulation values - COMPLETELY automatic and read-only based on real database!
+  const simVolumeAcumulado = simUnidade === 'HE' ? simLiveValores.totalHE : simLiveValores.totalSKUs;
+  const simMediaAcumulada = simUnidade === 'HE' ? simLiveValores.mediaHE : simLiveValores.mediaSKUs;
+  const simMeta = simUnidade === 'HE' ? simLiveValores.defaultMetaHE : simLiveValores.defaultMetaSKUs;
+  const simMediaProjetada = simMediaAcumulada;
+
+  const simDiasRestantes = workingDaysInfo.remainingWorkingDays;
+  const projecaoRestante = simMediaProjetada * simDiasRestantes;
+  const projecaoFechamento = simVolumeAcumulado + projecaoRestante;
+  const atingiuMeta = projecaoFechamento >= simMeta;
+  const atingimentoPercent = simMeta > 0 ? Math.round((projecaoFechamento / simMeta) * 100) : 0;
+  const deficit = simMeta - projecaoFechamento;
+  const adicionalDiarioNecessario = deficit > 0 && simDiasRestantes > 0 ? (deficit / simDiasRestantes) : 0;
+  const mediaNecessariaProximosDias = simMediaAcumulada + adicionalDiarioNecessario;
+
+  // Compute stats dynamically based on filtered data (preserved for legacy compatibility)
+  const stats = useMemo(() => {
+    const counts: Record<string, number> = {};
+    filteredRows.forEach(r => {
+      if (r.embalagem) {
+        counts[r.embalagem] = (counts[r.embalagem] || 0) + (Number(r.quantidade) || 0);
+      }
+    });
+    let mostDumped = 'LATA 250';
+    let maxQty = 0;
+    Object.entries(counts).forEach(([pkg, q]) => {
+      if (q > maxQty) {
+        maxQty = q;
+        mostDumped = pkg;
+      }
+    });
+
+    return {
+      totalCaixas: totalSkus,
+      tempoMedio: tempoMedioPorSkuStr,
+      despejosPorHora: totalSkus > 0 ? Math.round(totalSkus / (totalTempoGastoSec / 3600)) : 74,
+      eficiencia: eficienciaMedia,
+      embMaisDespejada: mostDumped
+    };
+  }, [totalSkus, tempoMedioPorSkuStr, totalTempoGastoSec, eficienciaMedia, filteredRows]);
+
+  // Chart 1: Despejos por Hora
+  const chartDespejosPorHora = useMemo(() => {
+    if (filteredRows.length === 0) return [];
+    // Hour slots from 08 to 15
+    const slots = ['08', '09', '10', '11', '12', '13', '14', '15'];
+    const dataMap: Record<string, number> = {};
+    slots.forEach(s => { dataMap[s] = 0; });
+
+    const EMBALAGENS_VOLUME: Record<string, number> = {
+      'LATA 250': 6.0,
+      'LATA 269': 6.456,
+      'LATA 350': 8.4,
+      'LATA 473': 11.352,
+      'LONG NECK': 8.52,
+      'PET 1L': 12.0,
+      'PET 2L': 12.0,
+      'PET 500': 6.0,
+      'PET 500ml': 6.0,
+      '300OW': 7.2
+    };
+
+    filteredRows.forEach(r => {
+      if (r.inicio) {
+        const hour = r.inicio.split(':')[0];
+        if (slots.includes(hour)) {
+          const qty = Number(r.quantidade) || 0;
+          if (simUnidade === 'HE') {
+            const factor = EMBALAGENS_VOLUME[r.embalagem] || 10.0;
+            const hl = (factor * qty) / 100;
+            dataMap[hour] = (dataMap[hour] || 0) + hl;
+          } else {
+            dataMap[hour] = (dataMap[hour] || 0) + qty;
+          }
+        }
+      }
+    });
+
+    return slots.map(h => ({
+      name: `${h}h`,
+      'Quantidade': Math.round((dataMap[h] || 0) * 100) / 100
+    }));
+  }, [filteredRows, simUnidade]);
+
+  // Chart 2: Desempenho por Embalagem (Qty or HE dumped per packaging type)
+  const chartDesempenhoPorEmbalagem = useMemo(() => {
+    if (filteredRows.length === 0) return [];
+    const dataMap: Record<string, number> = {};
+
+    const EMBALAGENS_VOLUME: Record<string, number> = {
+      'LATA 250': 6.0,
+      'LATA 269': 6.456,
+      'LATA 350': 8.4,
+      'LATA 473': 11.352,
+      'LONG NECK': 8.52,
+      'PET 1L': 12.0,
+      'PET 2L': 12.0,
+      'PET 500': 6.0,
+      'PET 500ml': 6.0,
+      '300OW': 7.2
+    };
+
+    filteredRows.forEach(r => {
+      const key = r.embalagem || 'Outros';
+      const cleanKey = key === 'LONG NECK' ? '300OW' : key;
+      const qty = Number(r.quantidade) || 0;
+      if (simUnidade === 'HE') {
+        const factor = EMBALAGENS_VOLUME[key] || 10.0;
+        const hl = (factor * qty) / 100;
+        dataMap[cleanKey] = (dataMap[cleanKey] || 0) + hl;
+      } else {
+        dataMap[cleanKey] = (dataMap[cleanKey] || 0) + qty;
+      }
+    });
+
+    return Object.keys(dataMap).map(pkg => ({
+      name: pkg,
+      'SKUs': Math.round((dataMap[pkg] || 0) * 100) / 100
+    })).sort((a, b) => b.SKUs - a.SKUs);
+  }, [filteredRows, simUnidade]);
+
+  // Chart 3: Tempo Médio por Embalagem
+  const chartTempoMedioPorEmbalagem = useMemo(() => {
+    if (filteredRows.length === 0) return [];
+    const dataMapSec: Record<string, number[]> = {};
+
+    filteredRows.forEach(r => {
+      const key = r.embalagem || 'Outros';
+      const cleanKey = key === 'LONG NECK' ? '300OW' : key;
+      if (!dataMapSec[cleanKey]) dataMapSec[cleanKey] = [];
+      const spentSec = toSec(r.tempo);
+      const qty = Number(r.quantidade) || 1;
+      dataMapSec[cleanKey].push(spentSec / qty);
+    });
+
+    return Object.keys(dataMapSec).map(pkg => {
+      const list = dataMapSec[pkg];
+      const avg = list.length > 0 ? list.reduce((a, b) => a + b, 0) / list.length : 0;
+      return {
+        name: pkg,
+        'Segundos': Math.round(avg),
+        'Label': toHMS(avg).substring(3) // MM:SS format
+      };
+    }).sort((a, b) => a.Segundos - b.Segundos);
+  }, [filteredRows]);
+
+  // Chart 4: Evolução da Eficiência
+  const chartEvolucaoEficiencia = useMemo(() => {
+    if (filteredRows.length === 0) return [];
+    const groupSec: Record<string, { meta: number; real: number }> = {};
+
+    filteredRows.forEach(r => {
+      const datePart = r.data ? r.data.substring(0, 5) : 'Geral';
+      if (!groupSec[datePart]) groupSec[datePart] = { meta: 0, real: 0 };
+      const qty = Number(r.quantidade) || 0;
+      const config = EMBALAGENS_CONFIG[r.embalagem];
+      const unitMeta = config ? config.metaSec : 43;
+      groupSec[datePart].meta += unitMeta * qty;
+      groupSec[datePart].real += toSec(r.tempo);
+    });
+
+    return Object.keys(groupSec).map(d => {
+      const val = groupSec[d];
+      const efficiency = val.real > 0 ? Math.round((val.meta / val.real) * 100) : 0;
+      return {
+        name: d,
+        'Eficiência': efficiency
+      };
+    });
+  }, [filteredRows]);
+
+  // ── ANÁLISE DE QUEBRAS COM POSSIBILIDADE DE DESPEJO ──
+  const allQuebras = useMemo(() => {
+    return empresaData.quebras || [];
+  }, [empresaData.quebras]);
+
+  const quebrasAnalisadas = useMemo(() => {
+    return allQuebras.map(q => ({
+      quebra: q,
+      analise: analisarQuebraParaDespejo(q)
+    }));
+  }, [allQuebras]);
+
+  const quebrasElegiveisDespejo = useMemo(() => {
+    return quebrasAnalisadas.filter(item => item.analise.possivel);
+  }, [quebrasAnalisadas]);
+
+  const totaisQuebrasDespejo = useMemo(() => {
+    const totalHlElegivel = quebrasElegiveisDespejo.reduce((s, i) => s + i.analise.volumeHl, 0);
+    const totalSkusElegivel = quebrasElegiveisDespejo.reduce((s, i) => s + i.analise.skus, 0);
+    const totalHlGeral = quebrasAnalisadas.reduce((s, i) => s + i.analise.volumeHl, 0);
+    const pctAproveitavel = totalHlGeral > 0 ? Math.round((totalHlElegivel / totalHlGeral) * 100) : 0;
+
+    return {
+      qtd: quebrasElegiveisDespejo.length,
+      totalHl: Math.round(totalHlElegivel * 100) / 100,
+      totalSkus: totalSkusElegivel,
+      pctAproveitavel
+    };
+  }, [quebrasElegiveisDespejo, quebrasAnalisadas]);
+
+  // Gráfico 5: Origem do Despejo por Embalagem (Despejo Direto vs Quebras Elegíveis)
+  const chartQuebrasDespejoPorEmbalagem = useMemo(() => {
+    if (filteredRows.length === 0 && quebrasElegiveisDespejo.length === 0) return [];
+    const pkgMap: Record<string, { diretoHL: number; quebraHL: number }> = {
+      'LATA 250': { diretoHL: 0, quebraHL: 0 },
+      'LATA 269': { diretoHL: 0, quebraHL: 0 },
+      'LATA 350': { diretoHL: 0, quebraHL: 0 },
+      'LATA 473': { diretoHL: 0, quebraHL: 0 },
+      'PET 2L': { diretoHL: 0, quebraHL: 0 },
+      'LONG NECK': { diretoHL: 0, quebraHL: 0 }
+    };
+
+    filteredRows.forEach(r => {
+      const pkg = r.embalagem in pkgMap ? r.embalagem : 'LATA 350';
+      const factor = pkg === 'LATA 250' ? 6.0 : pkg === 'LATA 269' ? 6.456 : pkg === 'LATA 350' ? 8.4 : pkg === 'LATA 473' ? 11.352 : pkg === 'PET 2L' ? 12.0 : 8.52;
+      pkgMap[pkg].diretoHL += (factor * (Number(r.quantidade) || 0)) / 100;
+    });
+
+    quebrasElegiveisDespejo.forEach(item => {
+      const desc = (item.quebra.descricao || '').toUpperCase();
+      let pkg = 'LATA 350';
+      if (desc.includes('250')) pkg = 'LATA 250';
+      else if (desc.includes('269')) pkg = 'LATA 269';
+      else if (desc.includes('473')) pkg = 'LATA 473';
+      else if (desc.includes('PET 2L') || desc.includes('2L')) pkg = 'PET 2L';
+      else if (desc.includes('LONG') || desc.includes('LN')) pkg = 'LONG NECK';
+      
+      pkgMap[pkg].quebraHL += item.analise.volumeHl;
+    });
+
+    return Object.entries(pkgMap)
+      .map(([name, vals]) => ({
+        name,
+        'Despejo Direto (HL)': Math.round(vals.diretoHL * 100) / 100,
+        'Quebras Elegíveis (HL)': Math.round(vals.quebraHL * 100) / 100
+      }))
+      .filter(item => item['Despejo Direto (HL)'] > 0 || item['Quebras Elegíveis (HL)'] > 0);
+  }, [filteredRows, quebrasElegiveisDespejo]);
+
+  // Gráfico 6: Distribuição de Quebras Elegíveis por Causa/Motivo
+  const chartQuebrasPorMotivo = useMemo(() => {
+    if (quebrasElegiveisDespejo.length === 0) return [];
+    const counts: Record<string, number> = {};
+    quebrasElegiveisDespejo.forEach(item => {
+      const cat = item.analise.categoria;
+      counts[cat] = (counts[cat] || 0) + item.analise.volumeHl;
+    });
+
+    return Object.entries(counts).map(([name, hl]) => ({
+      name,
+      'HL': Math.round(hl * 100) / 100
+    })).sort((a, b) => b.HL - a.HL);
+  }, [quebrasElegiveisDespejo]);
+
+  // Ação Rápida: Converter Quebra em Lançamento de Despejo
+  const handleConverterQuebraEmDespejo = async (item: { quebra: QuebraRow, analise: any }) => {
+    const q = item.quebra;
+    const now = new Date();
+    const dataStr = now.toLocaleDateString('pt-BR');
+    const dataISO = now.toISOString().split('T')[0];
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const inicio = `${pad(now.getHours())}:${pad(now.getMinutes())}:00`;
+    const endMinutes = now.getMinutes() + Math.ceil(item.analise.tempoEstimativalustrativaSec / 60);
+    const endHour = now.getHours() + Math.floor(endMinutes / 60);
+    const fim = `${pad(endHour % 24)}:${pad(endMinutes % 60)}:00`;
+
+    const desc = (q.descricao || '').toUpperCase();
+    let embalagem = 'LATA 350';
+    if (desc.includes('250')) embalagem = 'LATA 250';
+    else if (desc.includes('269')) embalagem = 'LATA 269';
+    else if (desc.includes('473')) embalagem = 'LATA 473';
+    else if (desc.includes('PET 2L') || desc.includes('2L')) embalagem = 'PET 2L';
+    else if (desc.includes('PET 1L')) embalagem = 'PET 1L';
+    else if (desc.includes('LONG') || desc.includes('LN')) embalagem = 'LONG NECK';
+
+    const newRow: Omit<DespejoRow, '_docId'> & { empresaId: string } = {
       empresaId: empresa?.id || 'demo',
-      data: now.toLocaleDateString('pt-BR'),
-      dataISO: now.toISOString().split('T')[0],
-      operador: newOperador,
-      embalagem: newEmbalagem,
-      quantidade: newQuantidade,
-      tempo: duracaoHMS,
-      duracao: duracaoHMS,
-      inicio: now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-      fim: new Date(now.getTime() + duracaoSec * 1000).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-      resultado: isWithin ? 'Dentro da Meta' : 'Fora da Meta',
-      motivo: !isWithin ? newMotivoFalha : undefined,
-      _criadoEm: now.toISOString()
+      data: dataStr,
+      dataISO,
+      embalagem,
+      quantidade: Number(q.quantidade) || 1,
+      inicio,
+      fim,
+      tempo: item.analise.tempoEstimativalustrativaStr,
+      meta: '00:04:00',
+      resultado: '🟢 META BATIDA',
+      operador: user.nome || 'Fiscal Operacional'
     };
 
     try {
       if (db) {
-        await addDoc(collection(db, 'despejo'), newRecord);
+        await addDoc(collection(db, 'despejo'), newRow);
       } else {
-        const companyId = empresa?.id || 'demo';
-        const updated = [{ id: `despejo-${Date.now()}`, ...newRecord } as DespejoRow, ...despejoRows];
-        setDespejoRows(updated);
-        localStorage.setItem(`despejo_rows_${companyId}`, JSON.stringify(updated));
+        const current = [...despejoRows, { _docId: String(Date.now()), ...newRow }];
+        setDespejoRows(current);
+        localStorage.setItem(`despejo_rows_${empresa?.id || 'demo'}`, JSON.stringify(current));
       }
-
-      setIsRegisterModalOpen(false);
-      setStopwatchSeconds(0);
-      setIsStopwatchRunning(false);
-      setNewMotivoFalha('');
-      alert('Registro de Despejo adicionado com sucesso!');
-    } catch (err) {
-      console.error(err);
-      alert('Erro ao salvar registro de Despejo.');
+      alert(`✅ Quebra [${q.codProduto} - ${q.descricao}] enviada com sucesso para a Operação Despejo!`);
+    } catch (e) {
+      alert('Erro ao enviar para despejo: ' + e);
     }
   };
 
-  // Export to Excel
-  const handleExportXLSX = () => {
-    const data = filteredRows.map(r => ({
-      'Data': r.data,
-      'Colaborador': r.operador || '—',
-      'Embalagem': r.embalagem,
-      'Quantidade (CX)': r.quantidade,
-      'Hora Inicial': r.inicio || '—',
-      'Hora Final': r.fim || '—',
-      'Duração': r.duracao || r.tempo,
-      'Resultado': r.resultado || (toSec(r.duracao || r.tempo || 0) <= (embalagensConfig[r.embalagem]?.metaSec || 270) * (Number(r.quantidade) || 1) ? 'Dentro da Meta' : 'Fora da Meta'),
-      'Justificativa / Motivo': r.motivo || '—'
-    }));
-    const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.json_to_sheet(data);
-    XLSX.utils.book_append_sheet(wb, ws, 'Despejo');
-    XLSX.writeFile(wb, `Produtividade_Despejo_${new Date().toISOString().split('T')[0]}.xlsx`);
+  // Table filtering & search
+  const tableFilteredRows = useMemo(() => {
+    return filteredRows.filter(row => {
+      if (!tableSearch) return true;
+      const term = tableSearch.toLowerCase();
+      return (
+        row.data?.toLowerCase().includes(term) ||
+        row.operador?.toLowerCase().includes(term) ||
+        row.embalagem?.toLowerCase().includes(term) ||
+        row.quantidade?.toString().includes(term) ||
+        row.resultado?.toLowerCase().includes(term)
+      );
+    });
+  }, [filteredRows, tableSearch]);
+
+  const totalPages = Math.ceil(tableFilteredRows.length / itemsPerPage) || 1;
+  const paginatedRows = useMemo(() => {
+    const start = (currentPage - 1) * itemsPerPage;
+    return tableFilteredRows.slice(start, start + itemsPerPage);
+  }, [tableFilteredRows, currentPage]);
+
+  // Row selection calculations for live auditor panel
+  const selectedRowDetails = useMemo(() => {
+    if (!selectedRowId) return null;
+    const row = activeRows.find(r => r._docId === selectedRowId);
+    if (!row) return null;
+
+    const qty = Number(row.quantidade) || 1;
+    const config = EMBALAGENS_CONFIG[row.embalagem];
+    const metaUnit = config ? config.metaSec : 43;
+
+    const expectedSec = metaUnit * qty;
+    const spentSec = toSec(row.tempo);
+    const diffSec = expectedSec - spentSec;
+
+    const efficiency = spentSec > 0 ? Math.round((expectedSec / spentSec) * 100) : 100;
+    const ratePerHour = spentSec > 0 ? Math.round((qty / spentSec) * 3600) : 0;
+
+    return {
+      row,
+      expected: toHMS(expectedSec),
+      spent: toHMS(spentSec),
+      diff: toHMS(Math.abs(diffSec)),
+      diffPositive: diffSec >= 0,
+      efficiency,
+      tempoMedioUnit: toHMS(spentSec / qty).substring(3),
+      caixasHora: ratePerHour
+    };
+  }, [selectedRowId, activeRows]);
+
+  // Handle row deletion
+  const handleDeleteRow = async (docId: string) => {
+    if (!docId) return;
+    try {
+      if (db) {
+        await deleteDoc(doc(db, 'despejo', docId));
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      const remaining = despejoRows.filter(r => r._docId !== docId && (r as any).id !== docId);
+      setDespejoRows(remaining);
+      localStorage.setItem(`despejo_rows_${empresa?.id || 'demo'}`, JSON.stringify(remaining));
+      setSelectedRowId(null);
+    }
   };
 
   return (
-    <div className="space-y-6 animate-fade-in text-slate-900 dark:text-slate-100">
+    <div id="despejo-dashboard-wrapper" className="flex flex-col gap-3 bg-[#f8fafc] text-[#0f172a] p-4 rounded-xl shadow-sm border border-gray-200/80 w-full selection:bg-[#3b82f6] selection:text-white">
       
-      {/* HEADER WITH CONTROLS */}
-      <header className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4 pb-4 border-b border-gray-200 dark:border-slate-800">
+      {/* ── HEADER DE DESPEJO ── */}
+      <div id="despejo-dashboard-header" className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 border-b border-gray-200 pb-5">
         <div className="flex items-center gap-3">
           {onBack && (
             <button 
+              id="despejo-back-btn"
               onClick={onBack}
-              className="p-2 hover:bg-gray-200 dark:hover:bg-slate-800 rounded-xl transition-colors text-gray-500 dark:text-slate-400"
-              title="Voltar"
+              className="p-1.5 hover:bg-gray-200/80 rounded-lg transition-colors cursor-pointer text-gray-500 border-none bg-transparent mr-2"
+              title="Voltar ao Painel Geral"
             >
               <ArrowLeft className="w-5 h-5" />
             </button>
           )}
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center text-white text-lg shadow-md shadow-blue-500/20">
-            <Droplet className="w-5 h-5" />
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#032b5e] to-[#021f44] flex items-center justify-center text-xl shadow-md">
+            💧
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="font-black text-xl tracking-tight text-[#032b5e] dark:text-blue-400 uppercase">
-                PRODUTIVIDADE DO DESPEJO
-              </h1>
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/30">
-                PADRÃO DPO
+              <span className="text-[10px] bg-[#032b5e]/10 border border-[#032b5e]/25 text-[#032b5e] px-2 py-0.5 rounded font-sans font-black tracking-widest uppercase">
+                Guarabira-PB
+              </span>
+              <span className="text-[10px] bg-rose-500/10 border border-rose-500/25 text-rose-600 px-2 py-0.5 rounded font-sans font-black tracking-widest uppercase">
+                Descarte &amp; Produtividade
               </span>
             </div>
-            <p className="text-xs text-gray-500 dark:text-slate-400 font-semibold tracking-wide uppercase mt-0.5">
-              INDICADORES ESTRATÉGICOS, METAS DE DESEMPENHO E CRONOMETRAGEM DE DESPEJO
+            <h1 className="font-sans font-black text-lg tracking-tight text-[#032b5e] uppercase mt-1">
+              DASHBOARD DE DESPEJO
+            </h1>
+            <p className="text-[10px] text-gray-500 tracking-wider font-bold uppercase mt-0.5">
+              Monitoramento Corporativo de Descarte de Líquidos e Eficiência Operacional
             </p>
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => setIsPopModalOpen(true)}
-            className="px-3.5 py-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-black text-xs rounded-xl shadow-sm uppercase tracking-wider flex items-center gap-1.5 transition-all"
+            className="px-3.5 py-1.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-black text-xs rounded-lg shadow-xs uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer"
           >
             📋 Padrão Operacional (POP)
           </button>
 
-          {/* DEDICATED ACTION BUTTON FILTERING DESPEJO */}
-          <button
-            onClick={() => setIsActionModalOpen(true)}
-            className="px-3.5 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black text-xs rounded-xl shadow-sm uppercase tracking-wider flex items-center gap-1.5 transition-all border border-blue-400/30"
-          >
-            <CheckCircle2 className="w-4 h-4 text-emerald-300" />
-            <span>Plano de Ações (Despejo)</span>
-          </button>
-
-          <button
-            onClick={() => setIsRegisterModalOpen(true)}
-            className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-black text-xs rounded-xl shadow-sm uppercase tracking-wider flex items-center gap-1.5 transition-all"
-          >
-            <Plus className="w-4 h-4" />
-            <span>+ Novo Despejo</span>
-          </button>
-
-          <div className="flex items-center bg-gray-100 dark:bg-slate-800 p-1 rounded-xl border border-gray-200 dark:border-slate-700">
+          <div className="flex items-center bg-gray-100 p-0.5 rounded-lg border border-gray-200/60">
             <button 
               onClick={() => setActiveSubTab('produtividade')}
-              className={`px-3 py-1.5 rounded-lg font-bold text-xs uppercase tracking-wider transition-all ${
-                activeSubTab === 'produtividade' 
-                  ? 'bg-[#032b5e] dark:bg-blue-600 text-white shadow-sm' 
-                  : 'text-gray-600 dark:text-slate-400 hover:text-[#032b5e]'
-              }`}
+              className={`px-3 py-1 rounded font-sans font-bold text-[9px] uppercase tracking-wider transition-all border-none cursor-pointer ${activeSubTab === 'produtividade' ? 'bg-[#032b5e] text-white shadow-xs' : 'text-gray-500 hover:text-[#032b5e] bg-transparent'}`}
             >
               Produtividade & BI
             </button>
             <button 
               onClick={() => setActiveSubTab('boarda3')}
-              className={`px-3 py-1.5 rounded-lg font-bold text-xs uppercase tracking-wider transition-all ${
-                activeSubTab === 'boarda3' 
-                  ? 'bg-[#032b5e] dark:bg-blue-600 text-white shadow-sm' 
-                  : 'text-gray-600 dark:text-slate-400 hover:text-[#032b5e]'
+              className={`px-3 py-1 rounded font-sans font-bold text-[9px] uppercase tracking-wider transition-all border-none cursor-pointer ${activeSubTab === 'boarda3' ? 'bg-[#032b5e] text-white shadow-xs' : 'text-gray-500 hover:text-[#032b5e] bg-transparent'}`}
+            >
+              Quadro de Ações
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2 text-xs font-semibold text-gray-500 bg-white border border-gray-200 px-3 py-1.5 rounded-lg shadow-sm">
+            <Calendar className="w-4 h-4 text-[#f5a623]" />
+            <span>Controle de Despejo</span>
+          </div>
+        </div>
+      </div>
+
+      {/* DESPEJO VIEW */}
+      {activeSubTab === 'produtividade' && (
+        <>
+          {/* MANUAL DE INSTRUÇÃO E METAS */}
+          <ManualInstrucaoCard
+            title="Manual de Instrução & Parâmetros de Meta — Operação de Despejo"
+            metrics={[
+              {
+                key: 'despejo_produtividade',
+                label: 'Produtividade Média de Despejo',
+                unit: 'cx/h',
+                comoCalcular: '(Total de Caixas Despejadas) ÷ (Soma de Horas Trabalhadas da Equipe no Processo de Despejo).'
+              },
+              {
+                key: 'acuracidade_despejo',
+                label: 'Acuracidade Físico vs Fiscal no Despejo',
+                unit: '%',
+                comoCalcular: '(Volume de Engarrafado/Lata Efetivamente Destruído com B.I. Validado) ÷ (Volume Solicitado para Despejo) × 100.'
+              }
+            ]}
+          />
+          {/* ── SEÇÃO DE FILTROS INTERATIVOS ── */}
+      <div id="despejo-filters-container" className="bg-white border border-gray-200 p-4 rounded-xl shadow-sm flex flex-col gap-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100 pb-2">
+          <div className="flex items-center gap-2">
+            <Filter className="w-4 h-4 text-[#032b5e]" />
+            <span className="text-xs font-extrabold uppercase tracking-widest text-[#032b5e]">Filtros Avançados de B.I.</span>
+          </div>
+          
+          <div className="flex items-center bg-slate-100 border border-slate-200 p-0.5 rounded-lg text-[10px] font-bold">
+            <button
+              onClick={() => setSimUnidade('HE')}
+              className={`px-3 py-1.5 rounded-md transition-all font-extrabold uppercase border-none cursor-pointer ${
+                simUnidade === 'HE'
+                  ? 'bg-white text-[#1e56f0] shadow-xs border border-gray-100'
+                  : 'text-slate-500 hover:text-slate-800 bg-transparent'
               }`}
             >
-              Quadro de Ações A3
+              Hectolitro (HE)
+            </button>
+            <button
+              onClick={() => setSimUnidade('SKUs')}
+              className={`px-3 py-1.5 rounded-md transition-all font-extrabold uppercase border-none cursor-pointer ${
+                simUnidade === 'SKUs'
+                  ? 'bg-white text-[#1e56f0] shadow-xs border border-gray-100'
+                  : 'text-slate-500 hover:text-slate-800 bg-transparent'
+              }`}
+            >
+              Volume (SKUs)
             </button>
           </div>
         </div>
-      </header>
 
-      {/* SUB TAB: PRODUTIVIDADE & BI */}
-      {activeSubTab === 'produtividade' && (
-        <div className="space-y-6">
+        <div className="flex flex-wrap items-center gap-4 text-xs">
           
-          {/* MANUAL DE INSTRUÇÃO E PARÂMETROS DE METAS (DESPEJO) */}
-          <RepackMetasParametrosCard
-            empresaId={empresa?.id || 'demo'}
-            metaProdutividadeCxH={metaProdutividadeCxH}
-            onUpdateMetaProdutividade={(newVal) => updateTarget('despejo_produtividade', newVal)}
-            embalagensConfig={embalagensConfig}
-            onUpdateEmbalagemMeta={handleUpdateEmbalagemMeta}
-            onResetEmbalagens={handleResetEmbalagens}
-            isManager={user?.papel === 'admin' || user?.papel === 'supervisor' || true}
-            processo="despejo"
-          />
+          {/* 📅 Filtro Calendário Interativo */}
+          <div className="flex flex-col gap-1 min-w-[180px]">
+            <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">
+              Período (Calendário)
+            </label>
+            <CalendarFilter
+              startDate={startDate}
+              endDate={endDate}
+              onChange={(start, end) => {
+                setStartDate(start);
+                setEndDate(end);
+              }}
+            />
+          </div>
 
-          {/* FILTER BAR */}
-          <section className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-2xl p-4 shadow-xs flex flex-wrap items-center justify-between gap-4">
-            <div className="flex flex-wrap items-center gap-4 flex-1">
-              
-              {/* Período (Calendário) */}
-              <div className="flex flex-col gap-1 min-w-[200px]">
-                <label className="text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-wider">
-                  Período (Calendário)
-                </label>
-                <CalendarFilter
-                  startDate={filterStartDate}
-                  endDate={filterEndDate}
-                  onChange={(start, end) => {
-                    setFilterStartDate(start);
-                    setFilterEndDate(end);
-                  }}
-                />
-              </div>
+          {/* 👤 Colaborador */}
+          <div className="flex flex-col gap-1 w-[160px]">
+            <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">
+              Colaborador
+            </label>
+            <select
+              value={colaboradorVal}
+              onChange={(e) => setColaboradorVal(e.target.value)}
+              className="w-full bg-white border border-gray-200 text-[#032b5e] font-sans font-bold rounded-lg outline-none px-2.5 py-1 text-[10px] h-[28px] cursor-pointer transition-all hover:border-blue-400 focus:border-[#032b5e]"
+            >
+              <option value="Todos">Todos os Colaboradores</option>
+              {colaboradoresList.map(name => (
+                <option key={name} value={name}>{name}</option>
+              ))}
+            </select>
+          </div>
 
-              {/* Colaborador */}
-              <div className="flex flex-col gap-1 min-w-[140px]">
-                <label className="text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-wider">
-                  Colaborador
-                </label>
-                <select
-                  value={filterColaborador}
-                  onChange={(e) => setFilterColaborador(e.target.value)}
-                  className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 font-bold rounded-xl px-3 py-2 text-xs outline-none focus:border-blue-500"
-                >
-                  <option value="todos">Todos Colaboradores</option>
-                  {distinctOperadores.map(op => (
-                    <option key={op} value={op}>{op}</option>
-                  ))}
-                </select>
-              </div>
+          {/* 📦 Embalagem */}
+          <div className="flex flex-col gap-1 w-[160px]">
+            <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">
+              Embalagem
+            </label>
+            <select
+              value={embalagemVal}
+              onChange={(e) => setEmbalagemVal(e.target.value)}
+              className="w-full bg-white border border-gray-200 text-[#032b5e] font-sans font-bold rounded-lg outline-none px-2.5 py-1 text-[10px] h-[28px] cursor-pointer transition-all hover:border-blue-400 focus:border-[#032b5e]"
+            >
+              <option value="Todos">Todas as Embalagens</option>
+              {embalagensList.map(pkg => (
+                <option key={pkg} value={pkg}>{pkg}</option>
+              ))}
+            </select>
+          </div>
 
-              {/* Embalagem */}
-              <div className="flex flex-col gap-1 min-w-[140px]">
-                <label className="text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-wider">
-                  Embalagem
-                </label>
-                <select
-                  value={filterEmbalagem}
-                  onChange={(e) => setFilterEmbalagem(e.target.value)}
-                  className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 font-bold rounded-xl px-3 py-2 text-xs outline-none focus:border-blue-500"
-                >
-                  <option value="todos">Todas Embalagens</option>
-                  {embalagensList.map(emb => (
-                    <option key={emb} value={emb}>{emb}</option>
-                  ))}
-                </select>
-              </div>
+          {/* 🕒 Hora */}
+          <div className="flex flex-col gap-1 w-[100px]">
+            <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">
+              Hora Inicial
+            </label>
+            <input
+              type="text"
+              placeholder="Ex: 08"
+              value={horaVal}
+              onChange={(e) => setHoraVal(e.target.value)}
+              className="w-full bg-white border border-gray-200 text-[#032b5e] font-sans font-bold rounded-lg outline-none px-2.5 py-1 text-[10px] h-[28px] transition-all hover:border-blue-400 focus:border-[#032b5e]"
+            />
+          </div>
 
-              {/* Meta Status */}
-              <div className="flex flex-col gap-1 min-w-[130px]">
-                <label className="text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-wider">
-                  Status da Meta
-                </label>
-                <select
-                  value={filterMeta}
-                  onChange={(e) => setFilterMeta(e.target.value as any)}
-                  className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 font-bold rounded-xl px-3 py-2 text-xs outline-none focus:border-blue-500"
-                >
-                  <option value="todos">Todos</option>
-                  <option value="dentro">Dentro da Meta</option>
-                  <option value="fora">Fora da Meta</option>
-                </select>
-              </div>
-            </div>
+        </div>
 
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleApplyFilters}
-                className="px-4 py-2 bg-[#032b5e] dark:bg-blue-600 hover:bg-blue-800 text-white font-bold rounded-xl text-xs shadow-sm transition-all"
-              >
-                Aplicar Filtros
-              </button>
-              <button
-                onClick={handleClearFilters}
-                className="px-3 py-2 bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 text-gray-600 dark:text-slate-300 font-bold rounded-xl text-xs transition-all"
-              >
-                Limpar
-              </button>
-            </div>
-          </section>
+        {/* Action Buttons for Filters */}
+        <div className="flex items-center justify-end gap-2 border-t border-gray-100 pt-3">
+          <button
+            onClick={handleResetFilters}
+            className="px-4 py-2 bg-slate-50 border border-gray-200 hover:bg-slate-100 text-slate-600 font-bold rounded-lg text-xs transition-all cursor-pointer"
+          >
+            Limpar Filtros
+          </button>
+          <button
+            onClick={handleApplyFilters}
+            className="px-5 py-2 bg-[#032b5e] hover:bg-[#021f44] text-white font-extrabold rounded-lg text-xs transition-all cursor-pointer flex items-center gap-1.5 border-none"
+          >
+            <Search className="w-3.5 h-3.5 stroke-[3]" /> Aplicar Filtros
+          </button>
+        </div>
+      </div>
 
-          {/* 4 CORE KPI CARDS (IDENTICAL TO REPACK) */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            
-            {/* KPI 1: TOTAL PRODUZIDO / DESPEJADO */}
-            <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs flex flex-col justify-between space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-black uppercase tracking-wider text-gray-400 dark:text-slate-500">
-                  Total Despejado
-                </span>
-                <div className="w-8 h-8 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center">
-                  <Box className="w-4 h-4" />
+      {/* ── COCKPIT INDICADORES GERAL ── */}
+      <div className="space-y-3">
+        {/* LINE 1: KPIs (Columns containing stacked Cards) */}
+        <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {/* Column 1: SKUs & HE */}
+          <div className="flex flex-col gap-3">
+            {simUnidade === 'HE' ? (
+              <>
+                {/* KPI 1B: HE = Hectolitro (Active) */}
+                <div className="bg-white rounded-xl border-2 border-sky-500 flex flex-col justify-between shadow-xs hover:border-sky-500/80 transition-all duration-300 p-2.5 h-[115px] overflow-hidden relative">
+                  <div className="absolute top-1.5 right-1.5 flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-sky-500"></span>
+                  </div>
+                  <div className="flex justify-between items-start">
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-[10px] font-black uppercase text-sky-600 tracking-wider">🧪 HE = Hectolitro (Ativo)</span>
+                      <span className="font-extrabold text-[#032b5e] mt-0.5 text-2xl leading-none font-mono">
+                        {totalHE.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 2 })} HL
+                      </span>
+                      <span className="text-[9px] text-gray-400 font-bold uppercase mt-1 font-sans">Volume de Descarte</span>
+                    </div>
+                    <div className="rounded-lg bg-sky-500/10 flex items-center justify-center text-sky-500 w-7 h-7 flex-shrink-0">
+                      <Droplet className="w-4 h-4" fill="currentColor" />
+                    </div>
+                  </div>
+                  <div className="w-full h-[32px] mt-1">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={chartDespejosPorHora} margin={{ top: 0, bottom: 0, left: 0, right: 0 }}>
+                        <Area type="monotone" dataKey="Quantidade" stroke="#0ea5e9" fill="rgba(14,165,233,0.06)" strokeWidth={1} dot={false} />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
                 </div>
-              </div>
-              <div>
-                <div className="flex items-baseline gap-2">
-                  <span className="text-3xl font-black font-mono text-slate-900 dark:text-white">
-                    {totalSkus.toLocaleString('pt-BR')}
-                  </span>
-                  <span className="text-xs font-bold text-gray-400 uppercase">CX / UN</span>
-                </div>
-                <div className="flex items-center gap-2 mt-1 text-xs text-blue-600 dark:text-blue-400 font-bold">
-                  <span>{totalHE.toFixed(2)} HL</span>
-                  <span className="text-gray-300 dark:text-slate-700">•</span>
-                  <span>{filteredRows.length} registros</span>
-                </div>
-              </div>
-            </div>
 
-            {/* KPI 2: TEMPO MÉDIO VS META */}
-            <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs flex flex-col justify-between space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-black uppercase tracking-wider text-gray-400 dark:text-slate-500">
-                  Tempo Médio / Caixa
-                </span>
-                <div className="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                {/* KPI 1: SKUs (Inactive) */}
+                <div className="bg-white rounded-xl border border-gray-200 flex flex-col justify-between shadow-xs hover:border-[#1e56f0]/50 transition-all duration-300 p-2.5 h-[115px] overflow-hidden">
+                  <div className="flex justify-between items-start">
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-[10px] font-black uppercase text-gray-400 tracking-wider">📦 SKUs Despejados</span>
+                      <span className="font-extrabold text-[#032b5e] mt-0.5 text-2xl leading-none font-mono">{totalSkus}</span>
+                      <span className="text-[9px] text-gray-400 font-bold uppercase mt-1 font-sans">Total no período</span>
+                    </div>
+                    <div className="rounded-lg bg-[#1e56f0]/10 flex items-center justify-center text-[#1e56f0] w-7 h-7 flex-shrink-0">
+                      <Box className="w-4 h-4" />
+                    </div>
+                  </div>
+                  <div className="w-full h-[32px] mt-1">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={chartDespejosPorHora} margin={{ top: 0, bottom: 0, left: 0, right: 0 }}>
+                        <Area type="monotone" dataKey="Quantidade" stroke="#1e56f0" fill="rgba(30,86,240,0.06)" strokeWidth={1} dot={false} />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                {/* KPI 1: SKUs (Active) */}
+                <div className="bg-white rounded-xl border-2 border-[#1e56f0] flex flex-col justify-between shadow-xs hover:border-[#1e56f0]/80 transition-all duration-300 p-2.5 h-[115px] overflow-hidden relative">
+                  <div className="absolute top-1.5 right-1.5 flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-[#1e56f0]"></span>
+                  </div>
+                  <div className="flex justify-between items-start">
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-[10px] font-black uppercase text-[#1e56f0] tracking-wider">📦 SKUs Despejados (Ativo)</span>
+                      <span className="font-extrabold text-[#032b5e] mt-0.5 text-2xl leading-none font-mono">{totalSkus}</span>
+                      <span className="text-[9px] text-gray-400 font-bold uppercase mt-1 font-sans">Total no período</span>
+                    </div>
+                    <div className="rounded-lg bg-[#1e56f0]/10 flex items-center justify-center text-[#1e56f0] w-7 h-7 flex-shrink-0">
+                      <Box className="w-4 h-4" />
+                    </div>
+                  </div>
+                  <div className="w-full h-[32px] mt-1">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={chartDespejosPorHora} margin={{ top: 0, bottom: 0, left: 0, right: 0 }}>
+                        <Area type="monotone" dataKey="Quantidade" stroke="#1e56f0" fill="rgba(30,86,240,0.06)" strokeWidth={1} dot={false} />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                {/* KPI 1B: HE = Hectolitro (Inactive) */}
+                <div className="bg-white rounded-xl border border-gray-200 flex flex-col justify-between shadow-xs hover:border-sky-500/50 transition-all duration-300 p-2.5 h-[115px] overflow-hidden">
+                  <div className="flex justify-between items-start">
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-[10px] font-black uppercase text-gray-400 tracking-wider">🧪 HE = Hectolitro</span>
+                      <span className="font-extrabold text-[#032b5e] mt-0.5 text-2xl leading-none font-mono">
+                        {totalHE.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 2 })} HL
+                      </span>
+                      <span className="text-[9px] text-gray-400 font-bold uppercase mt-1 font-sans">Volume de Descarte</span>
+                    </div>
+                    <div className="rounded-lg bg-sky-500/10 flex items-center justify-center text-sky-500 w-7 h-7 flex-shrink-0">
+                      <Droplet className="w-4 h-4" fill="currentColor" />
+                    </div>
+                  </div>
+                  <div className="w-full h-[32px] mt-1">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={chartDespejosPorHora} margin={{ top: 0, bottom: 0, left: 0, right: 0 }}>
+                        <Area type="monotone" dataKey="Quantidade" stroke="#0ea5e9" fill="rgba(14,165,233,0.06)" strokeWidth={1} dot={false} />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Column 2: Tempo Médio & Tempo Total */}
+          <div className="flex flex-col gap-3">
+            {/* KPI 2: Tempo Médio */}
+            <div className="bg-white rounded-xl border border-gray-200 flex flex-col justify-between shadow-xs hover:border-emerald-500/50 transition-all duration-300 p-2.5 h-[115px] overflow-hidden">
+              <div className="flex justify-between items-start">
+                <div className="flex flex-col min-w-0">
+                  <span className="text-[10px] font-black uppercase text-gray-400 tracking-wider">⏱ Tempo Médio</span>
+                  <span className="font-extrabold text-[#032b5e] mt-0.5 text-2xl leading-none font-mono">{tempoMedioPorSkuStr}</span>
+                  <span className="text-[9px] text-gray-400 font-bold uppercase mt-1 font-sans">Por SKU</span>
+                </div>
+                <div className="rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-500 w-7 h-7 flex-shrink-0">
                   <Clock className="w-4 h-4" />
                 </div>
               </div>
-              <div>
-                <div className="flex items-baseline gap-2">
-                  <span className="text-3xl font-black font-mono text-slate-900 dark:text-white">
-                    {tempoMedioPorSkuStr}
-                  </span>
-                  <span className="text-xs font-bold text-gray-400 uppercase">MÉDIA REAL</span>
-                </div>
-                <div className="flex items-center gap-2 mt-1 text-xs text-gray-500 dark:text-slate-400 font-semibold">
-                  <span>Meta Esperada: <strong>{tempoEsperadoMedioStr}</strong></span>
-                </div>
-              </div>
-            </div>
-
-            {/* KPI 3: PRODUTIVIDADE CX/H VS META */}
-            <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs flex flex-col justify-between space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-black uppercase tracking-wider text-amber-500 tracking-wider">
-                  Produtividade CX/H
-                </span>
-                <div className="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center">
-                  <Zap className="w-4 h-4" />
-                </div>
-              </div>
-              <div>
-                <div className="flex items-baseline gap-2">
-                  <span className="text-3xl font-black font-mono text-amber-500">
-                    {produtividadeSkuHora.toFixed(1)}
-                  </span>
-                  <span className="text-xs font-bold text-gray-400 uppercase">CX / HORA</span>
-                </div>
-                <div className="flex items-center gap-2 mt-1 text-xs text-gray-500 dark:text-slate-400 font-semibold">
-                  <span>Meta DPO: <strong className="text-slate-900 dark:text-slate-100">{metaProdutividadeCxH} cx/h</strong></span>
-                  <span className={`px-1.5 py-0.2 rounded text-[10px] font-black uppercase ${
-                    produtividadeSkuHora >= metaProdutividadeCxH ? 'bg-emerald-500/20 text-emerald-600' : 'bg-rose-500/20 text-rose-600'
-                  }`}>
-                    {produtividadeSkuHora >= metaProdutividadeCxH ? 'ATINGIDA' : 'ABAIXO'}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* KPI 4: EFICIÊNCIA GERAL */}
-            <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs flex flex-col justify-between space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-black uppercase tracking-wider text-gray-400 dark:text-slate-500">
-                  Eficiência DPO
-                </span>
-                <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${
-                  eficienciaGeral >= 100 ? 'bg-emerald-500/10 text-emerald-600' : 'bg-amber-500/10 text-amber-600'
-                }`}>
-                  <Target className="w-4 h-4" />
-                </div>
-              </div>
-              <div>
-                <div className="flex items-baseline gap-2">
-                  <span className={`text-3xl font-black font-mono ${
-                    eficienciaGeral >= 100 ? 'text-emerald-500' : 'text-amber-500'
-                  }`}>
-                    {eficienciaGeral}%
-                  </span>
-                  <span className="text-xs font-bold text-gray-400 uppercase">TEMPO/META</span>
-                </div>
-                <div className="flex items-center gap-2 mt-1 text-xs text-gray-500 dark:text-slate-400 font-semibold">
-                  <span>Status: <strong>{eficienciaGeral >= 100 ? 'Dentro do Padrão' : 'Gargalo no Ritmo'}</strong></span>
-                </div>
-              </div>
-            </div>
-
-          </div>
-
-          {/* SIMULADOR DE AGILIDADE & METAS (DESPEJO) */}
-          <SimuladorAgilidadeMeta
-            tipo="despejo"
-            totalHectolitros={totalHE}
-            totalCaixasUnidades={totalSkus}
-            tempoTotalMinutos={totalTempoGastoSec / 60}
-            metaHectolitrosMensal={450}
-            metaCxHora={metaProdutividadeCxH}
-            diasUteisElapsed={workingDaysInfo.elapsedWorkingDays}
-            diasUteisTotal={workingDaysInfo.totalWorkingDays}
-          />
-
-          {/* BI CHARTS SECTION */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            
-            {/* CHART 1: PRODUTIVIDADE DIÁRIA (CX/H REAL VS META) */}
-            <div className="lg:col-span-2 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <BarChart2 className="w-5 h-5 text-blue-600" />
-                  <h3 className="text-sm font-black text-slate-900 dark:text-slate-100 uppercase tracking-wide">
-                    Produtividade Diária de Despejo (cx/h Real vs Meta {metaProdutividadeCxH})
-                  </h3>
-                </div>
-                <span className="text-xs text-gray-400 font-semibold">Últimos dias</span>
-              </div>
-
-              <div className="h-64 w-full">
+              <div className="w-full h-[32px] mt-1">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={chartProdutividadeDia} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" opacity={0.5} />
-                    <XAxis dataKey="dia" tick={{ fontSize: 10 }} />
-                    <YAxis tick={{ fontSize: 10 }} />
-                    <Tooltip 
-                      formatter={(val: any, name: string) => [
-                        `${val} cx/h`, 
-                        name === 'realCxH' ? 'Produtividade Real' : 'Meta DPO'
-                      ]}
-                    />
-                    <Bar dataKey="realCxH" fill="#3b82f6" radius={[4, 4, 0, 0]}>
-                      {chartProdutividadeDia.map((entry, index) => (
-                        <Cell 
-                          key={`cell-${index}`} 
-                          fill={entry.realCxH >= entry.metaCxH ? '#10b981' : '#f59e0b'} 
-                        />
-                      ))}
-                    </Bar>
-                    <Line type="monotone" dataKey="metaCxH" stroke="#ef4444" strokeWidth={2} dot={false} />
-                  </BarChart>
+                  <AreaChart data={chartTempoMedioPorEmbalagem} margin={{ top: 0, bottom: 0, left: 0, right: 0 }}>
+                    <Area type="monotone" dataKey="Segundos" stroke="#22c55e" fill="rgba(34,197,94,0.06)" strokeWidth={1} dot={false} />
+                  </AreaChart>
                 </ResponsiveContainer>
               </div>
             </div>
 
-            {/* CHART 2: EMBALAGENS DISTRIBUTION */}
-            <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Package className="w-5 h-5 text-purple-600" />
-                  <h3 className="text-sm font-black text-slate-900 dark:text-slate-100 uppercase tracking-wide">
-                    Mix de Embalagens Despejadas
-                  </h3>
+            {/* KPI 2B: Tempo Total Trabalhado */}
+            <div className="bg-white rounded-xl border border-gray-200 flex flex-col justify-between shadow-xs hover:border-emerald-500/50 transition-all duration-300 p-2.5 h-[115px] overflow-hidden">
+              <div className="flex justify-between items-start">
+                <div className="flex flex-col min-w-0">
+                  <span className="text-[10px] font-black uppercase text-gray-400 tracking-wider">⏱ Tempo Total Trabalhado</span>
+                  <span className="font-extrabold text-[#032b5e] mt-0.5 text-2xl leading-none font-mono">{totalTempoTrabalhadoStr}</span>
+                  <span className="text-[9px] text-gray-400 font-bold uppercase mt-1 font-sans">Horas Trabalhadas</span>
                 </div>
-                <span className="text-xs text-gray-400 font-semibold">Volume (CX)</span>
+                <div className="rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-500 w-7 h-7 flex-shrink-0">
+                  <Clock className="w-4 h-4" />
+                </div>
               </div>
-
-              <div className="h-48 w-full flex items-center justify-center">
-                {chartDistribuicaoEmbalagem.length === 0 ? (
-                  <p className="text-xs text-gray-400">Sem dados para exibir</p>
-                ) : (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={chartDistribuicaoEmbalagem}
-                        dataKey="value"
-                        nameKey="name"
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={45}
-                        outerRadius={75}
-                        paddingAngle={3}
-                      >
-                        {chartDistribuicaoEmbalagem.map((entry, idx) => (
-                          <Cell key={`pie-cell-${idx}`} fill={entry.color} />
-                        ))}
-                      </Pie>
-                      <Tooltip formatter={(val: any) => [`${val} caixas`, 'Volume']} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                )}
-              </div>
-
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                {chartDistribuicaoEmbalagem.slice(0, 4).map((item, i) => (
-                  <div key={i} className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
-                    <span className="text-slate-600 dark:text-slate-400 truncate text-[11px]">{item.name}</span>
-                  </div>
-                ))}
+              <div className="w-full h-[32px] mt-1">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={chartTempoMedioPorEmbalagem} margin={{ top: 0, bottom: 0, left: 0, right: 0 }}>
+                    <Area type="monotone" dataKey="Segundos" stroke="#10b981" fill="rgba(16,185,129,0.06)" strokeWidth={1} dot={false} />
+                  </AreaChart>
+                </ResponsiveContainer>
               </div>
             </div>
-
           </div>
 
-          {/* RECORDS TABLE & AUDIT */}
-          <section className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-2xl shadow-xs overflow-hidden">
-            
-            <div className="p-4 bg-slate-50 dark:bg-slate-950/60 border-b border-gray-200 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <FileSpreadsheet className="w-5 h-5 text-blue-600" />
-                <h3 className="text-sm font-black text-slate-900 dark:text-slate-100 uppercase tracking-wide">
-                  Histórico de Registros de Despejo ({searchedRows.length})
-                </h3>
-              </div>
-
-              <div className="flex items-center gap-2 w-full sm:w-auto">
-                <div className="relative flex-1 sm:w-64">
-                  <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="text"
-                    placeholder="Buscar operador, embalagem, data..."
-                    value={tableSearch}
-                    onChange={(e) => {
-                      setTableSearch(e.target.value);
-                      setCurrentPage(1);
-                    }}
-                    className="w-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl pl-9 pr-3 py-1.5 text-xs text-slate-900 dark:text-slate-100 outline-none focus:border-blue-500"
-                  />
-                </div>
-
-                <button
-                  onClick={handleExportXLSX}
-                  className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shrink-0"
-                >
-                  <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Exportar XLSX</span>
-                </button>
-              </div>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs text-left">
-                <thead className="bg-slate-100 dark:bg-slate-800 text-gray-500 dark:text-slate-400 uppercase font-black tracking-wider text-[10px] border-b border-gray-200 dark:border-slate-700">
-                  <tr>
-                    <th className="p-3.5">Data</th>
-                    <th className="p-3.5">Operador</th>
-                    <th className="p-3.5">Embalagem</th>
-                    <th className="p-3.5 text-center">Quantidade</th>
-                    <th className="p-3.5 text-center">Horário</th>
-                    <th className="p-3.5 text-center">Duração</th>
-                    <th className="p-3.5 text-center">Meta Calc.</th>
-                    <th className="p-3.5 text-center">Status</th>
-                    <th className="p-3.5 text-right">Ações</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200 dark:divide-slate-800">
-                  {paginatedRows.length === 0 ? (
-                    <tr>
-                      <td colSpan={9} className="p-8 text-center text-gray-400">
-                        Nenhum registro encontrado.
-                      </td>
-                    </tr>
-                  ) : (
-                    paginatedRows.map((row) => {
-                      const docId = (row as any)._docId || row.id || '';
-                      const config = embalagensConfig[row.embalagem] || { metaSec: 270 };
-                      const expectedSec = config.metaSec * (Number(row.quantidade) || 1);
-                      const actualSec = toSec(row.duracao || row.tempo || 0);
-                      const isWithin = actualSec <= expectedSec;
-
-                      return (
-                        <tr 
-                          key={docId} 
-                          onClick={() => setSelectedRowId(selectedRowId === docId ? null : docId)}
-                          className={`hover:bg-blue-50/50 dark:hover:bg-blue-950/20 cursor-pointer transition-colors ${
-                            selectedRowId === docId ? 'bg-blue-50/80 dark:bg-blue-950/40' : ''
-                          }`}
-                        >
-                          <td className="p-3.5 font-medium text-slate-700 dark:text-slate-300 whitespace-nowrap">
-                            {row.data || '—'}
-                          </td>
-                          <td className="p-3.5 font-bold text-slate-900 dark:text-slate-100 whitespace-nowrap">
-                            {row.operador || '—'}
-                          </td>
-                          <td className="p-3.5 font-medium text-slate-700 dark:text-slate-300">
-                            {row.embalagem}
-                          </td>
-                          <td className="p-3.5 text-center font-bold font-mono">
-                            {row.quantidade} CX
-                          </td>
-                          <td className="p-3.5 text-center text-gray-500 dark:text-slate-400 font-mono">
-                            {row.inicio || '—'} {row.fim ? `às ${row.fim}` : ''}
-                          </td>
-                          <td className="p-3.5 text-center font-bold font-mono text-slate-900 dark:text-slate-100">
-                            {row.duracao || row.tempo || '—'}
-                          </td>
-                          <td className="p-3.5 text-center font-mono text-gray-500 dark:text-slate-400">
-                            {toHMS(expectedSec)}
-                          </td>
-                          <td className="p-3.5 text-center">
-                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase border ${
-                              isWithin 
-                                ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30' 
-                                : 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30'
-                            }`}>
-                              {isWithin ? 'Dentro da Meta' : 'Fora da Meta'}
-                            </span>
-                          </td>
-                          <td className="p-3.5 text-right">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDeleteRow(docId);
-                              }}
-                              className="p-1.5 text-gray-400 hover:text-rose-500 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-all"
-                              title="Excluir Registro"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            {/* PAGINATION */}
-            <div className="p-3.5 bg-slate-50 dark:bg-slate-950/60 border-t border-gray-200 dark:border-slate-800 flex items-center justify-between text-xs text-gray-500">
-              <span>Página {currentPage} de {totalPages}</span>
-              <div className="flex items-center gap-1">
-                <button
-                  disabled={currentPage === 1}
-                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                  className="p-1.5 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg disabled:opacity-40 hover:bg-gray-100 transition-all"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
-                <button
-                  disabled={currentPage === totalPages}
-                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                  className="p-1.5 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg disabled:opacity-40 hover:bg-gray-100 transition-all"
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-
-          </section>
-
-          {/* AUDIT DETAILS FOR SELECTED ROW */}
-          {selectedRowObj && (
-            <div className="bg-gradient-to-r from-blue-900/20 to-indigo-900/20 border border-blue-500/40 rounded-2xl p-5 shadow-md animate-fade-in space-y-3">
-              <div className="flex items-center justify-between">
-                <h4 className="text-sm font-black text-blue-900 dark:text-blue-300 uppercase tracking-wide flex items-center gap-2">
-                  <Info className="w-4 h-4" />
-                  Auditoria de Registro: {selectedRowObj.operador} — {selectedRowObj.embalagem}
-                </h4>
-                <button
-                  onClick={() => setSelectedRowId(null)}
-                  className="text-xs text-gray-400 hover:text-white"
-                >
-                  Fechar
-                </button>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs">
-                <div className="bg-white/80 dark:bg-slate-900/80 p-3 rounded-xl border border-gray-200 dark:border-slate-800">
-                  <span className="text-gray-400 block text-[10px] uppercase font-bold">Data & Horário</span>
-                  <span className="font-bold text-slate-900 dark:text-white mt-0.5 block">{selectedRowObj.data} ({selectedRowObj.inicio} às {selectedRowObj.fim || '—'})</span>
-                </div>
-
-                <div className="bg-white/80 dark:bg-slate-900/80 p-3 rounded-xl border border-gray-200 dark:border-slate-800">
-                  <span className="text-gray-400 block text-[10px] uppercase font-bold">Tempo Real vs Meta</span>
-                  <span className="font-bold font-mono text-slate-900 dark:text-white mt-0.5 block">
-                    {selectedRowObj.duracao || selectedRowObj.tempo} (Meta: {toHMS((embalagensConfig[selectedRowObj.embalagem]?.metaSec || 270) * (Number(selectedRowObj.quantidade) || 1))})
+          {/* Column 3: Produtividade */}
+          <div className="flex flex-col gap-3">
+            {/* KPI 3: Produtividade */}
+            <div className="bg-white rounded-xl border border-gray-200 flex flex-col justify-between shadow-xs hover:border-[#1e56f0]/50 transition-all duration-300 p-2.5 h-[115px] overflow-hidden">
+              <div className="flex justify-between items-start">
+                <div className="flex flex-col min-w-0">
+                  <span className="text-[10px] font-black uppercase text-gray-400 tracking-wider font-sans">⚡ Produtividade ({nivelFiltroProdutividade})</span>
+                  <span className="font-extrabold text-[#1e56f0] mt-0.5 text-2xl leading-none font-mono">
+                    {produtividadeRealHE.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-xs font-semibold text-gray-500">HE/h</span>
+                  </span>
+                  <span className="text-[9px] text-gray-400 font-bold uppercase mt-1 font-sans">
+                    Meta: {produtividadeMetaHE.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 4 })} HE/h
                   </span>
                 </div>
-
-                <div className="bg-white/80 dark:bg-slate-900/80 p-3 rounded-xl border border-gray-200 dark:border-slate-800">
-                  <span className="text-gray-400 block text-[10px] uppercase font-bold">Volume Despejado</span>
-                  <span className="font-bold font-mono text-slate-900 dark:text-white mt-0.5 block">{selectedRowObj.quantidade} Caixas</span>
-                </div>
-
-                <div className="bg-white/80 dark:bg-slate-900/80 p-3 rounded-xl border border-gray-200 dark:border-slate-800">
-                  <span className="text-gray-400 block text-[10px] uppercase font-bold">Justificativa / Motivo</span>
-                  <span className="font-bold text-amber-600 dark:text-amber-400 mt-0.5 block">{selectedRowObj.motivo || 'Dentro dos parâmetros normais'}</span>
+                <div className="rounded-lg bg-[#1e56f0]/10 flex items-center justify-center text-[#1e56f0] w-7 h-7 flex-shrink-0">
+                  <Zap className="w-4 h-4" />
                 </div>
               </div>
+              <div className="w-full h-[32px] mt-1">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={chartDespejosPorHora} margin={{ top: 0, bottom: 0, left: 0, right: 0 }}>
+                    <Area type="monotone" dataKey="Quantidade" stroke="#1e56f0" fill="rgba(30,86,240,0.06)" strokeWidth={1} dot={false} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
             </div>
-          )}
+            {/* Spacer to keep columns balanced as in Repack */}
+            <div className="h-[115px] hidden lg:block" />
+          </div>
 
+          {/* Column 4: Eficiência & Tendência */}
+          <div className="flex flex-col gap-3">
+            {/* KPI 4: Eficiência */}
+            <div className="bg-white rounded-xl border border-gray-200 flex flex-col justify-between shadow-xs hover:border-purple-500/50 transition-all duration-300 p-2.5 h-[115px] overflow-hidden">
+              <div className="flex justify-between items-start">
+                <div className="flex flex-col min-w-0">
+                  <span className="text-[10px] font-black uppercase text-gray-400 tracking-wider">🎯 Eficiência</span>
+                  <span className="font-extrabold text-[#032b5e] mt-0.5 text-2xl leading-none font-mono">{eficienciaMedia}%</span>
+                  <span className={`text-[9px] font-bold uppercase mt-1 font-sans ${eficienciaMedia >= 100 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                    {eficienciaMedia >= 100 ? 'Meta OK' : 'Abaixo da meta'}
+                  </span>
+                </div>
+                <div className="rounded-lg bg-purple-500/10 flex items-center justify-center text-purple-500 w-7 h-7 flex-shrink-0">
+                  <Target className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="w-full h-[32px] mt-1">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={chartEvolucaoEficiencia} margin={{ top: 0, bottom: 0, left: 0, right: 0 }}>
+                    <Area type="monotone" dataKey="Eficiência" stroke="#8b5cf6" fill="rgba(139,92,246,0.06)" strokeWidth={1} dot={false} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            {/* KPI 4B: Tendência do Mês */}
+            <div className="bg-white rounded-xl border border-gray-200 flex flex-col justify-between shadow-xs hover:border-purple-500/50 transition-all duration-300 p-2.5 h-[115px] overflow-hidden">
+              <div className="flex justify-between items-start">
+                <div className="flex flex-col min-w-0">
+                  <span className="text-[10px] font-black uppercase text-gray-400 tracking-wider">📈 Tendência do Mês</span>
+                  <span className={`font-black mt-0.5 text-[14px] leading-tight ${tendenciaMensal.colorClass} uppercase font-sans`}>
+                    {tendenciaMensal.status}
+                  </span>
+                  <span className="text-[9px] text-gray-400 font-bold uppercase mt-1 font-sans">
+                    {tendenciaMensal.label} ({tendenciaMensal.percent}%)
+                  </span>
+                </div>
+                <div className={`rounded-lg flex items-center justify-center w-7 h-7 flex-shrink-0 ${tendenciaMensal.percent >= 100 ? 'bg-emerald-500/10 text-emerald-500' : 'bg-rose-500/10 text-rose-500'}`}>
+                  <TrendingUp className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="w-full h-[32px] mt-1">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={chartEvolucaoEficiencia} margin={{ top: 0, bottom: 0, left: 0, right: 0 }}>
+                    <Area type="monotone" dataKey="Eficiência" stroke={tendenciaMensal.percent >= 100 ? '#10b981' : '#f43f5e'} fill={tendenciaMensal.percent >= 100 ? 'rgba(16,185,129,0.06)' : 'rgba(244,63,94,0.06)'} strokeWidth={1} dot={false} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      {/* ── SEÇÃO DE GRÁFICOS OU ESTADO VAZIO ── */}
+      {filteredRows.length === 0 ? (
+        <div className="bg-slate-50 border-2 border-dashed border-slate-300 rounded-2xl p-8 text-center my-4 flex flex-col items-center justify-center shadow-xs">
+          <div className="w-12 h-12 rounded-full bg-slate-200/80 flex items-center justify-center text-slate-500 mb-3">
+            <BarChart2 className="w-6 h-6 text-slate-400" />
+          </div>
+          <h4 className="text-sm font-black text-slate-700 uppercase tracking-wide">
+            Nenhum dado importado para o período selecionado
+          </h4>
+          <p className="text-xs text-slate-500 max-w-md mt-1">
+            Não existem lançamentos ou registros de despejo para os filtros aplicados. As métricas em R$ e HL foram zeradas e nenhum gráfico fictício é gerado.
+          </p>
         </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        
+        {/* Gráfico 1: Despejos por Hora */}
+        <div className="bg-white border border-gray-200 p-4 rounded-xl shadow-sm flex flex-col justify-between">
+          <div>
+            <h3 className="text-xs font-black text-[#032b5e] uppercase tracking-wider">
+              Despejos por Hora {simUnidade === 'HE' ? '(HL)' : '(SKUs)'}
+            </h3>
+            <span className="text-[10px] text-gray-400 font-bold uppercase">
+              {simUnidade === 'HE' ? 'Volume total em Hectolitros despejados por hora' : 'Quantidade total de SKUs despejados por hora'}
+            </span>
+          </div>
+          <div className="h-[250px] w-full mt-4">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={chartDespejosPorHora} margin={{ top: 10, right: 10, left: -20, bottom: 5 }}>
+                <CartesianGrid stroke="#f1f5f9" vertical={false} strokeDasharray="3 3" />
+                <XAxis dataKey="name" stroke="#94a3b8" tickLine={false} fontSize={10} />
+                <YAxis stroke="#94a3b8" tickLine={false} fontSize={10} />
+                <Tooltip contentStyle={{ backgroundColor: '#ffffff', borderColor: '#e2e8f0', borderRadius: '8px', color: '#1e293b', fontSize: '11px' }} />
+                <Bar dataKey="Quantidade" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={20}>
+                  {chartDespejosPorHora.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={index === 2 ? '#3b82f6' : '#94a3b8'} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Gráfico 2: Desempenho por Embalagem */}
+        <div className="bg-white border border-gray-200 p-4 rounded-xl shadow-sm flex flex-col justify-between">
+          <div>
+            <h3 className="text-xs font-black text-[#032b5e] uppercase tracking-wider">
+              Desempenho por Embalagem {simUnidade === 'HE' ? '(HL)' : '(SKUs)'}
+            </h3>
+            <span className="text-[10px] text-gray-400 font-bold uppercase">
+              {simUnidade === 'HE' ? 'Volume total em Hectolitros por tipo de embalagem' : 'Quantidade total de SKUs despejados por embalagem'}
+            </span>
+          </div>
+          <div className="h-[250px] w-full mt-4">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={chartDesempenhoPorEmbalagem} layout="vertical" margin={{ top: 10, right: 10, left: -5, bottom: 5 }}>
+                <CartesianGrid stroke="#f1f5f9" horizontal={false} strokeDasharray="3 3" />
+                <XAxis type="number" stroke="#94a3b8" tickLine={false} fontSize={10} />
+                <YAxis dataKey="name" type="category" stroke="#94a3b8" tickLine={false} width={80} fontSize={10} />
+                <Tooltip contentStyle={{ backgroundColor: '#ffffff', borderColor: '#e2e8f0', borderRadius: '8px', color: '#1e293b', fontSize: '11px' }} />
+                <Bar dataKey="SKUs" fill="#f5a623" radius={[0, 4, 4, 0]} barSize={12} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Gráfico 3: Tempo Médio por Embalagem */}
+        <div className="bg-white border border-gray-200 p-4 rounded-xl shadow-sm flex flex-col justify-between">
+          <div>
+            <h3 className="text-xs font-black text-[#032b5e] uppercase tracking-wider">Tempo Médio por Embalagem</h3>
+            <span className="text-[10px] text-gray-400 font-bold uppercase">Média de tempo gasto por tipo de embalagem</span>
+          </div>
+          <div className="mt-4 space-y-3.5 py-1">
+            {chartTempoMedioPorEmbalagem.map((item, idx) => {
+              const maxVal = Math.max(...chartTempoMedioPorEmbalagem.map(x => x.Segundos)) || 70;
+              const widthPct = Math.max(15, Math.round((item.Segundos / maxVal) * 100));
+              return (
+                <div key={item.name} className="flex flex-col gap-1">
+                  <div className="flex justify-between items-center text-xs font-semibold">
+                    <span className="text-slate-700 font-bold">{item.name}</span>
+                    <span className="text-amber-600 font-mono font-bold">00:{item.Label}</span>
+                  </div>
+                  <div className="w-full bg-slate-100 border border-gray-200 h-3 rounded-full overflow-hidden flex">
+                    <div 
+                      className="bg-[#f5a623] h-full rounded-full transition-all duration-1000"
+                      style={{ width: `${widthPct}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Gráfico 4: Evolução da Eficiência */}
+        <div className="bg-white border border-gray-200 p-4 rounded-xl shadow-sm flex flex-col justify-between">
+          <div>
+            <h3 className="text-xs font-black text-[#032b5e] uppercase tracking-wider">Evolução da Eficiência</h3>
+            <span className="text-[10px] text-gray-400 font-bold uppercase">Tendência diária de cumprimento de metas</span>
+          </div>
+          <div className="h-[250px] w-full mt-4">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={chartEvolucaoEficiencia} margin={{ top: 10, right: 10, left: -20, bottom: 5 }}>
+                <defs>
+                  <linearGradient id="colorEffDespejo" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
+                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid stroke="#f1f5f9" vertical={false} strokeDasharray="3 3" />
+                <XAxis dataKey="name" stroke="#94a3b8" tickLine={false} fontSize={10} />
+                <YAxis stroke="#94a3b8" tickLine={false} fontSize={10} domain={[80, 120]} />
+                <Tooltip contentStyle={{ backgroundColor: '#ffffff', borderColor: '#e2e8f0', borderRadius: '8px', color: '#1e293b', fontSize: '11px' }} />
+                <Area 
+                  type="monotone" 
+                  dataKey="Eficiência" 
+                  stroke="#3b82f6" 
+                  strokeWidth={3} 
+                  fillOpacity={1} 
+                  fill="url(#colorEffDespejo)" 
+                  dot={{ r: 5, stroke: '#3b82f6', strokeWidth: 2, fill: '#ffffff' }} 
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+      </div>
       )}
 
-      {/* SUB TAB: QUADRO DE AÇÕES A3 */}
-      {activeSubTab === 'boarda3' && (
-        <div className="space-y-6">
-          <A3BoardComponent
-            user={user}
-            empresa={empresa}
-            dashboard="despejo"
-          />
-        </div>
-      )}
+      {/* ── SEÇÃO DE INTEGRAÇÃO: QUEBRAS REGISTRADAS COM POSSIBILIDADE DE DESPEJO ── */}
+      <section className="bg-gradient-to-br from-slate-900 via-slate-900 to-[#151b23] border border-amber-500/30 rounded-2xl p-6 text-white shadow-xl space-y-6">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-5">
+          <div className="flex items-center gap-3">
+            <div className="p-3 bg-amber-500/15 border border-amber-500/30 rounded-xl text-amber-400">
+              <AlertTriangle className="w-6 h-6 animate-pulse" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-black uppercase tracking-widest text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded">
+                  Cruzamento Quebras x Despejo
+                </span>
+                <span className="text-[10px] font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                  {totaisQuebrasDespejo.pctAproveitavel}% do Volume de Quebras Elegível
+                </span>
+              </div>
+              <h3 className="text-base font-black text-white uppercase tracking-wide mt-1">
+                Análise de Quebras do Sistema com Possibilidade de Despejo
+              </h3>
+              <p className="text-xs text-slate-400">
+                Avarias pressurizadas, vazamentos ativos, produtos WQI e lotes com vencimento próximo identificados para esvaziamento e reciclagem.
+              </p>
+            </div>
+          </div>
 
-      {/* POP MODAL */}
+          <div className="flex items-center gap-3">
+            <div className="bg-slate-800/80 border border-slate-700/80 px-4 py-2 rounded-xl text-center">
+              <span className="text-[9px] uppercase font-bold text-slate-400 block">Quebras Candidatas</span>
+              <span className="text-base font-black text-amber-400 font-mono">{totaisQuebrasDespejo.qtd} itens</span>
+            </div>
+            <div className="bg-slate-800/80 border border-slate-700/80 px-4 py-2 rounded-xl text-center">
+              <span className="text-[9px] uppercase font-bold text-slate-400 block">Potencial Despejo</span>
+              <span className="text-base font-black text-emerald-400 font-mono">{totaisQuebrasDespejo.totalHl} HL</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Gráficos de Quebras vs Despejo */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          {/* Gráfico A: Comparativo de Origem do Despejo (Direto vs Quebras por Embalagem) */}
+          <div className="bg-slate-950/60 border border-slate-800 p-4 rounded-xl flex flex-col justify-between">
+            <div>
+              <h4 className="text-xs font-black text-slate-200 uppercase tracking-wider flex items-center justify-between">
+                <span>Origem do Volume de Despejo (HL)</span>
+                <span className="text-[10px] font-normal text-amber-400">Despejo Direto vs Quebras Elegíveis</span>
+              </h4>
+              <p className="text-[10px] text-slate-400 mt-0.5">
+                Volume de cerveja/refrigerante drenável proveniente de quebras operacionais comparado ao despejo direto.
+              </p>
+            </div>
+            <div className="h-[240px] w-full mt-4">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartQuebrasDespejoPorEmbalagem} margin={{ top: 10, right: 10, left: -15, bottom: 5 }}>
+                  <CartesianGrid stroke="#1e293b" vertical={false} strokeDasharray="3 3" />
+                  <XAxis dataKey="name" stroke="#64748b" tickLine={false} fontSize={10} />
+                  <YAxis stroke="#64748b" tickLine={false} fontSize={10} />
+                  <Tooltip contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '8px', color: '#f8fafc', fontSize: '11px' }} />
+                  <Bar dataKey="Despejo Direto (HL)" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={14} />
+                  <Bar dataKey="Quebras Elegíveis (HL)" fill="#f59e0b" radius={[4, 4, 0, 0]} barSize={14} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* Gráfico B: Distribuição das Quebras Elegíveis por Causa / Motivo */}
+          <div className="bg-slate-950/60 border border-slate-800 p-4 rounded-xl flex flex-col justify-between">
+            <div>
+              <h4 className="text-xs font-black text-slate-200 uppercase tracking-wider flex items-center justify-between">
+                <span>Potencial de Despejo por Causa da Quebra</span>
+                <span className="text-[10px] font-mono text-emerald-400">HL por Categoria</span>
+              </h4>
+              <p className="text-[10px] text-slate-400 mt-0.5">
+                Classificação das ocorrências de quebra elegíveis para drenagem rápida no centro de descarte.
+              </p>
+            </div>
+            <div className="h-[240px] w-full mt-4">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartQuebrasPorMotivo} layout="vertical" margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
+                  <CartesianGrid stroke="#1e293b" horizontal={false} strokeDasharray="3 3" />
+                  <XAxis type="number" stroke="#64748b" tickLine={false} fontSize={10} />
+                  <YAxis dataKey="name" type="category" stroke="#94a3b8" tickLine={false} width={130} fontSize={10} />
+                  <Tooltip contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '8px', color: '#f8fafc', fontSize: '11px' }} />
+                  <Bar dataKey="HL" fill="#10b981" radius={[0, 4, 4, 0]} barSize={12} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        </div>
+
+        {/* Tabela de Quebras Elegíveis para Encaminhamento Direto */}
+        <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-4 space-y-3">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+            <div>
+              <h4 className="text-xs font-black text-white uppercase tracking-wider flex items-center gap-2">
+                <span>📦 Fila de Quebras Prontas para Operação Despejo</span>
+                <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded font-mono font-bold">
+                  {quebrasElegiveisDespejo.length} itens aguardando
+                </span>
+              </h4>
+              <p className="text-[11px] text-slate-400">
+                Selecione uma quebra identificada no sistema para gerar automaticamente a ordem e cronômetro de despejo.
+              </p>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs border-collapse min-w-[700px]">
+              <thead>
+                <tr className="border-b border-slate-800 text-slate-400 text-[10px] uppercase font-bold tracking-wider bg-slate-900/90">
+                  <th className="p-2.5">Código / Produto</th>
+                  <th className="p-2.5">Motivo / Categoria</th>
+                  <th className="p-2.5 text-center">Quantidade</th>
+                  <th className="p-2.5 text-center">Vol. Estimado</th>
+                  <th className="p-2.5">Tempo Est. Drenagem</th>
+                  <th className="p-2.5 text-right">Ação</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/60 font-sans">
+                {quebrasElegiveisDespejo.slice(0, 5).map((item, i) => (
+                  <tr key={(item.quebra as any).id || (item.quebra as any)._docId || i} className="hover:bg-slate-800/40 transition-colors">
+                    <td className="p-2.5 font-bold text-slate-200">
+                      <span className="text-amber-400 font-mono">[{item.quebra.codProduto || '539'}]</span> {item.quebra.descricao}
+                      <span className="block text-[9px] text-slate-500 font-mono">Lote: {(item.quebra as any).lote || 'A-2026'}</span>
+                    </td>
+                    <td className="p-2.5">
+                      <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-slate-800 text-amber-300 border border-slate-700">
+                        {item.analise.categoria}
+                      </span>
+                    </td>
+                    <td className="p-2.5 text-center font-bold font-mono text-white">
+                      {item.quebra.quantidade} cx
+                    </td>
+                    <td className="p-2.5 text-center font-mono font-bold text-emerald-400">
+                      {item.analise.volumeHl} HL
+                    </td>
+                    <td className="p-2.5 font-mono text-slate-300">
+                      ⏱️ {item.analise.tempoEstimativalustrativaStr}
+                    </td>
+                    <td className="p-2.5 text-right">
+                      <button
+                        onClick={() => handleConverterQuebraEmDespejo(item)}
+                        className="py-1.5 px-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-[10px] rounded-lg transition-all shadow-md cursor-pointer flex items-center gap-1 ml-auto"
+                      >
+                        📥 Lançar no Despejo
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      {/* ── SEÇÃO DO SIMULADOR DE AGILIDADE & META (+10%) ── */}
+      <SimuladorAgilidadeMeta 
+        tipo="despejo"
+        totalHectolitros={totalHE}
+        totalCaixasUnidades={totalSkus}
+        tempoTotalMinutos={Math.round(totalTempoGastoSec / 60)}
+        metaHectolitrosMensal={simMeta}
+      />
+
+      {/* MODAL DE PADRÃO OPERACIONAL (POP/SOP) */}
       <PadraoOperacionalModal
+        moduleKey="despejo"
+        moduleName="Despejo de Produtos Avariados"
         isOpen={isPopModalOpen}
         onClose={() => setIsPopModalOpen(false)}
         user={user}
-        processo="Despejo"
+      />
+      <SopManagerModal
+        operation="despejo"
+        operationName="Despejo"
+        isOpen={isPopModalOpen}
+        onClose={() => setIsPopModalOpen(false)}
       />
 
-      {/* DEDICATED ACTION MODAL (FILTERED EXCLUSIVELY FOR DESPEJO) */}
-      <IndicatorActionModal
-        isOpen={isActionModalOpen}
-        onClose={() => setIsActionModalOpen(false)}
-        indicatorTitle="Despejo"
-        indicatorSubtitle="Visualizando e gerenciando apenas os planos de ação e contramedidas 5W2H do setor de Despejo."
-        indicatorBadge="DESPEJO DPO"
-        allowedProcessos={['Despejo']}
-        defaultProcesso="Despejo"
-        defaultIndicador="Produtividade e Agilidade de Despejo (cx/h)"
-        defaultMeta={`${metaProdutividadeCxH} cx/h`}
-        user={user}
-      />
-
-      {/* MODAL: NOVO REGISTRO DE DESPEJO COM CRONÔMETRO */}
-      {isRegisterModalOpen && (
-        <div className="fixed inset-0 z-[110] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden animate-fade-in">
-            
-            <div className="p-5 bg-gradient-to-r from-blue-700 to-indigo-800 text-white flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <Droplet className="w-5 h-5" />
-                <h3 className="font-black text-base uppercase tracking-wide">Novo Registro de Despejo</h3>
+      {/* ── SEÇÃO DE ÚLTIMOS LANÇAMENTOS E AUDITORIA ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+        
+        {/* Tabela de Lançamentos */}
+        <div className="bg-white border border-gray-200 p-4 sm:p-5 rounded-xl lg:col-span-8 flex flex-col justify-between shadow-sm min-h-[360px] overflow-x-auto">
+          <div>
+            <div className="flex flex-wrap items-center justify-between gap-4 mb-4 border-b border-gray-100 pb-3">
+              <div>
+                <h3 className="text-xs font-black text-[#032b5e] uppercase tracking-wider">Últimos Lançamentos</h3>
+                <p className="text-[10px] text-gray-400 font-bold uppercase">Total de {tableFilteredRows.length} registros filtrados</p>
               </div>
-              <button 
-                onClick={() => {
-                  setIsRegisterModalOpen(false);
-                  setIsStopwatchRunning(false);
-                  setStopwatchSeconds(0);
-                }}
-                className="p-1 hover:bg-white/20 rounded-lg text-white"
-              >
-                ✕
-              </button>
+              
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    placeholder="Pesquisar..."
+                    value={tableSearch}
+                    onChange={(e) => { setTableSearch(e.target.value); setCurrentPage(1); }}
+                    className="bg-slate-50 border border-gray-200 text-slate-700 text-xs rounded-lg pl-9 pr-3 py-1.5 focus:border-[#032b5e] transition-colors w-[180px]"
+                  />
+                </div>
+              </div>
             </div>
 
-            <form onSubmit={handleCreateRecord} className="p-6 space-y-4 text-xs">
-              
-              {/* LIVE STOPWATCH BOX */}
-              <div className="bg-slate-100 dark:bg-slate-800 p-4 rounded-2xl border border-gray-200 dark:border-slate-700 text-center space-y-2">
-                <span className="text-[10px] font-black uppercase tracking-wider text-gray-500 dark:text-slate-400">
-                  Cronometragem da Operação
-                </span>
-                <div className="text-3xl font-black font-mono text-blue-600 dark:text-blue-400">
-                  {toHMS(stopwatchSeconds)}
+            <table className="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr className="border-b border-gray-100 text-gray-400 uppercase font-black tracking-wider text-[10px]">
+                  <th className="py-2.5">Data</th>
+                  <th className="py-2.5">Colaborador</th>
+                  <th className="py-2.5">Embalagem</th>
+                  <th className="py-2.5 text-center">Qtde</th>
+                  <th className="py-2.5">Início</th>
+                  <th className="py-2.5">Final</th>
+                  <th className="py-2.5">Tempo</th>
+                  <th className="py-2.5">Eficiência</th>
+                  <th className="py-2.5 text-right">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {paginatedRows.map(row => {
+                  const config = EMBALAGENS_CONFIG[row.embalagem];
+                  const unitMeta = config ? config.metaSec : 43;
+                  const expectedSec = unitMeta * (Number(row.quantidade) || 1);
+                  const spentSec = toSec(row.tempo);
+                  const eff = spentSec > 0 ? Math.round((expectedSec / spentSec) * 100) : 100;
+                  
+                  return (
+                    <tr 
+                      key={row._docId} 
+                      onClick={() => setSelectedRowId(row._docId || null)}
+                      className={`hover:bg-slate-50/60 cursor-pointer transition-colors group ${selectedRowId === row._docId ? 'bg-amber-500/10 border-l-2 border-l-amber-500' : ''}`}
+                    >
+                      <td className="py-3 font-semibold text-gray-400">{row.data}</td>
+                      <td className="py-3 font-bold text-slate-800">{row.operador || '—'}</td>
+                      <td className="py-3 font-semibold text-gray-400">{row.embalagem}</td>
+                      <td className="py-3 font-bold text-amber-600 text-center">{row.quantidade} cx</td>
+                      <td className="py-3 text-gray-400 font-mono">{row.inicio ? row.inicio.substring(0,5) : '—'}</td>
+                      <td className="py-3 text-gray-400 font-mono">{row.fim ? row.fim.substring(0,5) : '—'}</td>
+                      <td className="py-3 font-mono text-slate-700 font-semibold">{row.tempo}</td>
+                      <td className="py-3 font-mono text-slate-700 font-bold">{eff}%</td>
+                      <td className="py-3 text-right">
+                        <span className="inline-block px-1.5 py-0.5 rounded text-[12px]">
+                          {eff >= 100 ? '🟢' : eff >= 85 ? '🟡' : '🔴'}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {paginatedRows.length === 0 && (
+                  <tr>
+                    <td colSpan={9} className="py-8 text-center text-gray-400 font-semibold">Nenhum registro encontrado</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Pagination */}
+          <div className="flex items-center justify-between border-t border-gray-100 pt-3 mt-4 text-xs text-gray-400">
+            <span>
+              Mostrando <strong>{paginatedRows.length > 0 ? (currentPage - 1) * itemsPerPage + 1 : 0}</strong> a <strong>{Math.min(currentPage * itemsPerPage, tableFilteredRows.length)}</strong> de <strong>{tableFilteredRows.length}</strong> registros
+            </span>
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                disabled={currentPage === 1}
+                className="p-1 rounded bg-slate-50 border border-gray-200 disabled:opacity-40 cursor-pointer text-slate-700 hover:bg-slate-100"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <span className="font-bold text-slate-700 px-2">Página {currentPage} de {totalPages}</span>
+              <button
+                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                disabled={currentPage === totalPages}
+                className="p-1 rounded bg-slate-50 border border-gray-200 disabled:opacity-40 cursor-pointer text-slate-700 hover:bg-slate-100"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Auditoria de Cálculos */}
+        <div className="bg-white border border-gray-200 p-5 rounded-xl lg:col-span-4 flex flex-col justify-between shadow-sm min-h-[360px]">
+          <div>
+            <h3 className="text-xs font-black text-[#032b5e] uppercase tracking-wider border-b border-gray-100 pb-2 mb-3">
+              Cálculos Automáticos
+            </h3>
+            
+            {selectedRowDetails ? (
+              <div className="space-y-3">
+                <div className="flex justify-between text-xs py-1 border-b border-gray-100">
+                  <span className="text-gray-400">Tempo Esperado (Meta)</span>
+                  <span className="font-bold font-mono text-slate-700">{selectedRowDetails.expected}</span>
                 </div>
-                <div className="flex items-center justify-center gap-2 pt-1">
-                  {!isStopwatchRunning ? (
-                    <button
-                      type="button"
-                      onClick={() => setIsStopwatchRunning(true)}
-                      className="px-4 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-black rounded-xl text-xs flex items-center gap-1.5 shadow-sm"
-                    >
-                      <Play className="w-3.5 h-3.5" />
-                      <span>Iniciar Cronômetro</span>
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => setIsStopwatchRunning(false)}
-                      className="px-4 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black rounded-xl text-xs flex items-center gap-1.5 shadow-sm"
-                    >
-                      <Pause className="w-3.5 h-3.5" />
-                      <span>Pausar</span>
-                    </button>
-                  )}
+                <div className="flex justify-between text-xs py-1 border-b border-gray-100">
+                  <span className="text-gray-400">Tempo Gasto (Real)</span>
+                  <span className="font-bold font-mono text-slate-700">{selectedRowDetails.spent}</span>
+                </div>
+                <div className="flex justify-between text-xs py-1 border-b border-gray-100">
+                  <span className="text-gray-400">Diferença</span>
+                  <div className="flex items-center gap-1">
+                    <span className={`font-bold font-mono ${selectedRowDetails.diffPositive ? 'text-emerald-600' : 'text-rose-600'}`}>
+                      {selectedRowDetails.diffPositive ? '-' : '+'}{selectedRowDetails.diff}
+                    </span>
+                    <span className={`w-2 h-2 rounded-full ${selectedRowDetails.diffPositive ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                  </div>
+                </div>
+                <div className="flex justify-between text-xs py-1 border-b border-gray-100">
+                  <span className="text-gray-400">Eficiência Calculada</span>
+                  <span className={`font-bold ${selectedRowDetails.efficiency >= 100 ? 'text-emerald-600' : 'text-rose-600'}`}>{selectedRowDetails.efficiency}%</span>
+                </div>
+                <div className="flex justify-between text-xs py-1 border-b border-gray-100">
+                  <span className="text-gray-400">Despejos por Hora</span>
+                  <span className="font-bold text-amber-600">{selectedRowDetails.caixasHora} SKU/h</span>
+                </div>
+                <div className="flex justify-between text-xs py-1 border-b border-gray-100">
+                  <span className="text-gray-400">Tempo Médio Real</span>
+                  <span className="font-bold font-mono text-slate-700">00:{selectedRowDetails.tempoMedioUnit}</span>
+                </div>
+
+                <div className="pt-3 flex justify-end">
                   <button
-                    type="button"
-                    onClick={() => {
-                      setIsStopwatchRunning(false);
-                      setStopwatchSeconds(0);
-                    }}
-                    className="px-3 py-1.5 bg-gray-200 dark:bg-slate-700 hover:bg-gray-300 text-slate-700 dark:text-slate-300 font-bold rounded-xl text-xs flex items-center gap-1"
+                    onClick={() => handleDeleteRow(selectedRowDetails.row._docId || '')}
+                    className="px-3 py-1.5 bg-rose-50 hover:bg-rose-600 border border-rose-200 text-rose-600 hover:text-white rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1"
                   >
-                    <RotateCcw className="w-3.5 h-3.5" />
-                    <span>Zerar</span>
+                    <Trash2 className="w-3.5 h-3.5" /> Excluir Registro
                   </button>
                 </div>
               </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[10px] font-bold text-gray-500 dark:text-slate-400 uppercase block mb-1">
-                    Operador Responsável
-                  </label>
-                  <select
-                    value={newOperador}
-                    onChange={(e) => setNewOperador(e.target.value)}
-                    className="w-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:border-blue-500"
-                  >
-                    {distinctOperadores.map(op => (
-                      <option key={op} value={op}>{op}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-[10px] font-bold text-gray-500 dark:text-slate-400 uppercase block mb-1">
-                    Embalagem
-                  </label>
-                  <select
-                    value={newEmbalagem}
-                    onChange={(e) => setNewEmbalagem(e.target.value)}
-                    className="w-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:border-blue-500"
-                  >
-                    {embalagensList.map(emb => (
-                      <option key={emb} value={emb}>{emb}</option>
-                    ))}
-                  </select>
-                </div>
+            ) : (
+              <div className="py-12 text-center text-gray-400 text-xs font-bold uppercase">
+                Selecione um lançamento na tabela para auditar os cálculos em tempo real.
               </div>
+            )}
+          </div>
 
-              <div>
-                <label className="text-[10px] font-bold text-gray-500 dark:text-slate-400 uppercase block mb-1">
-                  Quantidade de Caixas (CX)
-                </label>
-                <input
-                  type="number"
-                  min={1}
-                  value={newQuantidade}
-                  onChange={(e) => setNewQuantidade(Math.max(1, parseInt(e.target.value) || 1))}
-                  className="w-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:border-blue-500"
-                  required
-                />
-              </div>
-
-              <div className="p-3 bg-blue-50 dark:bg-blue-950/30 rounded-xl border border-blue-200 dark:border-blue-900/60 text-xs space-y-1">
-                <div className="flex justify-between">
-                  <span className="text-gray-500 dark:text-slate-400">Meta Unidade ({newEmbalagem}):</span>
-                  <span className="font-bold font-mono">{toHMS(embalagensConfig[newEmbalagem]?.metaSec || 270)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500 dark:text-slate-400">Tempo Limite Total ({newQuantidade} CX):</span>
-                  <span className="font-bold font-mono text-blue-600 dark:text-blue-400">
-                    {toHMS((embalagensConfig[newEmbalagem]?.metaSec || 270) * newQuantidade)}
-                  </span>
-                </div>
-              </div>
-
-              <div>
-                <label className="text-[10px] font-bold text-gray-500 dark:text-slate-400 uppercase block mb-1">
-                  Justificativa / Motivo (Obrigatório se exceder a meta)
-                </label>
-                <input
-                  type="text"
-                  placeholder="Ex: Canaleta entupida ou garra manual com folga"
-                  value={newMotivoFalha}
-                  onChange={(e) => setNewMotivoFalha(e.target.value)}
-                  className="w-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs outline-none focus:border-blue-500"
-                />
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsRegisterModalOpen(false)}
-                  className="px-4 py-2 bg-gray-100 dark:bg-slate-800 text-gray-700 dark:text-slate-300 font-bold rounded-xl text-xs hover:bg-gray-200"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-black rounded-xl text-xs shadow-md"
-                >
-                  Salvar Registro
-                </button>
-              </div>
-            </form>
-
+          <div className="p-3 bg-slate-50 border border-gray-200 rounded-xl flex items-center gap-3.5 mt-4">
+            <Info className="w-5 h-5 text-amber-500 shrink-0" />
+            <p className="text-[10px] text-gray-400 leading-normal font-bold uppercase">
+              Os valores representam os cálculos do posto de descarte e são computados autonomamente com base nas regras de negócio estabelecidas.
+            </p>
           </div>
         </div>
+
+      </div>
+      </>
       )}
+
+      {activeSubTab === 'boarda3' && (
+        <A3BoardComponent user={user} empresa={empresa} dashboard="despejo" />
+      )}
+
+      {/* FOOTER BAR */}
+      <div className="flex items-center justify-between border-t border-gray-200 pt-4 mt-2">
+        <span className="text-[10px] font-bold tracking-widest text-gray-400 uppercase">
+          Ambiental &amp; Produtividade
+        </span>
+        <div className="flex items-center gap-1">
+          <span className="text-xs font-black text-gray-300 select-none">|</span>
+          <span className="text-sm font-black text-[#032b5e] tracking-tighter select-none font-sans uppercase">
+            REPACK ATIVO
+          </span>
+        </div>
+      </div>
 
     </div>
   );

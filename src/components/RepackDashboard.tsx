@@ -16,7 +16,6 @@ import { SimuladorAgilidadeMeta } from './SimuladorAgilidadeMeta';
 import { PadraoOperacionalModal } from './PadraoOperacionalModal';
 import { SopManagerModal } from './SopManagerModal';
 import { RepackMetasParametrosCard } from './RepackMetasParametrosCard';
-import { IndicatorActionModal } from './IndicatorActionModal';
 import { useSystemTargets } from '../utils/useSystemTargets';
 import { 
   Box, 
@@ -242,7 +241,6 @@ const PIE_COLORS = [COLORS.azul, COLORS.verde, COLORS.amarelo, COLORS.roxo, COLO
 export default function RepackDashboard({ user, empresa, onBack }: RepackDashboardProps) {
   const { targets, updateTarget } = useSystemTargets();
   const metaProdutividadeCxH = targets['repack_produtividade'] || 10;
-  const [isActionModalOpen, setIsActionModalOpen] = useState(false);
 
   const [embalagensConfig, setEmbalagensConfig] = useState<Record<string, { metaSec: number; label: string }>>(() => {
     try {
@@ -1648,14 +1646,6 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
             className="px-3.5 py-1.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-black text-xs rounded-lg shadow-xs uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer"
           >
             📋 Padrão Operacional (POP)
-          </button>
-
-          <button
-            onClick={() => setIsActionModalOpen(true)}
-            className="px-3.5 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black text-xs rounded-lg shadow-xs uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer border border-blue-400/30"
-          >
-            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-300" />
-            <span>Plano de Ações (Repack)</span>
           </button>
 
           <div className="flex items-center bg-gray-100 p-0.5 rounded-lg border border-gray-200/60">
@@ -3354,20 +3344,6 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
         operationName="Repack" 
         isOpen={isPopModalOpen} 
         onClose={() => setIsPopModalOpen(false)} 
-      />
-
-      {/* ── DEDICATED ACTION MODAL (FILTERED EXCLUSIVELY FOR REPACK) ── */}
-      <IndicatorActionModal
-        isOpen={isActionModalOpen}
-        onClose={() => setIsActionModalOpen(false)}
-        indicatorTitle="Repack"
-        indicatorSubtitle="Visualizando e gerenciando exclusivamente as ações corretivas e contramedidas 5W2H do setor de Repack."
-        indicatorBadge="REPACK DPO"
-        allowedProcessos={['Repack']}
-        defaultProcesso="Repack"
-        defaultIndicador="Produtividade e Agilidade de Repack (cx/h)"
-        defaultMeta={`${metaProdutividadeCxH} cx/h`}
-        user={user}
       />
 
     </div>

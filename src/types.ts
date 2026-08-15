@@ -86,7 +86,6 @@ export interface DespejoRow {
   meta: string;
   resultado: string;
   status?: string;
-  motivo?: string;
   aproveitado?: number | boolean;
   operador?: string;
   _criadoEm?: string;
