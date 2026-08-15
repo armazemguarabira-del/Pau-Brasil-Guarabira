@@ -185,7 +185,7 @@ export default function GestaoEscoamentoTab({ validadesList, user, empresa, onRe
         map.set(key, {
           _docId: item._docId,
           loteKey,
-          id: item.id || (idx + 1),
+          id: Number(item.id) || (idx + 1),
           codigo,
           descricao,
           lote: '-', // Unified item

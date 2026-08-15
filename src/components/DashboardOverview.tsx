@@ -79,6 +79,7 @@ import { getUserRoleType } from '../utils/permissions';
 import { Checklist5SModal, Audit5SRecord } from './Checklist5SModal';
 import { Workstation5SSection } from './Workstation5SSection';
 import { WorkstationCriticosRecolhimento } from './WorkstationCriticosRecolhimento';
+import { WorkstationExecutivePnpSection } from './WorkstationExecutivePnpSection';
 import { AgendaExecutivoComponent } from './AgendaExecutivoComponent';
 import { DiarioBordoComponent } from './DiarioBordoComponent';
 import { ReunioesComponent } from './ReunioesComponent';
@@ -242,7 +243,7 @@ interface DashboardOverviewProps {
     docsHoje: number;
     alertasFefo: number;
   };
-  initialTab?: 'operacao' | '5s' | 'matriz' | 'desvios' | 'agenda' | 'diario_bordo' | 'reunioes' | 'fluxograma';
+  initialTab?: 'operacao' | '5s' | 'matriz' | 'desvios' | 'agenda' | 'diario_bordo' | 'reunioes' | 'fluxograma' | 'wlp';
 }
 
 export default function DashboardOverview({
@@ -686,8 +687,8 @@ export default function DashboardOverview({
   const handleCreateActionForColab = async () => {
     if (!actionModalColab || !actionTitle.trim()) return;
     try {
-      if (empresaData?.addAcao) {
-        await empresaData.addAcao({
+      if ((empresaData as any)?.addAcao) {
+        await (empresaData as any).addAcao({
           titulo: actionTitle,
           descricao: `Ação para ${actionModalColab.nome} (${actionModalColab.matricula}) no setor ${actionModalColab.setor}: ${actionDesc}`,
           responsavel: actionModalColab.nome,
@@ -710,7 +711,7 @@ export default function DashboardOverview({
     // 1. Picking (from empresaData.tarefas)
     const pickingTarefas = empresaData.tarefas || [];
     const totalPickingPaletes = pickingTarefas.reduce((sum, t) => sum + Number(t.quantidadePaletes || t.caixas || 1), 0);
-    const completedPicking = pickingTarefas.filter(t => t.status === 'done' || t.status === 'concluida');
+    const completedPicking = pickingTarefas.filter(t => t.status === 'done' || (t.status as string) === 'concluida');
     
     let pickingCxH = 138; // standard baseline
     if (completedPicking.length > 0) {
@@ -1331,8 +1332,11 @@ export default function DashboardOverview({
             validadesList={empresaData.validades || []}
             user={user}
             empresa={empresa}
-            onRefresh={() => empresaData.refetchValidades?.()}
+            onRefresh={() => (empresaData as any)?.refetchValidades?.() || (empresaData as any)?.refreshAllData?.()}
           />
+
+          {/* VISÃO EXECUTIVA • PRODUTIVIDADE PNP DE TODOS OS COLABORADORES */}
+          <WorkstationExecutivePnpSection empresaId={empresa?.id || 'demo'} />
 
           {/* TRÍPLICE ESTRUTURA: IC (ITENS CRÍTICOS) & IV (ITENS DE VERIFICAÇÃO DO DIA) */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -1505,7 +1509,7 @@ export default function DashboardOverview({
                     <span className="text-[9px] text-slate-500 font-normal">Conferente Armazém</span>
                   </span>
                   {CADASTRO_MESTRE_COLABORADORES
-                    .filter(c => c.funcaoGroup === 'Conferente' || c.funcaoGroup === 'Operador')
+                    .filter(c => (c.funcaoGroup as string) === 'Conferente' || c.funcaoGroup === 'Operador')
                     .sort((a, b) => b.percentualMeta - a.percentualMeta)
                     .slice(0, 5)
                     .map((item, idx) => (
@@ -1837,7 +1841,7 @@ export default function DashboardOverview({
             validadesList={empresaData.validades || []}
             user={user}
             empresa={empresa}
-            onRefresh={() => empresaData.refetchValidades?.()}
+            onRefresh={() => (empresaData as any)?.refetchValidades?.() || (empresaData as any)?.refreshAllData?.()}
           />
 
           {/* RANKING DOS PIORES (OPORTUNIDADES DE MELHORIA - EXCLUSIVO DA VISÃO EXECUTIVA) */}

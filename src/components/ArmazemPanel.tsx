@@ -325,7 +325,7 @@ export default function ArmazemPanel({ user, empresa }: ArmazemPanelProps) {
       placa: finalPlaca,
       tipo,
       palhete: Number(palhete),
-      pernoite: operacao === 'Descarregamento' ? pernoiteSelection : "",
+      pernoite: (operacao === 'Descarregamento' ? pernoiteSelection : '') as any,
       obs: obs.trim(),
       _criadoEm: today.toISOString()
     };
@@ -385,7 +385,7 @@ export default function ArmazemPanel({ user, empresa }: ArmazemPanelProps) {
 
   const handleStartEdit = (row: ArmazemRow) => {
     setEditingRow(row);
-    setEditOperacao(row.operacao || 'Carregamento');
+    setEditOperacao((row.operacao as 'Carregamento' | 'Descarregamento') || 'Carregamento');
     setEditInicio(row.inicio || '');
     setEditFim(row.fim || '');
     setEditEmpilhador(row.empilhador || '');
@@ -438,7 +438,7 @@ export default function ArmazemPanel({ user, empresa }: ArmazemPanelProps) {
         await updateDoc(doc(db, 'armazem', editingRow._docId), updatedFields);
       } else {
         const updatedList = armazemRows.map(r => r._docId === editingRow._docId ? { ...r, ...updatedFields } : r);
-        setArmazemRows(updatedList);
+        setArmazemRows(updatedList as ArmazemRow[]);
         localStorage.setItem(`armazem_rows_${empresaId}`, JSON.stringify(updatedList));
       }
 

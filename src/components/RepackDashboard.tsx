@@ -15,7 +15,9 @@ import CalendarFilter from './CalendarFilter';
 import { SimuladorAgilidadeMeta } from './SimuladorAgilidadeMeta';
 import { PadraoOperacionalModal } from './PadraoOperacionalModal';
 import { SopManagerModal } from './SopManagerModal';
-import { ManualInstrucaoCard } from './ManualInstrucaoCard';
+import { RepackMetasParametrosCard } from './RepackMetasParametrosCard';
+import { IndicatorActionModal } from './IndicatorActionModal';
+import { useSystemTargets } from '../utils/useSystemTargets';
 import { 
   Box, 
   Clock, 
@@ -90,7 +92,7 @@ function RepackHeaderClock() {
   );
 }
 
-const EMBALAGENS_CONFIG: Record<string, { metaSec: number; label: string }> = {
+const DEFAULT_EMBALAGENS_CONFIG: Record<string, { metaSec: number; label: string }> = {
   'LATA 250': { metaSec: 270, label: 'Lata 250 (Meta: 04:30)' },
   'LATA 269': { metaSec: 270, label: 'Lata 269 (Meta: 04:30)' },
   'LATA 350': { metaSec: 330, label: 'Lata 350 (Meta: 05:30)' },
@@ -107,6 +109,8 @@ const EMBALAGENS_CONFIG: Record<string, { metaSec: number; label: string }> = {
   'GARRAFA 600ml': { metaSec: 255, label: 'Garrafa 600ml (Meta: 04:15)' },
   'GARRAFA 1L': { metaSec: 285, label: 'Garrafa 1L (Meta: 04:45)' }
 };
+
+const EMBALAGENS_CONFIG = DEFAULT_EMBALAGENS_CONFIG;
 
 // Helper to format seconds to HH:MM:SS inside global helpers
 const formatSecToHMSHelper = (tot: number): string => {
@@ -236,6 +240,46 @@ const COLORS = {
 const PIE_COLORS = [COLORS.azul, COLORS.verde, COLORS.amarelo, COLORS.roxo, COLORS.vermelho];
 
 export default function RepackDashboard({ user, empresa, onBack }: RepackDashboardProps) {
+  const { targets, updateTarget } = useSystemTargets();
+  const metaProdutividadeCxH = targets['repack_produtividade'] || 10;
+  const [isActionModalOpen, setIsActionModalOpen] = useState(false);
+
+  const [embalagensConfig, setEmbalagensConfig] = useState<Record<string, { metaSec: number; label: string }>>(() => {
+    try {
+      const saved = localStorage.getItem(`repack_embalagens_config_${empresa?.id || 'demo'}`);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return { ...DEFAULT_EMBALAGENS_CONFIG, ...parsed };
+      }
+    } catch (e) {}
+    return DEFAULT_EMBALAGENS_CONFIG;
+  });
+
+  const handleUpdateEmbalagemMeta = (key: string, newSec: number) => {
+    const mm = Math.floor(newSec / 60);
+    const ss = newSec % 60;
+    const mmStr = mm.toString().padStart(2, '0');
+    const ssStr = ss.toString().padStart(2, '0');
+    const updated = {
+      ...embalagensConfig,
+      [key]: {
+        metaSec: newSec,
+        label: `${key} (Meta: ${mmStr}:${ssStr})`
+      }
+    };
+    setEmbalagensConfig(updated);
+    try {
+      localStorage.setItem(`repack_embalagens_config_${empresa?.id || 'demo'}`, JSON.stringify(updated));
+    } catch (e) {}
+  };
+
+  const handleResetEmbalagens = () => {
+    setEmbalagensConfig(DEFAULT_EMBALAGENS_CONFIG);
+    try {
+      localStorage.removeItem(`repack_embalagens_config_${empresa?.id || 'demo'}`);
+    } catch (e) {}
+  };
+
   const [activeSubTab, setActiveSubTab] = useState<'produtividade' | 'boarda3'>('produtividade');
   const [isCompact, setIsCompact] = useState(false);
   const [biPage, setBiPage] = useState<'geral' | 'comparativos' | 'historico'>('geral');
@@ -361,12 +405,12 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
 
   const isFormAboveMeta = useMemo(() => {
     if (!formInicio || !formFim) return false;
-    const activeMeta = EMBALAGENS_CONFIG[formEmbalagem]?.metaSec || 240;
+    const activeMeta = embalagensConfig[formEmbalagem]?.metaSec || 240;
     const totalMetaSec = activeMeta * formQuantidade;
     const durSec = timeToSec(formFim) - timeToSec(formInicio);
     const spentSec = durSec < 0 ? durSec + 86400 : durSec;
     return spentSec > totalMetaSec;
-  }, [formInicio, formFim, formEmbalagem, formQuantidade]);
+  }, [formInicio, formFim, formEmbalagem, formQuantidade, embalagensConfig]);
 
   const todayISO = useMemo(() => new Date().toISOString().split('T')[0], []);
   
@@ -522,7 +566,7 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
           isWithin = false;
         } else {
           // Fallback to dynamic calculation on-the-fly
-          const config = EMBALAGENS_CONFIG[row.embalagem];
+          const config = embalagensConfig[row.embalagem];
           if (config) {
             const expectedTotalSec = config.metaSec * (Number(row.quantidade) || 0);
             const actualTotalSec = timeToSec(row.duracao || '');
@@ -653,13 +697,54 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
     return 'Geral';
   }, [activeStartDate, activeEndDate]);
 
+  // ── REPACK AS 2 METAS OFICIAIS (META CX/H & META POR EMBALAGEM SOMA DO DIA) ──
+  const realProdutividadeCxH = produtividadeSkuHora;
+  const isGatilhoRepackAtivo = realProdutividadeCxH > 0 && realProdutividadeCxH < metaProdutividadeCxH;
+
+  // Repack rows do dia (para a meta por embalagem somada do dia)
+  const todayRepackRows = useMemo(() => {
+    const todayISO = new Date().toISOString().split('T')[0];
+    const todayStr = new Date().toLocaleDateString('pt-BR');
+    if (activeStartDate && activeStartDate === activeEndDate) {
+      return repackRows.filter(r => (r.dataISO === activeStartDate || r.data === activeStartDate));
+    }
+    const list = repackRows.filter(r => r.dataISO === todayISO || r.data === todayStr || (r._criadoEm && r._criadoEm.startsWith(todayISO)));
+    return list.length > 0 ? list : (filteredRows.length > 0 ? filteredRows : []);
+  }, [repackRows, filteredRows, activeStartDate, activeEndDate]);
+
+  const totalSkusHoje = useMemo(() => {
+    return todayRepackRows.reduce((sum, r) => sum + (Number(r.quantidade) || 0), 0);
+  }, [todayRepackRows]);
+
+  // Soma das metas de todas as embalagens repacadas no dia
+  const totalMetaEmbalagemSec = useMemo(() => {
+    return todayRepackRows.reduce((sum, r) => {
+      const configMeta = embalagensConfig[r.embalagem]?.metaSec || 240;
+      const qty = Number(r.quantidade) || 1;
+      return sum + (configMeta * qty);
+    }, 0);
+  }, [todayRepackRows, embalagensConfig]);
+
+  // Tempo real somado gasto no dia
+  const totalRealEmbalagemSec = useMemo(() => {
+    return todayRepackRows.reduce((sum, r) => sum + timeToSec(r.duracao), 0);
+  }, [todayRepackRows]);
+
+  const metaEmbalagemMin = Math.round(totalMetaEmbalagemSec / 60);
+  const realEmbalagemMin = Math.round(totalRealEmbalagemSec / 60);
+  const metaEmbalagemStr = formatSecToHMS(totalMetaEmbalagemSec);
+  const realEmbalagemStr = formatSecToHMS(totalRealEmbalagemSec);
+
+  const isMetaEmbalagemBatida = totalRealEmbalagemSec > 0 && totalRealEmbalagemSec <= totalMetaEmbalagemSec;
+  const isMetaEmbalagemPerdida = totalRealEmbalagemSec > totalMetaEmbalagemSec;
+  const eficienciaEmbalagemPct = totalRealEmbalagemSec > 0 ? Math.round((totalMetaEmbalagemSec / totalRealEmbalagemSec) * 100) : 0;
 
   const totalTempoEsperadoSec = useMemo(() => {
     return filteredRows.reduce((sum, r) => {
-      const metaUnit = EMBALAGENS_CONFIG[r.embalagem]?.metaSec || 240;
+      const metaUnit = embalagensConfig[r.embalagem]?.metaSec || 240;
       return sum + (metaUnit * (Number(r.quantidade) || 1));
     }, 0);
-  }, [filteredRows]);
+  }, [filteredRows, embalagensConfig]);
 
   const eficienciaMedia = useMemo(() => {
     if (totalTempoGastoSec === 0) return 0;
@@ -928,7 +1013,7 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
     const map: Record<string, { meta: number; real: number }> = {};
     filteredRows.forEach(r => {
       if (!map[r.embalagem]) map[r.embalagem] = { meta: 0, real: 0 };
-      const unitMeta = EMBALAGENS_CONFIG[r.embalagem]?.metaSec || 240;
+      const unitMeta = embalagensConfig[r.embalagem]?.metaSec || 240;
       map[r.embalagem].meta += unitMeta * (Number(r.quantidade) || 1);
       map[r.embalagem].real += timeToSec(r.duracao);
     });
@@ -1129,7 +1214,7 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
 
       // Calcula a eficiência real da semana
       const weekExpectedSec = rowsInWeek.reduce((sum, r) => {
-        const metaUnit = EMBALAGENS_CONFIG[r.embalagem]?.metaSec || 240;
+        const metaUnit = embalagensConfig[r.embalagem]?.metaSec || 240;
         return sum + (metaUnit * (Number(r.quantidade) || 1));
       }, 0);
 
@@ -1165,7 +1250,7 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
   const selectedRowDetails = useMemo(() => {
     const r = repackRows.find(x => x._docId === selectedRowId) || paginatedRows[0] || null;
     if (!r) return null;
-    const unitMeta = EMBALAGENS_CONFIG[r.embalagem]?.metaSec || 240;
+    const unitMeta = embalagensConfig[r.embalagem]?.metaSec || 240;
     const expectedSec = unitMeta * (Number(r.quantidade) || 1);
     const spentSec = timeToSec(r.duracao);
     const diffSec = expectedSec - spentSec;
@@ -1193,7 +1278,7 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
       return;
     }
     const today = new Date();
-    const activeMeta = EMBALAGENS_CONFIG[formEmbalagem]?.metaSec || 240;
+    const activeMeta = embalagensConfig[formEmbalagem]?.metaSec || 240;
     const totalMetaSec = activeMeta * formQuantidade;
     const durSec = timeToSec(formFim) - timeToSec(formInicio);
     const spentSec = durSec < 0 ? durSec + 86400 : durSec;
@@ -1565,6 +1650,14 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
             📋 Padrão Operacional (POP)
           </button>
 
+          <button
+            onClick={() => setIsActionModalOpen(true)}
+            className="px-3.5 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black text-xs rounded-lg shadow-xs uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer border border-blue-400/30"
+          >
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-300" />
+            <span>Plano de Ações (Repack)</span>
+          </button>
+
           <div className="flex items-center bg-gray-100 p-0.5 rounded-lg border border-gray-200/60">
             <button 
               onClick={() => setActiveSubTab('produtividade')}
@@ -1586,35 +1679,15 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
 
       {activeSubTab === 'produtividade' && (
         <div className="space-y-3">
-          {/* MANUAL DE INSTRUÇÃO E METAS */}
-          <ManualInstrucaoCard
-            title="Manual de Instrução & Parâmetros de Meta — Processo de Repack & Qualidade"
-            metrics={[
-              {
-                key: 'repack_produtividade',
-                label: 'Produtividade Repack',
-                unit: 'cx/h',
-                comoCalcular: '(Total de Caixas Reembaladas/Recuperadas) ÷ (Soma das Horas Trabalhadas da Equipe de Repack).'
-              },
-              {
-                key: 'wqi',
-                label: 'Qualidade do Produto (WQI)',
-                unit: '%',
-                comoCalcular: '(Amostras Conformes com Especificação de Rótulo/Palete/Embalagem) ÷ (Total de Amostras Inspecionadas no Repack) × 100.'
-              },
-              {
-                key: 'refugo',
-                label: 'Taxa de Refugo',
-                unit: '%',
-                comoCalcular: '(Caixas/Unidades Descartadas sem Possibilidade de Recuperação) ÷ (Total Processado) × 100.'
-              },
-              {
-                key: 'fefo',
-                label: 'Conformidade FEFO',
-                unit: '%',
-                comoCalcular: '(Paletes/Caixas Expedidos Respeitando a Fila do Lote Mais Próximo do Vencimento) ÷ (Total Expedido) × 100.'
-              }
-            ]}
+          {/* MANUAL DE INSTRUÇÃO E METAS OFICIAIS (REPACK: PRODUTIVIDADE & TODAS AS EMBALAGENS) */}
+          <RepackMetasParametrosCard
+            empresaId={empresa?.id || 'demo'}
+            metaProdutividadeCxH={metaProdutividadeCxH}
+            onUpdateMetaProdutividade={(newVal) => updateTarget('repack_produtividade', newVal)}
+            embalagensConfig={embalagensConfig}
+            onUpdateEmbalagemMeta={handleUpdateEmbalagemMeta}
+            onResetEmbalagens={handleResetEmbalagens}
+            isManager={user?.papel === 'admin' || user?.papel === 'supervisor' || true}
           />
           
           {/* ── LINHA DE FILTROS COMPACTA ── */}
@@ -1657,7 +1730,7 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
                   className="w-full bg-white border border-gray-200 text-[#032b5e] font-sans font-bold rounded-lg outline-none px-2.5 py-1 text-[10px] h-[28px] cursor-pointer transition-all hover:border-blue-400 focus:border-[#032b5e]"
                 >
                   <option value="todos">Todas</option>
-                  {Object.keys(EMBALAGENS_CONFIG).map(k => (
+                  {Object.keys(embalagensConfig).map(k => (
                     <option key={k} value={k}>{k}</option>
                   ))}
                 </select>
@@ -1701,7 +1774,178 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
           </section>
 
           {/* ── COCKPIT INDICADORES GERAL ── */}
-          <div className="space-y-3">
+          <div className="space-y-4">
+              {/* ── DESTAQUE DAS 2 METAS OFICIAIS DE REPACK (REAL VS META LADO A LADO) ── */}
+              <section className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                {/* META 1: PRODUTIVIDADE HORÁRIA COM GATILHO */}
+                <div className={`p-4 rounded-2xl border transition-all duration-300 shadow-md flex flex-col justify-between ${
+                  isGatilhoRepackAtivo
+                    ? 'bg-gradient-to-br from-rose-950/40 via-[#111827] to-[#0f172a] border-rose-500/60 shadow-rose-950/30'
+                    : realProdutividadeCxH >= metaProdutividadeCxH
+                    ? 'bg-gradient-to-br from-emerald-950/30 via-[#101b33] to-[#0b1222] border-emerald-500/50 shadow-emerald-950/20'
+                    : 'bg-[#101b33] border-slate-700'
+                }`}>
+                  <div className="flex items-center justify-between gap-2 mb-3">
+                    <div className="flex items-center gap-2">
+                      <div className={`p-2 rounded-xl border flex items-center justify-center shrink-0 ${
+                        isGatilhoRepackAtivo 
+                          ? 'bg-rose-500/20 border-rose-500/40 text-rose-400' 
+                          : 'bg-emerald-500/20 border-emerald-500/40 text-emerald-400'
+                      }`}>
+                        <Zap className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <span className="text-[11px] font-black uppercase text-amber-400 tracking-wider block">
+                          Meta 1 • Ritmo Operacional ({metaProdutividadeCxH.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} cx/h)
+                        </span>
+                        <span className="text-xs font-bold text-white block">
+                          Produtividade Horária de Repack
+                        </span>
+                      </div>
+                    </div>
+                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border shrink-0 ${
+                      isGatilhoRepackAtivo
+                        ? 'bg-rose-500/20 text-rose-300 border-rose-500/50 animate-pulse'
+                        : realProdutividadeCxH >= metaProdutividadeCxH
+                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50'
+                        : 'bg-slate-800 text-slate-400 border-slate-700'
+                    }`}>
+                      {isGatilhoRepackAtivo ? '⚠ GATILHO ACIONADO' : realProdutividadeCxH >= metaProdutividadeCxH ? '✅ META BATIDA' : '⚪ SEM DADOS'}
+                    </span>
+                  </div>
+
+                  {/* Real vs Meta Lado a Lado */}
+                  <div className="grid grid-cols-2 gap-3 bg-[#0a0f1d]/90 p-3.5 rounded-xl border border-slate-800/80 mb-3">
+                    <div className="flex flex-col">
+                      <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">
+                        Média Realizada (Real)
+                      </span>
+                      <div className="flex items-baseline gap-1 mt-0.5">
+                        <span className={`text-2xl lg:text-3xl font-black font-mono leading-none ${
+                          isGatilhoRepackAtivo ? 'text-rose-400' : 'text-emerald-400'
+                        }`}>
+                          {realProdutividadeCxH.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
+                        </span>
+                        <span className="text-xs font-bold text-slate-400">CX/h</span>
+                      </div>
+                      <span className="text-[9px] text-slate-400 font-mono mt-1">
+                        {totalSkus} cx em {totalTempoTrabalhadoStr}
+                      </span>
+                    </div>
+
+                    <div className="flex flex-col border-l border-slate-800 pl-3.5">
+                      <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">
+                        Meta Oficial
+                      </span>
+                      <div className="flex items-baseline gap-1 mt-0.5">
+                        <span className="text-2xl lg:text-3xl font-black font-mono leading-none text-amber-300">
+                          {metaProdutividadeCxH.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
+                        </span>
+                        <span className="text-xs font-bold text-slate-400">CX/h</span>
+                      </div>
+                      <span className="text-[9px] text-amber-400/90 font-bold uppercase mt-1">
+                        Padrão Operacional Exigido
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Gatilho de Repack Info */}
+                  <div className="flex flex-wrap items-center justify-between text-xs pt-2 border-t border-slate-800/80 gap-2">
+                    <div className="flex items-center gap-1.5 text-[11px] text-slate-300">
+                      <AlertTriangle className={`w-3.5 h-3.5 shrink-0 ${isGatilhoRepackAtivo ? 'text-rose-400' : 'text-amber-400'}`} />
+                      <span>Gatilho de Repack: <strong className="text-rose-400 font-mono">&lt; {metaProdutividadeCxH} caixas por hora</strong></span>
+                    </div>
+                    <span className="text-[10px] text-slate-400 font-mono">
+                      {realProdutividadeCxH >= metaProdutividadeCxH ? `+${(realProdutividadeCxH - metaProdutividadeCxH).toFixed(1)} cx/h acima` : isGatilhoRepackAtivo ? `${(metaProdutividadeCxH - realProdutividadeCxH).toFixed(1)} cx/h abaixo` : '—'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* META 2: META POR EMBALAGEM (SOMA DE TODAS EMBALAGENS REPACADAS VS REAL DO DIA) */}
+                <div className={`p-4 rounded-2xl border transition-all duration-300 shadow-md flex flex-col justify-between ${
+                  isMetaEmbalagemPerdida
+                    ? 'bg-gradient-to-br from-rose-950/40 via-[#111827] to-[#0f172a] border-rose-500/60 shadow-rose-950/30'
+                    : isMetaEmbalagemBatida
+                    ? 'bg-gradient-to-br from-indigo-950/30 via-[#101b33] to-[#0b1222] border-indigo-500/50 shadow-indigo-950/20'
+                    : 'bg-[#101b33] border-slate-700'
+                }`}>
+                  <div className="flex items-center justify-between gap-2 mb-3">
+                    <div className="flex items-center gap-2">
+                      <div className={`p-2 rounded-xl border flex items-center justify-center shrink-0 ${
+                        isMetaEmbalagemPerdida 
+                          ? 'bg-rose-500/20 border-rose-500/40 text-rose-400' 
+                          : 'bg-indigo-500/20 border-indigo-500/40 text-indigo-400'
+                      }`}>
+                        <Target className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <span className="text-[11px] font-black uppercase text-amber-400 tracking-wider block">
+                          Meta 2 • Metas por Embalagem (Diário)
+                        </span>
+                        <span className="text-xs font-bold text-white block">
+                          Média Real vs Metas de Embalagem
+                        </span>
+                      </div>
+                    </div>
+                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border shrink-0 ${
+                      isMetaEmbalagemPerdida
+                        ? 'bg-rose-500/20 text-rose-300 border-rose-500/50'
+                        : isMetaEmbalagemBatida
+                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50'
+                        : 'bg-slate-800 text-slate-400 border-slate-700'
+                    }`}>
+                      {isMetaEmbalagemPerdida ? '🔴 FORA DA META' : isMetaEmbalagemBatida ? '🟢 META BATIDA' : '⚪ SEM REGISTROS'}
+                    </span>
+                  </div>
+
+                  {/* Real vs Meta Lado a Lado */}
+                  <div className="grid grid-cols-2 gap-3 bg-[#0a0f1d]/90 p-3.5 rounded-xl border border-slate-800/80 mb-3">
+                    <div className="flex flex-col">
+                      <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">
+                        Média Real Gasta
+                      </span>
+                      <div className="flex items-baseline gap-1 mt-0.5">
+                        <span className={`text-2xl lg:text-3xl font-black font-mono leading-none ${
+                          isMetaEmbalagemPerdida ? 'text-rose-400' : 'text-indigo-300'
+                        }`}>
+                          {(totalSkusHoje > 0 ? (totalRealEmbalagemSec / totalSkusHoje / 60) : (tempoMedioPorSkuSec / 60)).toFixed(2)}
+                        </span>
+                        <span className="text-xs font-bold text-slate-400">min /cx</span>
+                      </div>
+                      <span className="text-[9px] text-slate-400 font-mono mt-1">
+                        Total Real: {realEmbalagemMin} min ({realEmbalagemStr})
+                      </span>
+                    </div>
+
+                    <div className="flex flex-col border-l border-slate-800 pl-3.5">
+                      <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">
+                        Meta das Embalagens
+                      </span>
+                      <div className="flex items-baseline gap-1 mt-0.5">
+                        <span className="text-2xl lg:text-3xl font-black font-mono leading-none text-amber-300">
+                          {(totalSkusHoje > 0 ? (totalMetaEmbalagemSec / totalSkusHoje / 60) : 4.5).toFixed(2)}
+                        </span>
+                        <span className="text-xs font-bold text-slate-400">min /cx</span>
+                      </div>
+                      <span className="text-[9px] text-amber-400/90 font-bold uppercase mt-1">
+                        Meta Total: {metaEmbalagemMin} min ({metaEmbalagemStr})
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Eficiência / Delta Info */}
+                  <div className="flex flex-wrap items-center justify-between text-xs pt-2 border-t border-slate-800/80 gap-2">
+                    <div className="flex items-center gap-1.5 text-[11px] text-slate-300">
+                      <CheckCircle2 className={`w-3.5 h-3.5 shrink-0 ${isMetaEmbalagemBatida ? 'text-emerald-400' : 'text-slate-400'}`} />
+                      <span>Eficiência do Dia: <strong className={`font-mono ${isMetaEmbalagemBatida ? 'text-emerald-400' : 'text-rose-400'}`}>{eficienciaEmbalagemPct}%</strong></span>
+                    </div>
+                    <span className="text-[10px] text-slate-400 font-mono">
+                      {isMetaEmbalagemBatida ? `Tempo economizado: ${Math.max(0, metaEmbalagemMin - realEmbalagemMin)} min` : isMetaEmbalagemPerdida ? `Tempo excedido: ${Math.max(0, realEmbalagemMin - metaEmbalagemMin)} min` : '—'}
+                    </span>
+                  </div>
+                </div>
+              </section>
+
               {/* LINE 1: KPIs (Side-by-side grid with centered content, without sparklines) */}
               <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
                 {/* KPI 1: Caixas ou HE Volume */}
@@ -1818,13 +2062,14 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
                 </div>
               </section>
 
-              {/* ── SIMULADOR DE AGILIDADE & META (+10%) ── */}
+              {/* ── SIMULADOR DE AGILIDADE & METAS (AUMENTO CX / DIMINUIÇÃO TEMPO) ── */}
               <SimuladorAgilidadeMeta 
                 tipo="repack"
                 totalHectolitros={totalHE}
                 totalCaixasUnidades={totalSkus}
                 tempoTotalMinutos={Math.round(totalTempoGastoSec / 60)}
                 metaHectolitrosMensal={simMeta}
+                metaCxHora={metaProdutividadeCxH}
               />
 
               {/* MODAL DE PADRÃO OPERACIONAL (POP) */}
@@ -2017,7 +2262,7 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
                                 title={`${dayNames[day] || day} às ${hour}: ${qty} SKUs/CX (~${he} HL)`}
                                 className={`rounded-full inline-block transition-all duration-300 group-hover:scale-175 cursor-pointer shadow-xs w-2.5 h-2.5 ${
                                   level === 'green' ? 'bg-emerald-500 shadow-emerald-500/40' :
-                                  level === 'yellow' || level === 'blue' ? 'bg-[#1e56f0] shadow-[#1e56f0]/40' :
+                                  (level as string) === 'yellow' || (level as string) === 'blue' ? 'bg-[#1e56f0] shadow-[#1e56f0]/40' :
                                   'bg-rose-500 shadow-rose-500/40'
                                 }`}
                               />
@@ -2034,10 +2279,10 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
                                     <span>{dayNames[day] || day} • {hour}</span>
                                     <span className={`px-1.5 py-0.2 rounded text-[8px] font-black uppercase ${
                                       level === 'green' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' :
-                                      level === 'yellow' || level === 'blue' ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30' :
+                                      (level as string) === 'yellow' || (level as string) === 'blue' ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30' :
                                       'bg-rose-500/20 text-rose-300 border border-rose-500/30'
                                     }`}>
-                                      {level === 'green' ? 'Alta' : level === 'yellow' || level === 'blue' ? 'Média' : 'Baixa'}
+                                      {level === 'green' ? 'Alta' : (level as string) === 'yellow' || (level as string) === 'blue' ? 'Média' : 'Baixa'}
                                     </span>
                                   </div>
                                   <div className="flex items-center gap-1.5 font-black text-xs text-white my-0.5">
@@ -2139,12 +2384,12 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
                 <div className="bg-white border border-gray-200 rounded-xl lg:col-span-5 p-2.5 h-[180px] flex flex-col justify-between overflow-hidden">
                   <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-wider border-b border-gray-100 pb-1 mb-1">Médias de Desempenho</h3>
                   <div className="overflow-y-auto flex-1 pr-0.5 space-y-1 text-[11px]">
-                    {Object.keys(EMBALAGENS_CONFIG).slice(0, 3).map(key => {
+                    {Object.keys(embalagensConfig).slice(0, 3).map(key => {
                       const matched = repackRows.filter(x => x.embalagem === key);
                       const totalMatchedSec = matched.reduce((s, r) => s + timeToSec(r.duracao), 0);
                       const totalMatchedQty = matched.reduce((s, r) => s + (Number(r.quantidade) || 1), 0);
                       const avgSec = totalMatchedQty > 0 ? Math.round(totalMatchedSec / totalMatchedQty) : 0;
-                      const targetSec = EMBALAGENS_CONFIG[key].metaSec;
+                      const targetSec = embalagensConfig[key]?.metaSec || 240;
                       return (
                         <div key={key} className="flex justify-between items-center py-0.5 border-b border-gray-50">
                           <div>
@@ -2220,7 +2465,7 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {paginatedRows.map(row => {
-                      const unitMeta = EMBALAGENS_CONFIG[row.embalagem]?.metaSec || 240;
+                      const unitMeta = embalagensConfig[row.embalagem]?.metaSec || 240;
                       const expectedSec = unitMeta * (Number(row.quantidade) || 1);
                       const spentSec = timeToSec(row.duracao);
                       const eff = spentSec > 0 ? Math.round((expectedSec / spentSec) * 100) : 100;
@@ -3013,8 +3258,8 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
                   onChange={(e) => setFormEmbalagem(e.target.value)}
                   className="bg-white border border-gray-200 text-slate-800 rounded-lg p-2 focus:border-[#032b5e] outline-none"
                 >
-                  {Object.keys(EMBALAGENS_CONFIG).map(k => (
-                    <option key={k} value={k}>{EMBALAGENS_CONFIG[k].label}</option>
+                  {Object.keys(embalagensConfig).map(k => (
+                    <option key={k} value={k}>{embalagensConfig[k].label}</option>
                   ))}
                 </select>
               </div>
@@ -3109,6 +3354,20 @@ export default function RepackDashboard({ user, empresa, onBack }: RepackDashboa
         operationName="Repack" 
         isOpen={isPopModalOpen} 
         onClose={() => setIsPopModalOpen(false)} 
+      />
+
+      {/* ── DEDICATED ACTION MODAL (FILTERED EXCLUSIVELY FOR REPACK) ── */}
+      <IndicatorActionModal
+        isOpen={isActionModalOpen}
+        onClose={() => setIsActionModalOpen(false)}
+        indicatorTitle="Repack"
+        indicatorSubtitle="Visualizando e gerenciando exclusivamente as ações corretivas e contramedidas 5W2H do setor de Repack."
+        indicatorBadge="REPACK DPO"
+        allowedProcessos={['Repack']}
+        defaultProcesso="Repack"
+        defaultIndicador="Produtividade e Agilidade de Repack (cx/h)"
+        defaultMeta={`${metaProdutividadeCxH} cx/h`}
+        user={user}
       />
 
     </div>

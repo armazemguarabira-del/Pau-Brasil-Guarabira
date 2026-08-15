@@ -112,9 +112,9 @@ export default function AcessosPanel({ user, empresa }: AcessosPanelProps) {
       return;
     }
 
-    const rows = [...empresaData.acessos];
-    rows.sort((a, b) => (b.loginEm || '').localeCompare(a.loginEm || ''));
-    setSessions(rows);
+    const rows = [...(empresaData.acessos as any[])];
+    rows.sort((a, b) => (b.loginEm || b._criadoEm || '').localeCompare(a.loginEm || a._criadoEm || ''));
+    setSessions(rows as AcessoSession[]);
     setLoading(false);
   }, [empresaData.acessos, empresaId, user]);
 

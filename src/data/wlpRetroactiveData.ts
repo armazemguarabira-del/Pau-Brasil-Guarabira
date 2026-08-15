@@ -10,18 +10,18 @@ export interface WlpMetasMes {
 }
 
 export const WLP_METAS_OFICIAIS_2026: WlpMetasMes[] = [
-  { mes: 'Janeiro', mesNum: 1, metaWlp: 5.00, realWlp: 7.42, metaPnp: 5.00, realPnp: 7.30 },
-  { mes: 'Fevereiro', mesNum: 2, metaWlp: 5.00, realWlp: 7.09, metaPnp: 5.00, realPnp: 6.95 },
-  { mes: 'Março', mesNum: 3, metaWlp: 5.00, realWlp: 6.59, metaPnp: 5.00, realPnp: 6.45 },
-  { mes: 'Abril', mesNum: 4, metaWlp: 5.00, realWlp: 6.49, metaPnp: 5.00, realPnp: 6.35 },
-  { mes: 'Maio', mesNum: 5, metaWlp: 5.00, realWlp: 6.74, metaPnp: 5.00, realPnp: 6.60 },
-  { mes: 'Junho', mesNum: 6, metaWlp: 5.00, realWlp: 7.39, metaPnp: 5.00, realPnp: 7.25 },
-  { mes: 'Julho', mesNum: 7, metaWlp: 5.00, realWlp: 6.50, metaPnp: 5.00, realPnp: 6.38 },
-  { mes: 'Agosto', mesNum: 8, metaWlp: 5.00, realWlp: 7.20, metaPnp: 5.00, realPnp: 7.08 },
-  { mes: 'Setembro', mesNum: 9, metaWlp: 5.00, realWlp: 0.00, metaPnp: 5.00, realPnp: 0.00 },
-  { mes: 'Outubro', mesNum: 10, metaWlp: 5.00, realWlp: 0.00, metaPnp: 5.00, realPnp: 0.00 },
-  { mes: 'Novembro', mesNum: 11, metaWlp: 5.00, realWlp: 0.00, metaPnp: 5.00, realPnp: 0.00 },
-  { mes: 'Dezembro', mesNum: 12, metaWlp: 5.00, realWlp: 0.00, metaPnp: 5.00, realPnp: 0.00 },
+  { mes: 'Janeiro', mesNum: 1, metaWlp: 6.23, realWlp: 7.42, metaPnp: 6.23, realPnp: 7.30 },
+  { mes: 'Fevereiro', mesNum: 2, metaWlp: 6.23, realWlp: 7.09, metaPnp: 6.23, realPnp: 6.95 },
+  { mes: 'Março', mesNum: 3, metaWlp: 6.23, realWlp: 6.59, metaPnp: 6.23, realPnp: 6.45 },
+  { mes: 'Abril', mesNum: 4, metaWlp: 6.23, realWlp: 6.49, metaPnp: 6.23, realPnp: 6.35 },
+  { mes: 'Maio', mesNum: 5, metaWlp: 6.23, realWlp: 6.74, metaPnp: 6.23, realPnp: 6.60 },
+  { mes: 'Junho', mesNum: 6, metaWlp: 6.23, realWlp: 7.39, metaPnp: 6.23, realPnp: 7.25 },
+  { mes: 'Julho', mesNum: 7, metaWlp: 6.23, realWlp: 6.50, metaPnp: 6.23, realPnp: 6.38 },
+  { mes: 'Agosto', mesNum: 8, metaWlp: 6.23, realWlp: 7.20, metaPnp: 6.23, realPnp: 7.08 },
+  { mes: 'Setembro', mesNum: 9, metaWlp: 6.23, realWlp: 0.00, metaPnp: 6.23, realPnp: 0.00 },
+  { mes: 'Outubro', mesNum: 10, metaWlp: 6.23, realWlp: 0.00, metaPnp: 6.23, realPnp: 0.00 },
+  { mes: 'Novembro', mesNum: 11, metaWlp: 6.23, realWlp: 0.00, metaPnp: 6.23, realPnp: 0.00 },
+  { mes: 'Dezembro', mesNum: 12, metaWlp: 6.23, realWlp: 0.00, metaPnp: 6.23, realPnp: 0.00 },
 ];
 
 export function getMetaOficialMes(mesNumOrStr: number | string): number {
@@ -29,7 +29,7 @@ export function getMetaOficialMes(mesNumOrStr: number | string): number {
     ? mesNumOrStr
     : parseInt(String(mesNumOrStr).split('/')[0], 10);
   const found = WLP_METAS_OFICIAIS_2026.find(m => m.mesNum === (isNaN(num) ? 8 : num));
-  return found ? found.metaWlp : 5.00;
+  return found ? found.metaWlp : 6.23;
 }
 
 export function getMetaOficialPnp(mesNumOrStr: number | string): number {
@@ -37,13 +37,13 @@ export function getMetaOficialPnp(mesNumOrStr: number | string): number {
     ? mesNumOrStr
     : parseInt(String(mesNumOrStr).split('/')[0], 10);
   const found = WLP_METAS_OFICIAIS_2026.find(m => m.mesNum === (isNaN(num) ? 8 : num));
-  return found ? found.metaPnp : 5.00;
+  return found ? found.metaPnp : 6.23;
 }
 
 export const WLP_ACUMULADO_ANO_2026 = {
-  metaWlp: 5.00,
+  metaWlp: 6.23,
   realWlp: 6.93,
-  metaPnp: 5.00,
+  metaPnp: 6.23,
   realPnp: 6.80,
 };
 

@@ -1,5 +1,6 @@
 import { ManualInstrucaoCard } from './ManualInstrucaoCard';
 import { SopBannerViewer } from './SopBannerViewer';
+import { IndicatorActionModal } from './IndicatorActionModal';
 import React, { useState, useEffect, useMemo } from 'react';
 import { calculateStockAgeIndex, calculateStockAgeSummary } from '../utils/calculateStockAgeIndex';
 import { MATRIZ_BLOCOS_CONFIG, validarPosicionamentoLayout, getDistanciaPickingScore, getBlocoIdealParaCurva, calcularQuebrasFefoEstoqueXEstoque, calcularQuebrasFefoEstoqueXPicking } from '../utils/matrizBlocos';
@@ -77,7 +78,7 @@ interface FefoDashboardProps {
 }
 
 // Sub-pages defined by user
-type FefoPage = 'validades' | 'stock-age' | 'futuro-shelf' | 'escoamento' | 'estoque-estoque' | 'estoque-picking' | 'boarda3' | 'fefo-empilhador' | 'executiva';
+type FefoPage = 'validades' | 'stock-age' | 'futuro-shelf' | 'escoamento' | 'estoque-estoque' | 'estoque-picking' | 'boarda3' | 'fefo-empilhador' | 'executiva' | 'rlp' | 'shelf-life' | 'rlp-semanal';
 
 interface RLPMeeting {
   id: string;
@@ -121,6 +122,11 @@ interface PickingComparison {
   qtdPicking: number;
   diferenca: number;
   status: 'Conforme' | 'Atenção' | 'Desvio Crítico';
+  pickingDays?: number;
+  estoqueDays?: number;
+  gap?: number;
+  validadeEstoque?: string;
+  validadePicking?: string;
 }
 
 // Seed highly polished starting data for realistic analytics
@@ -286,6 +292,7 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
   const [viewUnit, setViewUnit] = useState<'u' | 'he'>('u');
   const [selectedBlock, setSelectedBlock] = useState<string>('A4');
   const [showSopViewer, setShowSopViewer] = useState(false);
+  const [isActionModalOpen, setIsActionModalOpen] = useState(false);
 
   // Recontagem Modal state
   const [recontagemModal, setRecontagemModal] = useState<{
@@ -302,7 +309,7 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
   const handleSaveRecontagem = async () => {
     if (!recontagemModal) return;
 
-    const companyId = empresaData?.empresa?.id || empresa?.id || 'demo';
+    const companyId = (empresaData as any)?.empresa?.id || empresaData?.empresaId || empresa?.id || 'demo';
     const validadesKey = `validades_${companyId}`;
     const armazemValidadesKey = `armazem_validades_${companyId}`;
 
@@ -638,7 +645,7 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
 
     compiledValidades.forEach(v => {
       const key = (v.codigo ? String(v.codigo) : v.descricao).trim();
-      const caixas = viewUnit === 'cx' ? v.totalUnitiesRaw : Math.round(v.totalUnities * 100) / 100;
+      const caixas = (viewUnit as string) === 'cx' ? v.totalUnitiesRaw : Math.round(v.totalUnities * 100) / 100;
       const loc = (v.localizacao || '').toLowerCase();
       const isPicking = loc.includes('pick');
 
@@ -929,14 +936,17 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
       };
     }
 
-    const summary = calculateStockAgeSummary(validadesRecolhidasDeduplicadas.map(r => ({
+    const processedStockAgeItems = validadesRecolhidasDeduplicadas.map(r => calculateStockAgeIndex({
       codigo: r.codigo,
       descricao: r.descricao,
       quantidade: r.quantidade,
+      validade: r.validade,
       dataVencimento: r.validade,
       valorTotal: r.valorTotal,
-      volumeHl: r.hlTotal
-    })), empresaData.produtos);
+      volumeHL: r.hlTotal
+    }, empresaData.produtos));
+
+    const summary = calculateStockAgeSummary(processedStockAgeItems);
 
     const criticos = validadesRecolhidasDeduplicadas.filter(r => r.faixa === 'critico');
     const criticoSkusCount = new Set(criticos.map(r => r.codigo)).size;
@@ -1596,7 +1606,7 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
           </div>
 
           {/* Unit Selector Toggle & SOP Button */}
-          <div className="flex items-center gap-3 shrink-0 self-end sm:self-auto">
+          <div className="flex items-center gap-2.5 shrink-0 self-end sm:self-auto">
             <button
               type="button"
               onClick={() => setShowSopViewer(true)}
@@ -1604,6 +1614,15 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
             >
               <FileText className="w-4 h-4 text-slate-950" />
               <span>Padrão</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setIsActionModalOpen(true)}
+              className="px-3.5 py-2 rounded-xl font-black text-xs uppercase bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white flex items-center gap-1.5 transition-all cursor-pointer shadow-xs border border-blue-400/30"
+            >
+              <CheckCircle className="w-4 h-4 text-emerald-300" />
+              <span>Plano de Ações (FEFO)</span>
             </button>
 
             <div className="flex flex-col">
@@ -1845,7 +1864,7 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
             validadesList={actualValidades}
             user={user}
             empresa={empresa}
-            onRefresh={() => empresaData.refetchValidades?.()}
+            onRefresh={() => (empresaData as any)?.refetchValidades?.() || (empresaData as any)?.refreshAllData?.()}
           />
 
           {/* Header Controls */}
@@ -2404,7 +2423,7 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
             validadesList={actualValidades}
             user={user}
             empresa={empresa}
-            onRefresh={() => empresaData.refetchValidades?.()}
+            onRefresh={() => (empresaData as any)?.refetchValidades?.() || (empresaData as any)?.refreshAllData?.()}
           />
         </div>
       )}
@@ -2418,7 +2437,7 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
             validadesList={actualValidades}
             user={user}
             empresa={empresa}
-            onRefresh={() => empresaData.refetchValidades?.()}
+            onRefresh={() => (empresaData as any)?.refetchValidades?.() || (empresaData as any)?.refreshAllData?.()}
           />
         </div>
       )}
@@ -2432,7 +2451,7 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
             validadesList={actualValidades}
             user={user}
             empresa={empresa}
-            onRefresh={() => empresaData.refetchValidades?.()}
+            onRefresh={() => (empresaData as any)?.refetchValidades?.() || (empresaData as any)?.refreshAllData?.()}
           />
         </div>
       )}
@@ -3220,8 +3239,8 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
                         <td className="p-3 text-center">
                           <button
                             onClick={() => {
-                              const nextStatus = m.status === 'Aberta' ? 'Em andamento' : m.status === 'Em andamento' ? 'Concluída' : 'Aberta';
-                              const updated = rlpMeetings.map(item => item.id === m.id ? { ...item, status: nextStatus } : item);
+                              const nextStatus: 'Aberta' | 'Em andamento' | 'Concluída' = m.status === 'Aberta' ? 'Em andamento' : m.status === 'Em andamento' ? 'Concluída' : 'Aberta';
+                              const updated: RLPMeeting[] = rlpMeetings.map(item => item.id === m.id ? { ...item, status: nextStatus } : item);
                               saveMeetings(updated);
                             }}
                             className={`px-2.5 py-1 rounded-full text-[8.5px] font-bold uppercase cursor-pointer border-none shadow-sm transition-all ${statusStyle}`}
@@ -3978,6 +3997,20 @@ export default function FefoDashboard({ user, empresa, onBack }: FefoDashboardPr
           operationName="FEFO (Validades)"
         />
       )}
+
+      {/* DEDICATED ACTION MODAL (FILTERED EXCLUSIVELY FOR FEFO) */}
+      <IndicatorActionModal
+        isOpen={isActionModalOpen}
+        onClose={() => setIsActionModalOpen(false)}
+        indicatorTitle="Gestão FEFO"
+        indicatorSubtitle="Visualizando e gerenciando apenas os planos de ação e contramedidas 5W2H do controle de FEFO e Validades."
+        indicatorBadge="FEFO DPO"
+        allowedProcessos={['Gestão FEFO', 'FEFO', 'Validades', 'Vencimento', 'Lotes']}
+        defaultProcesso="Gestão FEFO"
+        defaultIndicador="Aderência FEFO e Risco de Shelf Life"
+        defaultMeta="≥ 98%"
+        user={user}
+      />
 
     </div>
   );

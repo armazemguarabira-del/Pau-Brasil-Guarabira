@@ -167,6 +167,8 @@ export default function ExportarPanel({ user, empresa, theme = 'light', onNaviga
       setWlpPreview({
         success: false,
         totalRows: 0,
+        importedCount: 0,
+        pendenciasCount: 0,
         novosCount: 0,
         sobrescreverCount: 0,
         datasIntervalo: '',
@@ -174,8 +176,11 @@ export default function ExportarPanel({ user, empresa, theme = 'light', onNaviga
         tempoMedioGeralHoras: 0,
         rendimentoMedioHL: 0,
         mediaPorCargo: [],
+        tempoMedioPorColaborador: [],
         rendimentoPorDia: [],
         rows: [],
+        pendencias: [],
+        colaboradoresNaoCadastrados: [],
         validationError: 'Erro ao processar planilha: ' + (err?.message || err)
       });
     } finally {

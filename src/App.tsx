@@ -278,8 +278,19 @@ export default function App() {
           ...doc.data()
         }));
         setActiveActions(docs);
-      }, (err) => {
-        console.error("Erro ao escutar ações ativas", err);
+      }, (err: any) => {
+        // Fallback to local actions when permission is denied or Firestore is restricted
+        if (err?.code === 'permission-denied' || err?.message?.includes('Missing or insufficient permissions')) {
+          try {
+            const localAcoes = JSON.parse(safeGetLocalStorage(`local_acoes_${companyId}`, '[]') || '[]');
+            const userAcoes = localAcoes.filter((a: any) => a.colaboradorId === user.uid && a.status === 'pendente');
+            setActiveActions(userAcoes);
+          } catch (e) {
+            setActiveActions([]);
+          }
+        } else {
+          console.warn("Aviso ao escutar ações ativas (modo local):", err?.message || err);
+        }
       });
 
       return () => unsub();
@@ -338,9 +349,8 @@ export default function App() {
             const docRef = await addDoc(collection(db, 'acessos'), newSession);
             currentSessionId = docRef.id;
             sessionStorage.setItem(sessionKey, docRef.id);
-          } catch (e) {
-            console.error('Error creating access log in Firestore:', e);
-            // Fallback locally
+          } catch (e: any) {
+            // Permission or offline fallback
             currentSessionId = 'local_' + Date.now();
             sessionStorage.setItem(sessionKey, currentSessionId);
             const localSessions = JSON.parse(safeGetLocalStorage(`local_acessos_${empresaId}`, '[]') || '[]');
@@ -366,8 +376,36 @@ export default function App() {
               abasAcessadas: arrayUnion(activePanel),
               atividades: arrayUnion(activityItem)
             });
-          } catch (e) {
-            console.error('Error updating access log in Firestore:', e);
+          } catch (e: any) {
+            // If failed due to permission or doc deleted, switch to local session so it doesn't fail repeatedly
+            currentSessionId = 'local_' + Date.now();
+            sessionStorage.setItem(sessionKey, currentSessionId);
+            const localSessions = JSON.parse(safeGetLocalStorage(`local_acessos_${empresaId}`, '[]') || '[]');
+            const idx = localSessions.findIndex((s: any) => s.id === currentSessionId);
+            if (idx !== -1) {
+              const sess = localSessions[idx];
+              if (!sess.abasAcessadas.includes(activePanel)) sess.abasAcessadas.push(activePanel);
+              if (sess.atividades[sess.atividades.length - 1]?.aba !== activePanel) sess.atividades.push(activityItem);
+              sess.ultimoAcesso = nowStr;
+            } else {
+              localSessions.unshift({
+                id: currentSessionId,
+                empresaId,
+                userId: user.uid,
+                nome: user.nome,
+                email: user.email,
+                papel: user.papel || 'operador',
+                loginEm: nowStr,
+                loginData: friendlyDate,
+                loginHora: friendlyTime,
+                logoutEm: null,
+                ultimoAcesso: nowStr,
+                abasAcessadas: [activePanel],
+                atividades: [activityItem],
+                ativo: true
+              });
+            }
+            safeSetLocalStorage(`local_acessos_${empresaId}`, JSON.stringify(localSessions.slice(0, 50)));
           }
         } else {
           // Local fallback update
@@ -537,7 +575,7 @@ export default function App() {
               ativo: false
             });
           } catch (e) {
-            console.error('Error logging out session in Firestore:', e);
+            // Local fallback on session logout
           }
         } else {
           const empresaId = user.empresaId || 'demo';

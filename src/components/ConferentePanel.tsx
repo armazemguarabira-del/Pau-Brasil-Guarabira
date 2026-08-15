@@ -24,6 +24,7 @@ import RefugoPanel from './RefugoPanel';
 import TemperaturaImportExportBar from './TemperaturaImportExportBar';
 import { Checklist5SForm, Collaborator5SPerformanceCard } from './Checklist5SModal';
 import { GuiaAcoesOperacionais } from './GuiaAcoesOperacionais';
+import { OperationalCollaboratorPnpBanner } from './OperationalCollaboratorPnpBanner';
 import { getStoredTempLogs } from '../utils/tempStorage';
 import { saveJornadaRecord, saveMultipleJornadas, saveDailyFaturadoRecord, getStoredJornadas, getStoredMontagens, saveMontagemRecord, finalizarMontagemRecord, WlpMontagemRecord, JornadaRecord } from '../utils/jornadaUtils';
 import { OperationalNotificationBell } from './OperationalNotificationBell';
@@ -54,6 +55,49 @@ interface ConferentePanelProps {
 export default function ConferentePanel({ user, empresa, initialTab, theme = 'dark' }: ConferentePanelProps) {
   const empresaId = empresa?.id || 'demo';
   const draftKey = `conferente_draft_${empresaId}_${user.nome || 'guest'}`;
+  const empresaData = useEmpresaData();
+
+  // Helper to load safe initial state
+  const getDraftValue = (key: string, defaultValue: any) => {
+    try {
+      const saved = localStorage.getItem(draftKey);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed[key] !== undefined) return parsed[key];
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    return defaultValue;
+  };
+
+  const [conferente, setConferente] = useState<string>(() => getDraftValue('conferente', ''));
+  const [conferentes, setConferentes] = useState<string[]>(['GILSON ROSA DA SILVA', 'MATHEUS']);
+  const [newConfName, setNewConfName] = useState('');
+
+  const [searchQuery, setSearchQuery] = useState<string>(() => getDraftValue('searchQuery', ''));
+  const [selectedProd, setSelectedProd] = useState<{ codigo: number, descricao: string } | null>(() => getDraftValue('selectedProd', null));
+  const [quantidade, setQuantidade] = useState<number | ''>(() => {
+    const val = getDraftValue('quantidade', '');
+    return val === 1 ? '' : (val || '');
+  });
+  const [operator, setOperator] = useState<string>(() => getDraftValue('operator', ''));
+  const [operators, setOperators] = useState<string[]>(['MARIVALDO', 'RONILDO', 'PAULO PEREIRA']);
+
+  // Tasks lists
+  const [tasks, setTasks] = useState<Tarefa[]>([]);
+  const [activeTab, setActiveTab] = useState<'open' | 'done'>('open');
+  const [creating, setCreating] = useState(false);
+  const [draftRestored, setDraftRestored] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem(draftKey);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return !!(parsed.searchQuery || parsed.selectedProd || (parsed.quantidade && parsed.quantidade !== 1) || parsed.operator);
+      }
+    } catch (e) {}
+    return false;
+  });
 
   // Dispatch Category State: 'picking' | 'tmr'
   const [dispatchType, setDispatchType] = useState<'picking' | 'tmr'>('picking');
@@ -926,48 +970,6 @@ export default function ConferentePanel({ user, empresa, initialTab, theme = 'da
     setTimeout(() => el.remove(), 3500);
   };
 
-  // Helper to load safe initial state
-  const getDraftValue = (key: string, defaultValue: any) => {
-    try {
-      const saved = localStorage.getItem(draftKey);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed[key] !== undefined) return parsed[key];
-      }
-    } catch (e) {
-      console.error(e);
-    }
-    return defaultValue;
-  };
-
-  const [conferente, setConferente] = useState<string>(() => getDraftValue('conferente', ''));
-  const [conferentes, setConferentes] = useState<string[]>(['GILSON ROSA DA SILVA', 'MATHEUS']);
-  const [newConfName, setNewConfName] = useState('');
-
-  const [searchQuery, setSearchQuery] = useState<string>(() => getDraftValue('searchQuery', ''));
-  const [selectedProd, setSelectedProd] = useState<{ codigo: number, descricao: string } | null>(() => getDraftValue('selectedProd', null));
-  const [quantidade, setQuantidade] = useState<number | ''>(() => {
-    const val = getDraftValue('quantidade', '');
-    return val === 1 ? '' : (val || '');
-  });
-  const [operator, setOperator] = useState<string>(() => getDraftValue('operator', ''));
-  const [operators, setOperators] = useState<string[]>(['MARIVALDO', 'RONILDO', 'PAULO PEREIRA']);
-
-  // Tasks lists
-  const [tasks, setTasks] = useState<Tarefa[]>([]);
-  const [activeTab, setActiveTab] = useState<'open' | 'done'>('open');
-  const [creating, setCreating] = useState(false);
-  const [draftRestored, setDraftRestored] = useState<boolean>(() => {
-    try {
-      const saved = localStorage.getItem(draftKey);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        return !!(parsed.searchQuery || parsed.selectedProd || (parsed.quantidade && parsed.quantidade !== 1) || parsed.operator);
-      }
-    } catch (e) {}
-    return false;
-  });
-
   // Sync state with local draft saving
   useEffect(() => {
     const draftData = {
@@ -1017,8 +1019,6 @@ export default function ConferentePanel({ user, empresa, initialTab, theme = 'da
       } catch (e) {}
     }
   }, [empresaId]);
-
-  const empresaData = useEmpresaData();
 
   // Sync with Firestore Tasks (scoped to company)
   useEffect(() => {
@@ -1236,6 +1236,9 @@ export default function ConferentePanel({ user, empresa, initialTab, theme = 'da
           )}
         </div>
       </div>
+
+      {/* PAINEL EXCLUSIVO DO CONFERENTE - PNP E METAS VS REAL */}
+      <OperationalCollaboratorPnpBanner user={user} theme={theme} />
 
       {/* QUADRO DE DEMANDAS PENDENTES (RESUMO CONFERENTE) */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

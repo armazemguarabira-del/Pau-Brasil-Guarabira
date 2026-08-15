@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { IndicatorActionModal } from './IndicatorActionModal';
 import { 
   BarChart,
   Bar,
@@ -160,6 +161,7 @@ export const WlpDashboard: React.FC<WlpDashboardProps> = ({
   user,
   empresaId = 'demo'
 }) => {
+  const [isActionModalOpen, setIsActionModalOpen] = useState(false);
   const [selectedMesAno, setSelectedMesAno] = useState<string>('08/2026');
   const [activeSubTab, setActiveSubTab] = useState<'indicador' | 'historico_diario' | 'desvios_dpo' | 'pontos_jornada' | 'presentes_dia' | 'pnp_ajudante' | 'pnp_empilhador' | 'pnp_conferente'>('indicador');
 
@@ -237,10 +239,33 @@ export const WlpDashboard: React.FC<WlpDashboardProps> = ({
   }, [historicalVolumes, empresaId]);
 
   const calculatedHistoricalRows = React.useMemo(() => {
-    return historicalVolumes.map(row => {
+    return historicalVolumes.map((row, idx) => {
+      const monthNum = String(idx + 1).padStart(2, '0');
+      const monthKey = `${monthNum}/2026`;
+
+      // Calculate total imported hectoliters from dailyFaturados for this month in 2026
+      const monthFaturados = dailyFaturados.filter(f => {
+        const norm = normalizeMesAnoStr(f.mesAno, f.dataISO);
+        return norm === monthKey;
+      });
+      const importedHlForMonth = monthFaturados.reduce((sum, f) => sum + (Number(f.volumeHL) || 0), 0);
+
       const n24 = parseVolNumber(row.v24);
       const n25 = parseVolNumber(row.v25);
-      const n26 = parseVolNumber(row.v26);
+
+      // Dynamic 2026 volume: If hectoliters were imported for this month, update automatically!
+      let n26 = parseVolNumber(row.v26);
+      let v26Display = row.v26;
+      let isImportedDynamic = false;
+
+      if (importedHlForMonth > 0) {
+        n26 = importedHlForMonth;
+        v26Display = formatVolNumber(importedHlForMonth);
+        if (row.isParcial26 || (row.v26 && row.v26.toLowerCase().includes('parcial'))) {
+          v26Display = `${formatVolNumber(importedHlForMonth)} (parcial)`;
+        }
+        isImportedDynamic = true;
+      }
 
       let varStr = '-';
       if (n25 > 0 && n26 > 0) {
@@ -250,13 +275,16 @@ export const WlpDashboard: React.FC<WlpDashboardProps> = ({
 
       return {
         ...row,
+        v26: v26Display,
         n24,
         n25,
         n26,
-        varStr
+        varStr,
+        isImportedDynamic,
+        importedHlForMonth
       };
     });
-  }, [historicalVolumes]);
+  }, [historicalVolumes, dailyFaturados]);
 
   const totalsHistorical = React.useMemo(() => {
     let sum24 = 0;
@@ -732,34 +760,6 @@ export const WlpDashboard: React.FC<WlpDashboardProps> = ({
     }
   };
 
-  // Helper to normalize MM/YYYY with optional dataISO fallback
-  const normalizeMesAnoStr = (str?: string, dataISO?: string) => {
-    let clean = (str || '').trim();
-    if (!clean && dataISO) {
-      const parts = dataISO.split('-');
-      if (parts.length >= 2) {
-        clean = `${parts[1]}/${parts[0]}`;
-      }
-    }
-    if (!clean) return '';
-    if (clean.includes('/')) {
-      const parts = clean.split('/');
-      if (parts.length === 2) {
-        return `${parts[0].padStart(2, '0')}/${parts[1].length === 2 ? `20${parts[1]}` : parts[1]}`;
-      }
-    } else if (clean.includes('-')) {
-      const parts = clean.split('-');
-      if (parts.length === 2) {
-        if (parts[0].length === 4) {
-          return `${parts[1].padStart(2, '0')}/${parts[0]}`;
-        } else {
-          return `${parts[0].padStart(2, '0')}/${parts[1].length === 2 ? `20${parts[1]}` : parts[1]}`;
-        }
-      }
-    }
-    return clean;
-  };
-
   // Build dynamic list of months available
   const availableMonths = React.useMemo(() => {
     const monthsSet = new Set<string>();
@@ -836,6 +836,7 @@ export const WlpDashboard: React.FC<WlpDashboardProps> = ({
   // Compute dynamic configuration derived automatically from imported data and official targets
   const mesNum = parseInt(selectedMesAno.split('/')[0], 10) || 8;
   const metaOficial = getMetaOficialMes(mesNum);
+  const metaOficialPnp = getMetaOficialPnp(mesNum);
 
   const dynamicConfig = React.useMemo(() => {
     const volSum = activeDailyFaturados.reduce((acc, curr) => acc + (curr.volumeHL || 0), 0);
@@ -895,7 +896,7 @@ export const WlpDashboard: React.FC<WlpDashboardProps> = ({
     const volumeTotalHL = vol2026Sum > 0 ? vol2026Sum : 103496.3;
     const totalHH = totalHH2026 > 0 ? totalHH2026 : Math.round(103496.3 / 6.93);
     const realWlp = totalHH > 0 ? volumeTotalHL / totalHH : 6.93;
-    const metaWlp = 5.00;
+    const metaWlp = 6.23;
     const atingimentoPct = metaWlp > 0 ? (realWlp / metaWlp) * 100 : 0;
     const deltaVsMeta = realWlp - metaWlp;
 
@@ -1336,6 +1337,15 @@ PAULO PEREIRA DA SILVA;Ajudante;01/08/2026;07:00;16:20;Turno Normal`;
           </div>
 
           <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => setIsActionModalOpen(true)}
+              className="px-3.5 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black text-[11px] uppercase tracking-wider rounded-xl transition-all cursor-pointer shadow-md flex items-center gap-1.5 border border-blue-400/30"
+            >
+              <CheckCircle2 className="w-4 h-4 text-emerald-300" />
+              <span>Plano de Ações (WLP / PNP)</span>
+            </button>
+
             <button
               type="button"
               onClick={exportWlpModelExcel}
@@ -1969,7 +1979,11 @@ PAULO PEREIRA DA SILVA;Ajudante;01/08/2026;07:00;16:20;Turno Normal`;
             <span className="text-[11px] font-black uppercase text-amber-400 tracking-wider flex items-center gap-1.5">
               <TrendingUp className="w-3.5 h-3.5" /> Volume Hectolitro Faturado (HL) — Histórico Comparativo 2024 x 2025 x 2026
             </span>
-            <span className="text-[10px] font-mono text-slate-400">Total 2026 Acumulado (Até Ago): 103.496,3 HL</span>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-mono text-slate-400">
+                Total 2026 Acumulado: <strong className="text-amber-300 font-bold">{totalsHistorical.formatted26}</strong>
+              </span>
+            </div>
           </div>
 
           <div className="overflow-x-auto rounded-xl border border-slate-800">
@@ -1981,56 +1995,59 @@ PAULO PEREIRA DA SILVA;Ajudante;01/08/2026;07:00;16:20;Turno Normal`;
                   <th className="py-2 px-3 text-right">Volume 2025</th>
                   <th className="py-2 px-3 text-right">Volume 2026</th>
                   <th className="py-2 px-3 text-right">Variação '26 vs '25</th>
-                  <th className="py-2 px-3 text-center">Status Período</th>
+                  <th className="py-2 px-3 text-center">Origem / Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60 text-slate-200 text-[11px]">
-                {[
-                  { m: 'Jan', v24: '-', v25: '13.491,3', v26: '16.336,4', var: '+21,1%', crit: false },
-                  { m: 'Fev', v24: '-', v25: '11.676,1', v26: '12.486,1', var: '+6,9%', crit: false },
-                  { m: 'Mar', v24: '-', v25: '10.023,7', v26: '13.813,4', var: '+37,8%', crit: true },
-                  { m: 'Abr', v24: '-', v25: '11.426,4', v26: '12.981,1', var: '+13,6%', crit: false },
-                  { m: 'Mai', v24: '-', v25: '12.501,8', v26: '12.447,2', var: '-0,4%', crit: false },
-                  { m: 'Jun', v24: '-', v25: '13.697,8', v26: '16.686,6', var: '+21,8%', crit: true },
-                  { m: 'Jul', v24: '-', v25: '10.923,4', v26: '13.626,8', var: '+24,7%', crit: false },
-                  { m: 'Ago', v24: '-', v25: '9.272,7', v26: '5.118,7 (parcial)', var: '-', crit: false },
-                  { m: 'Set', v24: '-', v25: '11.211,3', v26: '-', var: '-', crit: false },
-                  { m: 'Out', v24: '10.040,2', v25: '11.802,8', v26: '-', var: '-', crit: false },
-                  { m: 'Nov', v24: '12.553,6', v25: '12.774,3', v26: '-', var: '-', crit: false },
-                  { m: 'Dez', v24: '16.231,5', v25: '21.469,2', v26: '-', var: '-', crit: true },
-                ].map((row, i) => (
-                  <tr key={i} className={row.crit ? 'bg-amber-500/10 font-bold' : 'hover:bg-slate-800/40'}>
-                    <td className="py-2 px-3 font-bold uppercase text-white flex items-center gap-1.5">
-                      {row.m}
-                      {row.crit && (
-                        <span className="px-1.5 py-0.2 bg-amber-500 text-slate-950 text-[9px] font-black rounded uppercase shrink-0">
-                          PICO CRÍTICO
-                        </span>
-                      )}
-                    </td>
-                    <td className="py-2 px-3 text-right text-slate-400">{row.v24}</td>
-                    <td className="py-2 px-3 text-right text-slate-300">{row.v25}</td>
-                    <td className="py-2 px-3 text-right font-black text-amber-300">{row.v26}</td>
-                    <td className="py-2 px-3 text-right font-bold text-emerald-400">{row.var}</td>
-                    <td className="py-2 px-3 text-center">
-                      {row.crit ? (
-                        <span className="text-[10px] text-amber-400 font-black uppercase tracking-wider">
-                          Pico (+2h HE Isento)
-                        </span>
-                      ) : (
-                        <span className="text-[10px] text-slate-500 uppercase">Padrão</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                {calculatedHistoricalRows.map((row, i) => {
+                  const isCrit = row.crit || (row.m === 'Dez' || row.m === 'Mar' || row.m === 'Jun');
+                  return (
+                    <tr key={i} className={isCrit ? 'bg-amber-500/10 font-bold' : 'hover:bg-slate-800/40'}>
+                      <td className="py-2 px-3 font-bold uppercase text-white flex items-center gap-1.5">
+                        {row.m}
+                        {isCrit && (
+                          <span className="px-1.5 py-0.2 bg-amber-500 text-slate-950 text-[9px] font-black rounded uppercase shrink-0">
+                            PICO CRÍTICO
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-2 px-3 text-right text-slate-400">{row.v24}</td>
+                      <td className="py-2 px-3 text-right text-slate-300">{row.v25}</td>
+                      <td className="py-2 px-3 text-right font-black text-amber-300">
+                        {row.v26}
+                        {row.isImportedDynamic && (
+                          <span className="ml-1.5 text-[8px] text-emerald-400 font-bold uppercase">
+                            (Auto)
+                          </span>
+                        )}
+                      </td>
+                      <td className={`py-2 px-3 text-right font-bold ${row.varStr.startsWith('+') ? 'text-emerald-400' : row.varStr.startsWith('-') ? 'text-rose-400' : 'text-slate-400'}`}>
+                        {row.varStr}
+                      </td>
+                      <td className="py-2 px-3 text-center">
+                        {row.isImportedDynamic ? (
+                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-bold uppercase border border-emerald-500/30">
+                            Importado do Mês
+                          </span>
+                        ) : isCrit ? (
+                          <span className="text-[10px] text-amber-400 font-black uppercase tracking-wider">
+                            Pico (+2h HE Isento)
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-slate-500 uppercase">Padrão</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
               <tfoot>
                 <tr className="bg-[#0b1222] font-black text-white text-xs border-t-2 border-slate-700">
                   <td className="py-2.5 px-3 uppercase">Total Geral</td>
-                  <td className="py-2.5 px-3 text-right text-slate-400">38.825,4 HL</td>
-                  <td className="py-2.5 px-3 text-right text-slate-300">150.270,9 HL</td>
-                  <td className="py-2.5 px-3 text-right text-amber-400">103.496,3 HL</td>
-                  <td className="py-2.5 px-3 text-right text-emerald-400">+19,8% md</td>
+                  <td className="py-2.5 px-3 text-right text-slate-400">{totalsHistorical.formatted24}</td>
+                  <td className="py-2.5 px-3 text-right text-slate-300">{totalsHistorical.formatted25}</td>
+                  <td className="py-2.5 px-3 text-right text-amber-400">{totalsHistorical.formatted26}</td>
+                  <td className="py-2.5 px-3 text-right text-emerald-400">{totalsHistorical.varTotalStr}</td>
                   <td className="py-2.5 px-3 text-center text-slate-400">Ref. 2026</td>
                 </tr>
               </tfoot>
@@ -2315,19 +2332,29 @@ PAULO PEREIRA DA SILVA;Ajudante;01/08/2026;07:00;16:20;Turno Normal`;
             <div className="grid grid-cols-2 gap-2 bg-[#0b1222] p-2 rounded-xl border border-slate-800 text-center">
               <div>
                 <span className="text-[9px] font-bold text-slate-400 uppercase block">Meta PNP</span>
-                <span className="text-base font-black font-mono text-amber-400">5.00</span>
+                <span className="text-base font-black font-mono text-amber-400">{metaOficialPnp.toFixed(2)}</span>
               </div>
               <div className="border-l border-slate-800">
                 <span className="text-[9px] font-bold text-slate-400 uppercase block">Real PNP</span>
                 <span className="text-base font-black font-mono text-emerald-400">{(metrics.wlpCalculado > 0 ? metrics.wlpCalculado * 0.98 : 0).toFixed(2)}</span>
               </div>
             </div>
-            <div className="flex items-center justify-between mt-2">
-              <span className="text-[10px] text-slate-400">Desempenho</span>
-              <span className="text-[10px] font-black px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                Acima da Meta
-              </span>
-            </div>
+            {(() => {
+              const realPnpVal = metrics.wlpCalculado > 0 ? metrics.wlpCalculado * 0.98 : 0;
+              const isAcima = realPnpVal >= metaOficialPnp;
+              return (
+                <div className="flex items-center justify-between mt-2">
+                  <span className="text-[10px] text-slate-400">Desempenho</span>
+                  <span className={`text-[10px] font-black px-2 py-0.5 rounded border ${
+                    isAcima 
+                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' 
+                      : 'bg-rose-500/20 text-rose-300 border-rose-500/30'
+                  }`}>
+                    {isAcima ? 'Acima da Meta' : 'Abaixo da Meta'}
+                  </span>
+                </div>
+              );
+            })()}
           </div>
         </div>
       </div>
@@ -2606,7 +2633,7 @@ PAULO PEREIRA DA SILVA;Ajudante;01/08/2026;07:00;16:20;Turno Normal`;
                             {mediaHorasColab.toFixed(2)} h / colab
                           </td>
                           <td className="p-3 text-center font-mono font-bold text-amber-400">
-                            5.00
+                            {metaOficial.toFixed(2)}
                           </td>
                           <td className="p-3 text-center font-mono font-black text-sm text-emerald-400">
                             {wlpDia > 0 ? `${wlpDia.toFixed(2)}` : '-'}
@@ -2616,7 +2643,7 @@ PAULO PEREIRA DA SILVA;Ajudante;01/08/2026;07:00;16:20;Turno Normal`;
                               <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase bg-rose-500/20 text-rose-400 border border-rose-500/30 flex items-center justify-center gap-1">
                                 <AlertTriangle className="w-3 h-3" /> Hora Extra Proibida
                               </span>
-                            ) : wlpDia >= (metaOficial || 5.0) ? (
+                            ) : wlpDia >= (metaOficial || 6.23) ? (
                               <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
                                 Meta DPO Atingida
                               </span>
@@ -4210,6 +4237,19 @@ PAULO PEREIRA DA SILVA;Ajudante;01/08/2026;07:00;16:20;Turno Normal`;
           </div>
         </div>
       )}
+
+      {/* DEDICATED ACTION MODAL (FILTERED FOR WLP & PNP) */}
+      <IndicatorActionModal
+        isOpen={isActionModalOpen}
+        onClose={() => setIsActionModalOpen(false)}
+        indicatorTitle="WLP & PNP"
+        indicatorSubtitle="Visualizando e gerenciando apenas os planos de ação e contramedidas 5W2H para desvios de WLP e PNP abaixo da meta oficial de 6,23 HL/HH."
+        indicatorBadge="WLP DPO"
+        allowedProcessos={['WLP', 'PNP', 'WLP / PNP', 'Produtividade Geral']}
+        defaultProcesso="WLP"
+        defaultIndicador="Produtividade WLP / PNP (HL/HH)"
+        defaultMeta="6.23 HL/HH"
+      />
 
     </div>
   );

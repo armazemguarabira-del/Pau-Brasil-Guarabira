@@ -7,6 +7,7 @@ import DespejoPanel from './DespejoPanel';
 import QuebrasPanel from './QuebrasPanel';
 import { Checklist5SForm, Collaborator5SPerformanceCard } from './Checklist5SModal';
 import { GuiaAcoesOperacionais } from './GuiaAcoesOperacionais';
+import { OperationalCollaboratorPnpBanner } from './OperationalCollaboratorPnpBanner';
 import { 
   Users, 
   RefreshCw, 
@@ -29,7 +30,8 @@ import {
   Edit2,
   Save,
   Lightbulb,
-  Send
+  Send,
+  Zap
 } from 'lucide-react';
 import { add5PorquesDemand } from '../utils/fiveWhysManager';
 import { AcaoCorretiva, getAcoesAll, saveAcoes } from '../utils/simulacaoAcoesUtils';
@@ -255,13 +257,13 @@ export default function AjudantePanel({ user, empresa, theme = 'dark' }: Ajudant
 
   // Repack: Sum of target time per unit vs Sum of actual realized time
   const totalRepackMetaMins = todayRepackEntries.reduce((sum, r) => {
-    const metaUnit = parseTimeToMinutes(r.metaEmbalagem || r.meta || '5 min') || 5;
+    const metaUnit = parseTimeToMinutes(String(r.metaEmbalagem || r.meta || '5 min')) || 5;
     const qty = Number(r.quantidade) || 1;
     return sum + (metaUnit * qty);
   }, 0);
 
   const totalRepackRealMins = todayRepackEntries.reduce((sum, r) => {
-    if (r.duracao) return sum + parseTimeToMinutes(r.duracao);
+    if (r.duracao) return sum + parseTimeToMinutes(String(r.duracao));
     if (r.inicio && r.fim) {
       const i = parseTimeToMinutes(r.inicio);
       const f = parseTimeToMinutes(r.fim);
@@ -273,15 +275,21 @@ export default function AjudantePanel({ user, empresa, theme = 'dark' }: Ajudant
   // If actual realized time > total target time, user missed the goal
   const hasMissedRepackMeta = todayRepackEntries.length > 0 && totalRepackRealMins > totalRepackMetaMins;
 
+  // Repack: 2 Metas Oficiais: (1) 10 cx/h e (2) Meta por Embalagem (Soma das metas vs Real)
+  const totalRepackQty = todayRepackEntries.reduce((sum, r) => sum + (Number(r.quantidade) || 0), 0);
+  const totalRepackHours = totalRepackRealMins / 60;
+  const realRepackCxHora = totalRepackHours > 0 ? (totalRepackQty / totalRepackHours) : 0;
+  const isGatilhoRepack10CxAtivo = todayRepackEntries.length > 0 && realRepackCxHora < 10.0;
+
   // Despejo: Sum of target time per unit vs Sum of actual realized time
   const totalDespejoMetaMins = todayDespejoEntries.reduce((sum, d) => {
-    const metaUnit = parseTimeToMinutes(d.metaEmbalagem || d.meta || '5 min') || 5;
+    const metaUnit = parseTimeToMinutes(String(d.metaEmbalagem || d.meta || '5 min')) || 5;
     const qty = Number(d.quantidade) || 1;
     return sum + (metaUnit * qty);
   }, 0);
 
   const totalDespejoRealMins = todayDespejoEntries.reduce((sum, d) => {
-    if (d.duracao) return sum + parseTimeToMinutes(d.duracao);
+    if (d.duracao) return sum + parseTimeToMinutes(String(d.duracao));
     if (d.inicio && d.fim) {
       const i = parseTimeToMinutes(d.inicio);
       const f = parseTimeToMinutes(d.fim);
@@ -571,59 +579,148 @@ export default function AjudantePanel({ user, empresa, theme = 'dark' }: Ajudant
         </div>
       </div>
 
+      {/* PAINEL EXCLUSIVO DO COLABORADOR LOGADO - PNP E METAS VS REAL */}
+      <OperationalCollaboratorPnpBanner user={user} theme={theme} />
+
       {/* PAINEL DE STATUS DA META DE PRODUTIVIDADE DO DIA */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {/* REPACK SUMMARY */}
-        <div className="bg-[#11151c] border border-[#222d3a] p-4 rounded-xl flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-purple-500/10 text-purple-400 rounded-lg">
-              <RefreshCw className="w-5 h-5" />
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3.5">
+        {/* REPACK META 1: 10 CX/HORA (GATILHO -10 CX/H) */}
+        <div className={`border p-4 rounded-xl flex flex-col justify-between transition-all ${
+          isGatilhoRepack10CxAtivo
+            ? 'bg-rose-950/20 border-rose-500/50'
+            : todayRepackEntries.length > 0 && realRepackCxHora >= 10
+            ? 'bg-[#11151c] border-emerald-500/40'
+            : 'bg-[#11151c] border-[#222d3a]'
+        }`}>
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <div className={`p-2 rounded-lg ${isGatilhoRepack10CxAtivo ? 'bg-rose-500/20 text-rose-400' : 'bg-amber-500/10 text-amber-400'}`}>
+                <Zap className="w-4 h-4" />
+              </div>
+              <div>
+                <span className="text-[10px] font-black text-amber-400 uppercase tracking-wider block">Repack • Meta 1 (10 cx/h)</span>
+                <span className="text-[11px] font-bold text-slate-300 block">Ritmo Operacional</span>
+              </div>
             </div>
+            <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full border shrink-0 ${
+              isGatilhoRepack10CxAtivo
+                ? 'bg-rose-500/20 text-rose-300 border-rose-500/40 animate-pulse'
+                : todayRepackEntries.length > 0 && realRepackCxHora >= 10
+                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                : 'bg-slate-800 text-slate-400 border-slate-700'
+            }`}>
+              {isGatilhoRepack10CxAtivo ? '⚠ GATILHO (<10)' : todayRepackEntries.length > 0 && realRepackCxHora >= 10 ? '🟢 DENTRO' : '⚪ SEM DADOS'}
+            </span>
+          </div>
+          
+          {/* Real vs Meta lado a lado */}
+          <div className="grid grid-cols-2 gap-2 bg-[#090d14] p-2.5 rounded-lg border border-slate-800 text-center my-1">
             <div>
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Meta Repack Hoje (Tempo por Unidade)</span>
-              <span className="text-xs font-bold text-white block">
-                {todayRepackEntries.length} lançamentos | Meta: {totalRepackMetaMins.toFixed(0)} min vs Real: {totalRepackRealMins.toFixed(0)} min
+              <span className="text-[9px] uppercase font-bold text-slate-400 block">Real</span>
+              <span className={`text-base font-black font-mono ${isGatilhoRepack10CxAtivo ? 'text-rose-400' : 'text-emerald-400'}`}>
+                {realRepackCxHora.toFixed(1)} <span className="text-[9px] text-slate-400 font-normal">cx/h</span>
               </span>
-              <span className="text-[10px] text-slate-400 block font-mono">
-                Soma Meta Produtos: {totalRepackMetaMins.toFixed(0)} min | Tempo Realizado: {totalRepackRealMins.toFixed(0)} min
+            </div>
+            <div className="border-l border-slate-800">
+              <span className="text-[9px] uppercase font-bold text-slate-400 block">Meta</span>
+              <span className="text-base font-black font-mono text-amber-400">
+                10.0 <span className="text-[9px] text-slate-400 font-normal">cx/h</span>
               </span>
             </div>
           </div>
-          <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-full border shrink-0 ${
-            hasMissedRepackMeta 
-              ? 'bg-rose-500/20 text-rose-400 border-rose-500/40 animate-pulse' 
-              : todayRepackEntries.length > 0 
-              ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40' 
-              : 'bg-slate-800 text-slate-400 border-slate-700'
-          }`}>
-            {hasMissedRepackMeta ? '🔴 NÃO BATEU A META' : todayRepackEntries.length > 0 ? '🟢 BATEU A META' : '⚪ SEM REGISTROS'}
+          <span className="text-[9px] text-slate-400 font-mono block mt-1">
+            Gatilho: -10 cx/h | {totalRepackQty} cx repacadas hoje
+          </span>
+        </div>
+
+        {/* REPACK META 2: META POR EMBALAGEM (SOMA DAS METAS DO DIA VS REAL) */}
+        <div className={`border p-4 rounded-xl flex flex-col justify-between transition-all ${
+          hasMissedRepackMeta
+            ? 'bg-rose-950/20 border-rose-500/50'
+            : todayRepackEntries.length > 0
+            ? 'bg-[#11151c] border-purple-500/40'
+            : 'bg-[#11151c] border-[#222d3a]'
+        }`}>
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <div className="p-2 bg-purple-500/10 text-purple-400 rounded-lg">
+                <RefreshCw className="w-4 h-4" />
+              </div>
+              <div>
+                <span className="text-[10px] font-black text-purple-400 uppercase tracking-wider block">Repack • Meta 2 (Embalagem)</span>
+                <span className="text-[11px] font-bold text-slate-300 block">Soma Metas vs Real</span>
+              </div>
+            </div>
+            <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full border shrink-0 ${
+              hasMissedRepackMeta
+                ? 'bg-rose-500/20 text-rose-300 border-rose-500/40 animate-pulse'
+                : todayRepackEntries.length > 0
+                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                : 'bg-slate-800 text-slate-400 border-slate-700'
+            }`}>
+              {hasMissedRepackMeta ? '🔴 FORA' : todayRepackEntries.length > 0 ? '🟢 DENTRO' : '⚪ SEM DADOS'}
+            </span>
+          </div>
+
+          {/* Real vs Meta lado a lado */}
+          <div className="grid grid-cols-2 gap-2 bg-[#090d14] p-2.5 rounded-lg border border-slate-800 text-center my-1">
+            <div>
+              <span className="text-[9px] uppercase font-bold text-slate-400 block">Real (Hoje)</span>
+              <span className={`text-base font-black font-mono ${hasMissedRepackMeta ? 'text-rose-400' : 'text-purple-300'}`}>
+                {totalRepackRealMins.toFixed(0)} <span className="text-[9px] text-slate-400 font-normal">min</span>
+              </span>
+            </div>
+            <div className="border-l border-slate-800">
+              <span className="text-[9px] uppercase font-bold text-slate-400 block">Meta Somada</span>
+              <span className="text-base font-black font-mono text-amber-400">
+                {totalRepackMetaMins.toFixed(0)} <span className="text-[9px] text-slate-400 font-normal">min</span>
+              </span>
+            </div>
+          </div>
+          <span className="text-[9px] text-slate-400 font-mono block mt-1">
+            {todayRepackEntries.length} lançamento(s) somado(s)
           </span>
         </div>
 
         {/* DESPEJO SUMMARY */}
-        <div className="bg-[#11151c] border border-[#222d3a] p-4 rounded-xl flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-rose-500/10 text-rose-400 rounded-lg">
-              <Trash2 className="w-5 h-5" />
+        <div className="bg-[#11151c] border border-[#222d3a] p-4 rounded-xl flex flex-col justify-between">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <div className="p-2 bg-rose-500/10 text-rose-400 rounded-lg">
+                <Trash2 className="w-4 h-4" />
+              </div>
+              <div>
+                <span className="text-[10px] font-black text-rose-400 uppercase tracking-wider block">Despejo • Tempo Unidade</span>
+                <span className="text-[11px] font-bold text-slate-300 block">Soma Metas vs Real</span>
+              </div>
             </div>
+            <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full border shrink-0 ${
+              hasMissedDespejoMeta 
+                ? 'bg-rose-500/20 text-rose-400 border-rose-500/40 animate-pulse' 
+                : todayDespejoEntries.length > 0 
+                ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40' 
+                : 'bg-slate-800 text-slate-400 border-slate-700'
+            }`}>
+              {hasMissedDespejoMeta ? '🔴 FORA' : todayDespejoEntries.length > 0 ? '🟢 DENTRO' : '⚪ SEM DADOS'}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 bg-[#090d14] p-2.5 rounded-lg border border-slate-800 text-center my-1">
             <div>
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Meta Despejo Hoje (Tempo por Unidade)</span>
-              <span className="text-xs font-bold text-white block">
-                {todayDespejoEntries.length} lançamentos | Meta: {totalDespejoMetaMins.toFixed(0)} min vs Real: {totalDespejoRealMins.toFixed(0)} min
+              <span className="text-[9px] uppercase font-bold text-slate-400 block">Real</span>
+              <span className={`text-base font-black font-mono ${hasMissedDespejoMeta ? 'text-rose-400' : 'text-rose-300'}`}>
+                {totalDespejoRealMins.toFixed(0)} <span className="text-[9px] text-slate-400 font-normal">min</span>
               </span>
-              <span className="text-[10px] text-slate-400 block font-mono">
-                Soma Meta Produtos: {totalDespejoMetaMins.toFixed(0)} min | Tempo Realizado: {totalDespejoRealMins.toFixed(0)} min
+            </div>
+            <div className="border-l border-slate-800">
+              <span className="text-[9px] uppercase font-bold text-slate-400 block">Meta</span>
+              <span className="text-base font-black font-mono text-amber-400">
+                {totalDespejoMetaMins.toFixed(0)} <span className="text-[9px] text-slate-400 font-normal">min</span>
               </span>
             </div>
           </div>
-          <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-full border shrink-0 ${
-            hasMissedDespejoMeta 
-              ? 'bg-rose-500/20 text-rose-400 border-rose-500/40 animate-pulse' 
-              : todayDespejoEntries.length > 0 
-              ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40' 
-              : 'bg-slate-800 text-slate-400 border-slate-700'
-          }`}>
-            {hasMissedDespejoMeta ? '🔴 NÃO BATEU A META' : todayDespejoEntries.length > 0 ? '🟢 BATEU A META' : '⚪ SEM REGISTROS'}
+          <span className="text-[9px] text-slate-400 font-mono block mt-1">
+            {todayDespejoEntries.length} lançamento(s) de despejo
           </span>
         </div>
 

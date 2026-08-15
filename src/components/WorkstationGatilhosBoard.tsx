@@ -208,58 +208,58 @@ export const WorkstationGatilhosBoard: React.FC<WorkstationGatilhosBoardProps> =
   const indicadoresList: IndicadorGatilho[] = useMemo(() => {
     // Definimos os 8 indicadores de metas oficiais medidos nos dashboards
     const items: IndicadorGatilho[] = [
-      // 1. WLP Geral (Gatilho se WLP < 5.00 HL/HH)
+      // 1. WLP Geral (Gatilho se WLP < 6.23 HL/HH)
       {
         id: 'wlp_geral_armazem',
         nome: 'WLP Geral Armazém',
         codigo: 'IND-WLP',
         categoria: 'WLP',
         unidade: 'HL/HH',
-        valorHoje: 4.65, // < 5.00 -> DISPARADO
-        mediaDiaria: 5.00,
-        limiteGatilho: 5.00,
+        valorHoje: 6.93,
+        mediaDiaria: 6.23,
+        limiteGatilho: 6.23,
         isMenorMelhor: false,
-        status: 4.65 < 5.00 ? 'DISPARADO' : 'NORMAL',
+        status: 6.93 < 6.23 ? 'DISPARADO' : 'NORMAL',
         responsavelArea: 'Supervisão de Logística',
         desviosCount: 0,
-        descricaoIndicador: 'Produtividade total do armazém. O gatilho dispara caso o WLP seja menor que 5.00 HL/HH.',
-        metaPlataforma: 'Meta: 5.00 HL/HH'
+        descricaoIndicador: 'Produtividade total do armazém. O gatilho dispara caso o WLP seja menor que 6.23 HL/HH.',
+        metaPlataforma: 'Meta: 6.23 HL/HH'
       },
 
-      // 2. PNP Ajudante (Gatilho se PNP < 5.00 HL/HH)
+      // 2. PNP Ajudante (Gatilho se PNP < 6.23 HL/HH)
       {
         id: 'pnp_ajudante',
         nome: 'PNP - Ajudantes Operacionais',
         codigo: 'PNP-AJU',
         categoria: 'PNP',
         unidade: 'HL/HH',
-        valorHoje: 6.85, // >= 5.00 -> NORMAL
-        mediaDiaria: 5.00,
-        limiteGatilho: 5.00,
+        valorHoje: 6.85,
+        mediaDiaria: 6.23,
+        limiteGatilho: 6.23,
         isMenorMelhor: false,
-        status: 6.85 < 5.00 ? 'DISPARADO' : 'NORMAL',
+        status: 6.85 < 6.23 ? 'DISPARADO' : 'NORMAL',
         responsavelArea: 'Liderança de Pátio',
         desviosCount: 0,
-        descricaoIndicador: 'Movimentação e carga por ajudante. O gatilho dispara caso o rendimento seja menor que 5.00 HL/HH.',
-        metaPlataforma: 'Meta: 5.00 HL/HH'
+        descricaoIndicador: 'Movimentação e carga por ajudante. O gatilho dispara caso o rendimento seja menor que 6.23 HL/HH.',
+        metaPlataforma: 'Meta: 6.23 HL/HH'
       },
 
-      // 3. PNP Empilhador (Gatilho se PNP < 5.00 HL/HH)
+      // 3. PNP Empilhador (Gatilho se PNP < 6.23 HL/HH)
       {
         id: 'pnp_empilhador',
         nome: 'PNP - Empilhadores',
         codigo: 'PNP-EMP',
         categoria: 'PNP',
         unidade: 'HL/HH',
-        valorHoje: 4.80, // < 5.00 -> DISPARADO
-        mediaDiaria: 5.00,
-        limiteGatilho: 5.00,
+        valorHoje: 6.40,
+        mediaDiaria: 6.23,
+        limiteGatilho: 6.23,
         isMenorMelhor: false,
-        status: 4.80 < 5.00 ? 'DISPARADO' : 'NORMAL',
+        status: 6.40 < 6.23 ? 'DISPARADO' : 'NORMAL',
         responsavelArea: 'Encarregado de Movimentação',
         desviosCount: 0,
-        descricaoIndicador: 'Armazenagem e elevação por operador de empilhadeira. Dispara caso o PNP seja menor que 5.00 HL/HH.',
-        metaPlataforma: 'Meta: 5.00 HL/HH'
+        descricaoIndicador: 'Armazenagem e elevação por operador de empilhadeira. Dispara caso o PNP seja menor que 6.23 HL/HH.',
+        metaPlataforma: 'Meta: 6.23 HL/HH'
       },
 
       // 4. PNP Conferente (Gatilho se PNP < 2.00 Carretas/HH)
@@ -269,7 +269,7 @@ export const WorkstationGatilhosBoard: React.FC<WorkstationGatilhosBoardProps> =
         codigo: 'PNP-CONF',
         categoria: 'PNP',
         unidade: 'Carretas/HH',
-        valorHoje: 2.38, // >= 2.00 -> NORMAL
+        valorHoje: 2.38,
         mediaDiaria: 2.00,
         limiteGatilho: 2.00,
         isMenorMelhor: false,
@@ -280,22 +280,40 @@ export const WorkstationGatilhosBoard: React.FC<WorkstationGatilhosBoardProps> =
         metaPlataforma: 'Meta: 2.00 Carretas/HH'
       },
 
-      // 5. Repack (Gatilho se exceder a produtividade média diária do ajudante + 10%)
+      // 5. Repack 1 (Gatilho se < 10 cx/hora: -10 cx/h)
       {
         id: 'repack_produtividade',
-        nome: 'Repack (Tempo por Unidade)',
+        nome: 'Repack (Meta 1 • Ritmo 10 cx/h)',
         codigo: 'RPK-PROD',
         categoria: 'REPACK',
-        unidade: 'min/cx',
-        valorHoje: 3.10, // > 2.75 (2.50 + 10%) -> DISPARADO
-        mediaDiaria: 2.50,
-        limiteGatilho: 2.75, // Média ajudante 2.50 + 10%
-        isMenorMelhor: true,
-        status: 3.10 > 2.75 ? 'DISPARADO' : 'NORMAL',
+        unidade: 'cx/h',
+        valorHoje: 12.4,
+        mediaDiaria: 10.0,
+        limiteGatilho: 10.0, // Gatilho de Repack = -10 caixas por hora (< 10 cx/h)
+        isMenorMelhor: false,
+        status: 12.4 < 10.0 ? 'DISPARADO' : 'NORMAL',
         responsavelArea: 'Supervisão de Repack',
         desviosCount: 0,
-        descricaoIndicador: 'Tempo médio de processamento no Repack. Limite de gatilho = Média Diária do Ajudante + 10%.',
-        metaPlataforma: 'Meta: Média Ajudante + 10%'
+        descricaoIndicador: 'Ritmo operacional do Repack. O gatilho dispara caso o ritmo seja inferior a 10 caixas por hora (-10 cx/h).',
+        metaPlataforma: 'Meta: 10 cx/h'
+      },
+
+      // 5b. Repack 2 (Meta por Embalagem: Soma das metas de todas embalagens vs Real do dia)
+      {
+        id: 'repack_tempo_embalagem',
+        nome: 'Repack (Meta 2 • Tempo por Embalagem)',
+        codigo: 'RPK-EMB',
+        categoria: 'REPACK',
+        unidade: 'min',
+        valorHoje: 185, // Tempo real gasto no dia (min)
+        mediaDiaria: 210, // Soma das metas das embalagens repacadas no dia (min)
+        limiteGatilho: 210, // Gatilho dispara se Real > Soma das Metas (fora do tempo padrão)
+        isMenorMelhor: true,
+        status: 185 > 210 ? 'DISPARADO' : 'NORMAL',
+        responsavelArea: 'Operação de Repack',
+        desviosCount: 0,
+        descricaoIndicador: 'Meta por embalagem diária. Soma da meta de todas as embalagens repacadas vs tempo real consumido no dia.',
+        metaPlataforma: 'Meta: Σ Metas Embalagens'
       },
 
       // 6. Despejo (Gatilho segue a média diária do Repack + 10%)
@@ -311,6 +329,7 @@ export const WorkstationGatilhosBoard: React.FC<WorkstationGatilhosBoardProps> =
         isMenorMelhor: true,
         status: 3.25 > 3.08 ? 'DISPARADO' : 'NORMAL',
         responsavelArea: 'Fiscalização de Refugo',
+        desviosCount: 0,
         descricaoIndicador: 'Tempo médio de descarte/refugo. Segue a média diária de processamento do Repack + 10%.',
         metaPlataforma: 'Meta: Média Repack + 10%'
       },
@@ -328,6 +347,7 @@ export const WorkstationGatilhosBoard: React.FC<WorkstationGatilhosBoardProps> =
         isMenorMelhor: true,
         status: 1.45 > 1.32 ? 'DISPARADO' : 'NORMAL',
         responsavelArea: 'Controle de Qualidade & WQI',
+        desviosCount: 0,
         descricaoIndicador: 'Hectolitros quebrados/dia. Limite de gatilho = Média em HL quebrado no mês ÷ dias úteis + 10%.',
         metaPlataforma: 'Meta: Média Mês/Dias + 10%'
       },
@@ -345,6 +365,7 @@ export const WorkstationGatilhosBoard: React.FC<WorkstationGatilhosBoardProps> =
         isMenorMelhor: false,
         status: 74.5 < 80.0 ? 'DISPARADO' : 'NORMAL',
         responsavelArea: 'Gestão de Estoques & FEFO',
+        desviosCount: 0,
         descricaoIndicador: 'Aderência ao recolhimento e rota de validade. Dispara caso o Stock Age Index geral seja menor que 80%.',
         metaPlataforma: 'Meta: ≥ 80%'
       },
@@ -362,6 +383,7 @@ export const WorkstationGatilhosBoard: React.FC<WorkstationGatilhosBoardProps> =
         isMenorMelhor: false,
         status: 91.5 < 95.0 ? 'DISPARADO' : 'NORMAL',
         responsavelArea: 'Gestão de Frota & Carga',
+        desviosCount: 0,
         descricaoIndicador: 'Eficiência e aproveitamento da frota de carga e transferência pesada (carretas/suprimentos). Dispara se EFC < 95.0%.',
         metaPlataforma: 'Meta: ≥ 95.0%'
       },
@@ -379,6 +401,7 @@ export const WorkstationGatilhosBoard: React.FC<WorkstationGatilhosBoardProps> =
         isMenorMelhor: false,
         status: 94.2 < 92.0 ? 'DISPARADO' : 'NORMAL',
         responsavelArea: 'Supervisão de Distribuição Comercial',
+        desviosCount: 0,
         descricaoIndicador: 'Eficiência e taxa de entregas da frota urbana de distribuição comercial. Dispara se EFD < 92.0%.',
         metaPlataforma: 'Meta: ≥ 92.0%'
       },
@@ -396,6 +419,7 @@ export const WorkstationGatilhosBoard: React.FC<WorkstationGatilhosBoardProps> =
         isMenorMelhor: true,
         status: 495 > 480 ? 'DISPARADO' : 'NORMAL',
         responsavelArea: 'Controle de Rotas & CCO',
+        desviosCount: 0,
         descricaoIndicador: 'Tempo médio de ciclo de rota dos veículos em percurso. Dispara caso o TMR exceda 480 min (8h).',
         metaPlataforma: 'Meta: ≤ 450 min'
       },
@@ -413,6 +437,7 @@ export const WorkstationGatilhosBoard: React.FC<WorkstationGatilhosBoardProps> =
         isMenorMelhor: false,
         status: 91.0 < 95.0 ? 'DISPARADO' : 'NORMAL',
         responsavelArea: 'Liderança de Armazém & Recebimento',
+        desviosCount: 0,
         descricaoIndicador: 'Aderência ao tempo de ressuprimento de carretas/módulos para o pulmão do armazém. Dispara se < 95.0%.',
         metaPlataforma: 'Meta: ≥ 95.0%'
       },
@@ -430,6 +455,7 @@ export const WorkstationGatilhosBoard: React.FC<WorkstationGatilhosBoardProps> =
         isMenorMelhor: false,
         status: 96.5 < 95.0 ? 'DISPARADO' : 'NORMAL',
         responsavelArea: 'Operadores de Empilhadeira & Picking',
+        desviosCount: 0,
         descricaoIndicador: 'Prontidão do reabastecimento das posições de picking (pulmão → picking) sem risco de ruptura. Dispara se < 95.0%.',
         metaPlataforma: 'Meta: ≥ 95.0%'
       }

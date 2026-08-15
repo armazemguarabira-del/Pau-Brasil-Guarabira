@@ -933,17 +933,17 @@ export default function QuebrasPanel({ user, empresa, shiftStarted, onRequireShi
                   </thead>
                   <tbody className="divide-y divide-[#222d3a]">
                     {quebras
-                      .filter(r => r.data === new Date().toLocaleDateString('pt-BR') && r.fiscal === user.nome)
+                      .filter(r => r.data === new Date().toLocaleDateString('pt-BR') && ((r as any).fiscal === user.nome || r.responsavel === user.nome))
                       .map((r, idx) => (
                         <tr key={r._docId || idx} className="hover:bg-[#151b23]/30 transition-colors">
                           <td className="py-3 px-3 font-bold text-snow">
-                            <span className="text-gray-500 font-mono text-[11px] block">{r.codSap}</span>
-                            {r.produto}
+                            <span className="text-gray-500 font-mono text-[11px] block">{(r as any).codSap || r.codProduto}</span>
+                            {(r as any).produto || r.descricao}
                           </td>
                           <td className="py-3 px-3 font-mono text-red-400 font-semibold">{r.quantidade} un</td>
                           <td className="py-3 px-3">
                             <span className="font-mono bg-[#151b23] border border-[#222d3a] text-snow px-1.5 py-0.5 rounded mr-1.5 font-bold text-[10px]">
-                              {r.motivoCod}
+                              {(r as any).motivoCod || r.codQuebra}
                             </span>
                             {r.motivo}
                           </td>

@@ -124,7 +124,7 @@ export interface SopDocument {
   responsavel: string;         // Nome do responsável
   status: 'Ativo' | 'Inativo';
   escopo: SopScope;            // 'exclusivo' | 'compartilhado' | 'global'
-  modulosVinculados: SopModule[]; // Módulos onde o padrão é exibido
+  modulosVinculados: (SopModule | string)[]; // Módulos onde o padrão é exibido
   historicoAlteracoes: SopAlteracaoHistorico[];
   criadoEm: string;
   atualizadoEm: string;

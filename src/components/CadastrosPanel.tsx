@@ -689,8 +689,8 @@ export default function CadastrosPanel({
 
       window.dispatchEvent(new Event('local_data_changed'));
       window.dispatchEvent(new Event('storage'));
-      if (empresaData.refetchProdutos) {
-        empresaData.refetchProdutos();
+      if ((empresaData as any).refetchProdutos) {
+        (empresaData as any).refetchProdutos();
       }
       setLocalVersion(v => v + 1);
     } catch (e: any) {
@@ -742,7 +742,7 @@ export default function CadastrosPanel({
       setSelectedProdCodes([]);
       window.dispatchEvent(new Event('local_data_changed'));
       window.dispatchEvent(new Event('storage'));
-      if (empresaData.refetchProdutos) empresaData.refetchProdutos();
+      if ((empresaData as any).refetchProdutos) (empresaData as any).refetchProdutos();
       setLocalVersion(v => v + 1);
       alert(`✅ ${selectedProdCodes.length} produtos excluídos com sucesso!`);
     } catch (e: any) {
@@ -866,8 +866,8 @@ export default function CadastrosPanel({
       alert(`✅ Base de produtos SOBRESCRITA com sucesso! ${prodImportPreview.length} produtos cadastrados.`);
       setShowProdImportModal(false);
       setProdImportPreview([]);
-      if (empresaData.refetchProdutos) {
-        empresaData.refetchProdutos();
+      if ((empresaData as any).refetchProdutos) {
+        (empresaData as any).refetchProdutos();
       }
     } catch (err) {
       console.error(err);
@@ -1768,7 +1768,7 @@ export default function CadastrosPanel({
                       window.dispatchEvent(new Event('local_data_changed'));
                       window.dispatchEvent(new Event('storage'));
                       setLocalVersion(v => v + 1);
-                      if (empresaData.refetchProdutos) empresaData.refetchProdutos();
+                      if ((empresaData as any).refetchProdutos) (empresaData as any).refetchProdutos();
                       alert('Base de produtos totalmente zerada com sucesso.');
                     }
                   }}

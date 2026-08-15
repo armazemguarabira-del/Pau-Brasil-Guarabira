@@ -8,6 +8,7 @@ export interface StockAgeCalculationInput {
   descricao?: string;
   validade: string; // ISO (YYYY-MM-DD) or DD/MM/YYYY or DD-MM-YYYY
   idadeCadastrada?: number | null; // explicit shelf life in days if available
+  [key: string]: any;
 }
 
 export interface StockAgeCalculationResult {

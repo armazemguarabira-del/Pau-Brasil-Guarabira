@@ -65,6 +65,7 @@ interface ControlePanelProps {
 
 interface DpoAudit {
   _docId?: string;
+  id?: string;
   data: string;
   dataISO: string;
   auditor: string;

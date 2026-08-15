@@ -28,6 +28,7 @@ import { add5PorquesDemand } from '../utils/fiveWhysManager';
 import { OperationalNotificationBell } from './OperationalNotificationBell';
 import { Checklist5SForm, Collaborator5SPerformanceCard } from './Checklist5SModal';
 import { GuiaAcoesOperacionais } from './GuiaAcoesOperacionais';
+import { OperationalCollaboratorPnpBanner } from './OperationalCollaboratorPnpBanner';
 import { 
   Truck, 
   Clock, 
@@ -123,7 +124,7 @@ function TaskTimerWidget({ task }: { task: Tarefa }) {
   );
 }
 
-export default function EmpilhadorPanel({ user, empresa }: EmpilhadorPanelProps) {
+export default function EmpilhadorPanel({ user, empresa, theme = 'dark' }: EmpilhadorPanelProps) {
   const empresaId = empresa?.id || 'demo';
   const draftKey = `empilhador_draft_${empresaId}_${user.uid || user.nome || 'guest'}`;
 
@@ -428,8 +429,8 @@ export default function EmpilhadorPanel({ user, empresa }: EmpilhadorPanelProps)
   // --- EFC (Carregamento) Actions ---
   const handleUpdateEfcType = (vId: string, tipoCarga: string) => {
     const updated = efcVehicles.map(v => v.id === vId ? { ...v, tipoCarga, isRecarga: tipoCarga === 'Recarga' } : v);
-    setEfcVehicles(updated);
-    saveEfcVehicles(empresaId, updated);
+    setEfcVehicles(updated as EfcEfdVehicle[]);
+    saveEfcVehicles(empresaId, updated as EfcEfdVehicle[]);
   };
 
   const handleStartEfc = (vId: string) => {
@@ -452,8 +453,8 @@ export default function EmpilhadorPanel({ user, empresa }: EmpilhadorPanelProps)
       }
       return v;
     });
-    setEfcVehicles(updated);
-    saveEfcVehicles(empresaId, updated);
+    setEfcVehicles(updated as EfcEfdVehicle[]);
+    saveEfcVehicles(empresaId, updated as EfcEfdVehicle[]);
     const target = updated.find(v => v.id === vId);
     if (target?.isRecarga || target?.tipoCarga === 'Recarga') {
       triggerToast(`⚡ Recarga iniciada para ${vId}. O tempo será computado no indicador TMR (não no EFC).`);
@@ -495,8 +496,8 @@ export default function EmpilhadorPanel({ user, empresa }: EmpilhadorPanelProps)
       }
       return v;
     });
-    setEfcVehicles(updated);
-    saveEfcVehicles(empresaId, updated);
+    setEfcVehicles(updated as EfcEfdVehicle[]);
+    saveEfcVehicles(empresaId, updated as EfcEfdVehicle[]);
     
     const finishedVeh = updated.find(v => v.id === vId);
     if (finishedVeh && (finishedVeh.isRecarga || finishedVeh.tipoCarga === 'Recarga')) {
@@ -613,8 +614,8 @@ export default function EmpilhadorPanel({ user, empresa }: EmpilhadorPanelProps)
       }
       return v;
     });
-    setEfcVehicles(updated);
-    saveEfcVehicles(empresaId, updated);
+    setEfcVehicles(updated as EfcEfdVehicle[]);
+    saveEfcVehicles(empresaId, updated as EfcEfdVehicle[]);
     triggerToast(`Veículo marcado como Pernoite (${assignedNextStatus})! Isento da meta de hoje.`, true);
   };
 
@@ -792,6 +793,9 @@ export default function EmpilhadorPanel({ user, empresa }: EmpilhadorPanelProps)
     (v.operadorExecutorCarregamento || '').toUpperCase().includes(activeOperatorClean)
   ).map(v => ({
     id: v.id,
+    carreta: v.placa || 'Recarga EFC',
+    revendaNome: v.tipoCarga || 'Recarga',
+    status: 'done' as const,
     duracaoMin: v.duracaoCarregamentoMin || 15
   }));
 
@@ -905,6 +909,9 @@ export default function EmpilhadorPanel({ user, empresa }: EmpilhadorPanelProps)
       ) : (
         <div className="flex flex-col gap-6">
 
+          {/* PAINEL EXCLUSIVO DO OPERADOR EMPILHADOR - PNP E METAS VS REAL */}
+          <OperationalCollaboratorPnpBanner user={user} theme={theme} />
+
           {/* ACTIVE OPERATOR USER BADGE & PRODUCTIVITY KPI HEADER */}
           <div className="g-card p-5 border-l-4 border-l-amber-500 bg-[#11151c]">
             <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border-b border-[#222d3a] pb-4">
@@ -919,7 +926,7 @@ export default function EmpilhadorPanel({ user, empresa }: EmpilhadorPanelProps)
                     <span className="text-[9px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full font-mono">
                       ● Ativo
                     </span>
-                    <OperationalNotificationBell user={user} userRole="empilhador" onNavigate={(panel, tab) => { if (tab) setActiveSection(tab as any); }} />
+                    <OperationalNotificationBell user={user} userRole="empilhador" onNavigate={(panel, tab) => { if (tab) setDemandTab(tab as any); }} />
                   </h3>
                 </div>
               </div>

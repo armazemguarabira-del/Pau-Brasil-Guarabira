@@ -1,4 +1,5 @@
 import { ManualInstrucaoCard } from './ManualInstrucaoCard';
+import { IndicatorActionModal } from './IndicatorActionModal';
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   BarChart2, 
@@ -64,6 +65,7 @@ export default function EficienciaMontagemPanel({ user }: { user: Usuario }) {
   const [rawText, setRawText] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedComissaoFilter, setSelectedComissaoFilter] = useState('TODOS');
+  const [isActionModalOpen, setIsActionModalOpen] = useState(false);
 
   const empresaId = user.empresaId || 'demo';
   const lsKey = `montagem_rows_${empresaId}`;
@@ -253,6 +255,15 @@ export default function EficienciaMontagemPanel({ user }: { user: Usuario }) {
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setIsActionModalOpen(true)}
+            className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black text-xs uppercase tracking-wider px-4 py-3 rounded-xl transition-all shadow-lg flex items-center gap-2 cursor-pointer shrink-0 border border-blue-400/30"
+          >
+            <CheckCircle className="w-4 h-4 text-emerald-300" />
+            Plano de Ações (Montagem)
+          </button>
+
           <a 
             href="https://new.fastpicking.com.br/pickings/dashboards?tab=assembly" 
             target="_blank" 
@@ -471,6 +482,19 @@ export default function EficienciaMontagemPanel({ user }: { user: Usuario }) {
           </table>
         </div>
       </div>
+      {/* DEDICATED ACTION MODAL (FILTERED FOR EFICIENCIA & ERROS DE MONTAGEM) */}
+      <IndicatorActionModal
+        isOpen={isActionModalOpen}
+        onClose={() => setIsActionModalOpen(false)}
+        indicatorTitle="Eficiência & Erros de Montagem"
+        indicatorSubtitle="Visualizando e gerenciando apenas os planos de ação e contramedidas 5W2H direcionados a Erros de Montagem e Eficiência Geral de Montagem (Fast Picking)."
+        indicatorBadge="MONTAGEM DPO"
+        allowedProcessos={['Erros de Montagem', 'Eficiência de Montagem', 'Montagem', 'Picking / Montagem', 'Fast Picking']}
+        defaultProcesso="Eficiência de Montagem"
+        defaultIndicador="Erros de Montagem e Eficiência de Paletes (Fast Picking)"
+        defaultMeta="≥ 98% Acuracidade / 0 Erros"
+        user={user}
+      />
     </div>
   );
 }

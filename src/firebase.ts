@@ -1,5 +1,5 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
+import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { initializeFirestore, memoryLocalCache, setLogLevel } from 'firebase/firestore';
 
 // Set Firestore log level to silent to suppress backend retry warnings in offline mode
@@ -34,15 +34,17 @@ interface FirebaseConfigExtended {
   firestoreDatabaseId?: string;
 }
 
+const metaEnv = typeof import.meta !== 'undefined' ? (import.meta as any).env : undefined;
+
 const DEFAULT_CONFIG: FirebaseConfigExtended = {
-  apiKey: "AIzaSyCZ2yYeYPVA_TVIEwsvQNJ9tzq4f3kYyis",
-  authDomain: "armazemrelatorios.firebaseapp.com",
-  projectId: "armazemrelatorios",
-  storageBucket: "armazemrelatorios.firebasestorage.app",
-  messagingSenderId: "1060201893094",
-  appId: "1:1060201893094:web:5702ee694b6e234f0dbf27",
-  measurementId: undefined,
-  firestoreDatabaseId: undefined
+  apiKey: metaEnv?.VITE_FIREBASE_API_KEY || "AIzaSyCZ2yYeYPVA_TVIEwsvQNJ9tzq4f3kYyis",
+  authDomain: metaEnv?.VITE_FIREBASE_AUTH_DOMAIN || "armazemrelatorios.firebaseapp.com",
+  projectId: metaEnv?.VITE_FIREBASE_PROJECT_ID || "armazemrelatorios",
+  storageBucket: metaEnv?.VITE_FIREBASE_STORAGE_BUCKET || "armazemrelatorios.firebasestorage.app",
+  messagingSenderId: metaEnv?.VITE_FIREBASE_MESSAGING_SENDER_ID || "1060201893094",
+  appId: metaEnv?.VITE_FIREBASE_APP_ID || "1:1060201893094:web:5702ee694b6e234f0dbf27",
+  measurementId: metaEnv?.VITE_FIREBASE_MEASUREMENT_ID || undefined,
+  firestoreDatabaseId: metaEnv?.VITE_FIREBASE_DATABASE_ID || undefined
 };
 
 // Check if there is a custom configuration saved in localStorage
@@ -80,6 +82,21 @@ if (typeof window !== 'undefined') {
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 const auth = getAuth(app);
 
+// Attempt background authentication to populate request.auth and avoid permission denied errors
+if (typeof window !== 'undefined') {
+  try {
+    onAuthStateChanged(auth, (user) => {
+      if (!user) {
+        signInAnonymously(auth).catch(() => {
+          // Anonymous authentication not enabled or offline, continue with graceful fallbacks
+        });
+      }
+    });
+  } catch (e) {
+    // Ignore auth listener error
+  }
+}
+
 const db = firebaseConfig.firestoreDatabaseId 
   ? initializeFirestore(app, {
       localCache: memoryLocalCache()
@@ -104,4 +121,5 @@ export const getActiveConfig = () => {
 
 export { app, auth, db };
 export default app;
+
 

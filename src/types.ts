@@ -33,10 +33,15 @@ export interface Usuario {
 
 export interface RepackRow {
   _docId?: string;
+  id?: string;
   empresaId?: string;
   data: string;
   dataISO: string;
+  hora?: string;
   embalagem: string;
+  metaEmbalagem?: number;
+  caixasReembaladas?: number;
+  caixas?: number;
   quantidade: number;
   inicio: string;
   fim: string;
@@ -67,16 +72,22 @@ export interface RepackValidadeRow {
 
 export interface DespejoRow {
   _docId?: string;
+  id?: string;
   empresaId?: string;
   data: string;
   dataISO: string;
   embalagem: string;
+  metaEmbalagem?: number;
   quantidade: number;
   inicio: string;
   fim: string;
   tempo: string;
+  duracao?: number | string;
   meta: string;
   resultado: string;
+  status?: string;
+  motivo?: string;
+  aproveitado?: number | boolean;
   operador?: string;
   _criadoEm?: string;
   tratativaGestor?: string;
@@ -98,13 +109,15 @@ export interface ArmazemRow {
   placa: string;
   tipo: string;
   palhete: number;
-  pernoite?: 'D0' | 'D1' | 'D2' | 'D3' | 'D4';
+  ocupado?: boolean;
+  pernoite?: '' | 'D0' | 'D1' | 'D2' | 'D3' | 'D4';
   obs?: string;
   _criadoEm?: string;
 }
 
 export interface QuebraRow {
   _docId?: string;
+  id?: string;
   empresaId?: string;
   data: string;
   dataISO: string;
@@ -112,6 +125,7 @@ export interface QuebraRow {
   codProduto: string;
   descricao: string;
   quantidade: number;
+  caixas?: number;
   fatorHl?: number;
   hlPerdido?: number;
   tipoMarca?: string;
@@ -120,6 +134,7 @@ export interface QuebraRow {
   turno: string;
   codQuebra: string;
   motivo: string;
+  valor?: number;
   valorUnitario?: number;
   valorTotal?: number;
   colaboradorQuebrou?: string;
@@ -132,16 +147,26 @@ export interface QuebraRow {
 
 export interface ValidadeRow {
   _docId?: string;
+  id?: number | string;
   empresaId?: string;
-  id: number;
   codigo: string;
   descricao: string;
   palhete: number;
   lastro: number;
   caixa: number;
+  quantidade?: number;
   validade: string;
+  diasParaVencer?: number;
   localizacao: 'central' | 'pnc' | 'repack' | 'picking' | 'marketplace' | string;
   bloco?: string;
+  lote?: string;
+  responsavel?: string;
+  dataColeta?: string;
+  dataTransferenciaPnc?: string;
+  totalUnities?: number;
+  totalUnitiesRaw?: number;
+  valorTotal?: number;
+  hlTotal?: number;
   cadastradoEm?: string;
   _criadoEm?: string;
 }
@@ -156,6 +181,9 @@ export interface BlitzRefugoRow {
   mapa?: string;
   rota?: string;
   obs?: string;
+  fiscal?: string;
+  totalGeralAmostrado?: number;
+  totalGeralRefugado?: number;
   emb: {
     [key: string]: {
       caixas: number;
@@ -178,6 +206,8 @@ export interface Tarefa {
   codigo: number;
   descricao: string;
   quantidade: number;
+  quantidadePaletes?: number;
+  caixas?: number;
   conferente: string;
   operador: string;
   operadoresAtribuidos?: string[];
@@ -186,6 +216,7 @@ export interface Tarefa {
   iniciadoEm: string | null;
   finalizadoEm: string | null;
   duracaoMin: number | null;
+  tempoExecucao?: number;
   tipoOperacao?: string;
   locData?: {
     distanciaM: number;
@@ -269,6 +300,8 @@ export interface ProdutoMaster {
   descricao: string;
   fator: number;
   valor: number;
+  preco?: number;
+  vendaMedia?: number;
   fatorHecto: number;
   grupo: string;
   curva: 'A' | 'B' | 'C' | string;
@@ -332,9 +365,13 @@ export interface TmrDemand {
   
   status: 'pending' | 'in_progress' | 'done';
   criadoEm: string;
+  dataHoraCriacao?: string;
   iniciadoEm?: string | null;
+  dataHoraInicio?: string | null;
   finalizadoEm?: string | null;
+  dataHoraFim?: string | null;
   duracaoMin?: number | null;
+  tempoTotalMinutos?: number | null;
 }
 
 export interface FefoRelocationDemand {
