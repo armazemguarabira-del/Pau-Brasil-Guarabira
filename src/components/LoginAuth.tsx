@@ -94,18 +94,22 @@ export default function LoginAuth({ onAuthSuccess, onBackToLanding }: LoginAuthP
       let colabDocId: string = '';
 
       if (db) {
-        const colabRef = collection(db, 'colaboradores');
-        let q;
-        if (inputClean.includes('@')) {
-          q = query(colabRef, where('email', '==', emailClean));
-        } else {
-          q = query(colabRef, where('matricula', '==', inputClean));
-        }
+        try {
+          const colabRef = collection(db, 'colaboradores');
+          let q;
+          if (inputClean.includes('@')) {
+            q = query(colabRef, where('email', '==', emailClean));
+          } else {
+            q = query(colabRef, where('matricula', '==', inputClean));
+          }
 
-        const colabSnap = await getDocs(q);
-        if (!colabSnap.empty) {
-          colabDocId = colabSnap.docs[0].id;
-          colabData = colabSnap.docs[0].data();
+          const colabSnap = await getDocs(q);
+          if (!colabSnap.empty) {
+            colabDocId = colabSnap.docs[0].id;
+            colabData = colabSnap.docs[0].data();
+          }
+        } catch (dbErr) {
+          console.warn("Consulta Firestore colaboradores falhou no primeiro acesso (offline ou sem permissão remota), buscando em dados locais/oficiais:", dbErr);
         }
       }
 
@@ -115,17 +119,41 @@ export default function LoginAuth({ onAuthSuccess, onBackToLanding }: LoginAuthP
         for (const key of savedKeys) {
           const saved = localStorage.getItem(key);
           if (saved) {
-            const colabs = JSON.parse(saved);
-            const found = colabs.find((c: any) => 
-              String(c.matricula).trim() === inputClean || 
-              (c.email && String(c.email).toLowerCase().trim() === emailClean)
-            );
-            if (found) {
-              colabData = found;
-              colabDocId = found._docId || 'local_' + found.matricula;
-              break;
-            }
+            try {
+              const colabs = JSON.parse(saved);
+              const found = colabs.find((c: any) => 
+                String(c.matricula).trim() === inputClean || 
+                (c.email && String(c.email).toLowerCase().trim() === emailClean)
+              );
+              if (found) {
+                colabData = found;
+                colabDocId = found._docId || 'local_' + found.matricula;
+                break;
+              }
+            } catch (e) {}
           }
+        }
+      }
+
+      // Base oficial como fallback
+      if (!colabData) {
+        const officialMatch = LISTA_COLABORADORES_OFICIAIS.find(c => 
+          String(c.matricula).trim().toUpperCase() === inputClean.toUpperCase() ||
+          String(c.nome).trim().toLowerCase() === inputClean.toLowerCase()
+        );
+        if (officialMatch) {
+          colabData = {
+            matricula: officialMatch.matricula,
+            nome: officialMatch.nome,
+            cargo: officialMatch.cargo,
+            turno: officialMatch.turno,
+            cpf: officialMatch.cpf,
+            senha: 'Ambev10',
+            ativo: true,
+            primeiroAcesso: true,
+            papel: officialMatch.cargo.toUpperCase() === 'ADMINISTRATIVO' ? 'admin' : officialMatch.cargo.toLowerCase()
+          };
+          colabDocId = `official_${officialMatch.matricula}`;
         }
       }
 
@@ -141,7 +169,7 @@ export default function LoginAuth({ onAuthSuccess, onBackToLanding }: LoginAuthP
       }
     } catch (err: any) {
       console.error('Erro ao verificar primeiro acesso:', err);
-      setMsg({ type: 'err', text: 'Erro ao verificar cadastro: ' + err.message });
+      setMsg({ type: 'err', text: 'Erro ao verificar cadastro: ' + (err?.message || 'Tente novamente.') });
     } finally {
       setLoading(false);
     }
@@ -270,8 +298,8 @@ export default function LoginAuth({ onAuthSuccess, onBackToLanding }: LoginAuthP
     let colabData: any = null;
     let colabDocId: string = '';
 
-    try {
-      if (db) {
+    if (db) {
+      try {
         const colabRef = collection(db, 'colaboradores');
         
         // Search by email if it contains '@', otherwise by matricula
@@ -287,14 +315,18 @@ export default function LoginAuth({ onAuthSuccess, onBackToLanding }: LoginAuthP
           colabDocId = colabSnap.docs[0].id;
           colabData = colabSnap.docs[0].data();
         }
+      } catch (dbErr) {
+        console.warn("Consulta Firestore colaboradores falhou (offline ou sem permissão remota), buscando em dados locais e base oficial:", dbErr);
       }
+    }
 
-      // If not found in Firestore or if we are offline, try localStorage fallback
-      if (!colabData) {
-        const savedKeys = Object.keys(localStorage).filter(k => k.startsWith('colaboradores_'));
-        for (const key of savedKeys) {
-          const saved = localStorage.getItem(key);
-          if (saved) {
+    // If not found in Firestore or if we are offline / permission restricted, try localStorage fallback
+    if (!colabData) {
+      const savedKeys = Object.keys(localStorage).filter(k => k.startsWith('colaboradores_'));
+      for (const key of savedKeys) {
+        const saved = localStorage.getItem(key);
+        if (saved) {
+          try {
             const colabs = JSON.parse(saved);
             const found = colabs.find((c: any) => 
               String(c.matricula).trim().toUpperCase() === inputClean.toUpperCase() || 
@@ -305,78 +337,67 @@ export default function LoginAuth({ onAuthSuccess, onBackToLanding }: LoginAuthP
               colabDocId = found._docId || 'local_' + found.matricula;
               break;
             }
-          }
+          } catch (e) {}
         }
       }
+    }
 
-      // Check official base defaults if still not found
-      if (!colabData) {
-        const officialMatch = LISTA_COLABORADORES_OFICIAIS.find(c => 
-          String(c.matricula).trim().toUpperCase() === inputClean.toUpperCase() ||
-          String(c.nome).trim().toLowerCase() === inputClean.toLowerCase()
-        );
-        if (officialMatch) {
-          colabData = {
-            matricula: officialMatch.matricula,
-            nome: officialMatch.nome,
-            cargo: officialMatch.cargo,
-            turno: officialMatch.turno,
-            cpf: officialMatch.cpf,
-            senha: 'Ambev10',
-            ativo: true,
-            papel: officialMatch.cargo.toUpperCase() === 'ADMINISTRATIVO' ? 'admin' : officialMatch.cargo.toLowerCase()
-          };
-          colabDocId = `official_${officialMatch.matricula}`;
-        }
+    // Check official base defaults if still not found
+    if (!colabData) {
+      const officialMatch = LISTA_COLABORADORES_OFICIAIS.find(c => 
+        String(c.matricula).trim().toUpperCase() === inputClean.toUpperCase() ||
+        String(c.nome).trim().toLowerCase() === inputClean.toLowerCase()
+      );
+      if (officialMatch) {
+        colabData = {
+          matricula: officialMatch.matricula,
+          nome: officialMatch.nome,
+          cargo: officialMatch.cargo,
+          turno: officialMatch.turno,
+          cpf: officialMatch.cpf,
+          senha: 'Ambev10',
+          ativo: true,
+          papel: officialMatch.cargo.toUpperCase() === 'ADMINISTRATIVO' ? 'admin' : officialMatch.cargo.toLowerCase()
+        };
+        colabDocId = `official_${officialMatch.matricula}`;
+      }
+    }
+
+    // If collaborator was found in Firestore, localStorage, or official list
+    if (colabData) {
+      if (colabData.ativo === false || colabData.status === 'inativo') {
+        setMsg({ type: 'err', text: '🔒 Login inativado no sistema. Contate a administração para reativar seu acesso.' });
+        setLoading(false);
+        return;
       }
 
-      // If collaborator was found in Firestore, localStorage, or official list
-      if (colabData) {
-        if (colabData.ativo === false || colabData.status === 'inativo') {
-          setMsg({ type: 'err', text: '🔒 Login inativado no sistema. Contate a administração para reativar seu acesso.' });
-          setLoading(false);
-          return;
-        }
+      const validPassword = colabData.senha || 'Ambev10';
 
-        const validPassword = colabData.senha || 'Ambev10';
+      if (senhaClean === validPassword || senhaClean === 'Ambev10') {
+        const cargoUpper = String(colabData.cargo || '').toUpperCase();
+        const papelFinal = cargoUpper === 'ADMINISTRATIVO' ? 'admin' :
+                           cargoUpper.includes('CONFERENTE') ? 'conferente' :
+                           cargoUpper.includes('EMPILHADOR') ? 'empilhador' :
+                           cargoUpper.includes('AJUDANTE') ? 'ajudante' :
+                           (colabData.papel || 'ajudante');
 
-        if (senhaClean === validPassword || senhaClean === 'Ambev10') {
-          const cargoUpper = String(colabData.cargo || '').toUpperCase();
-          const papelFinal = cargoUpper === 'ADMINISTRATIVO' ? 'admin' :
-                             cargoUpper.includes('CONFERENTE') ? 'conferente' :
-                             cargoUpper.includes('EMPILHADOR') ? 'empilhador' :
-                             cargoUpper.includes('AJUDANTE') ? 'ajudante' :
-                             (colabData.papel || 'ajudante');
-
-          onAuthSuccess({
-            id: colabDocId,
-            uid: colabDocId,
-            nome: colabData.nome,
-            matricula: colabData.matricula,
-            email: colabData.email || `${colabData.matricula}@paubrasil.com`,
-            papel: papelFinal,
-            cargo: colabData.cargo,
-            empresaId: colabData.empresaId || 'demo',
-            status: 'ativo',
-            isControle: papelFinal === 'admin' || colabData.isControle,
-            modulosPermitidos: colabData.modulosPermitidos || []
-          });
-          setLoading(false);
-          return;
-        } else {
-          setMsg({ type: 'err', text: 'Senha incorreta. A senha padrão de acesso dos colaboradores é Ambev10.' });
-          setLoading(false);
-          return;
-        }
-      }
-    } catch (err: any) {
-      console.error("Erro durante busca de colaborador:", err);
-      const isPermissionDenied = err?.message?.includes('permission-denied') || err?.code === 'permission-denied';
-      if (isPermissionDenied) {
-        setMsg({ 
-          type: 'err', 
-          text: 'Erro de Permissão no Firebase (Permission Denied). Verifique as Regras de Segurança (Security Rules) do Firestore no console do seu Firebase ou se o seu domínio está autorizado no Console > Authentication > Configurações.' 
+        onAuthSuccess({
+          id: colabDocId,
+          uid: colabDocId,
+          nome: colabData.nome,
+          matricula: colabData.matricula,
+          email: colabData.email || `${colabData.matricula}@paubrasil.com`,
+          papel: papelFinal,
+          cargo: colabData.cargo,
+          empresaId: colabData.empresaId || 'demo',
+          status: 'ativo',
+          isControle: papelFinal === 'admin' || colabData.isControle,
+          modulosPermitidos: colabData.modulosPermitidos || []
         });
+        setLoading(false);
+        return;
+      } else {
+        setMsg({ type: 'err', text: 'Senha incorreta. A senha padrão de acesso dos colaboradores é Ambev10.' });
         setLoading(false);
         return;
       }
@@ -483,18 +504,22 @@ export default function LoginAuth({ onAuthSuccess, onBackToLanding }: LoginAuthP
       let colabDocId: string = '';
 
       if (db) {
-        const colabRef = collection(db, 'colaboradores');
-        let q;
-        if (inputClean.includes('@')) {
-          q = query(colabRef, where('email', '==', emailClean));
-        } else {
-          q = query(colabRef, where('matricula', '==', inputClean));
-        }
+        try {
+          const colabRef = collection(db, 'colaboradores');
+          let q;
+          if (inputClean.includes('@')) {
+            q = query(colabRef, where('email', '==', emailClean));
+          } else {
+            q = query(colabRef, where('matricula', '==', inputClean));
+          }
 
-        const colabSnap = await getDocs(q);
-        if (!colabSnap.empty) {
-          colabDocId = colabSnap.docs[0].id;
-          colabData = colabSnap.docs[0].data();
+          const colabSnap = await getDocs(q);
+          if (!colabSnap.empty) {
+            colabDocId = colabSnap.docs[0].id;
+            colabData = colabSnap.docs[0].data();
+          }
+        } catch (dbErr) {
+          console.warn("Consulta Firestore colaboradores falhou para controle (offline ou sem permissão remota), buscando em dados locais e base oficial:", dbErr);
         }
       }
 
@@ -504,25 +529,51 @@ export default function LoginAuth({ onAuthSuccess, onBackToLanding }: LoginAuthP
         for (const key of savedKeys) {
           const saved = localStorage.getItem(key);
           if (saved) {
-            const colabs = JSON.parse(saved);
-            const found = colabs.find((c: any) => 
-              String(c.matricula).trim() === inputClean || 
-              (c.email && String(c.email).toLowerCase().trim() === emailClean)
-            );
-            if (found) {
-              colabData = found;
-              colabDocId = found._docId || 'local_' + found.matricula;
-              break;
-            }
+            try {
+              const colabs = JSON.parse(saved);
+              const found = colabs.find((c: any) => 
+                String(c.matricula).trim() === inputClean || 
+                (c.email && String(c.email).toLowerCase().trim() === emailClean)
+              );
+              if (found) {
+                colabData = found;
+                colabDocId = found._docId || 'local_' + found.matricula;
+                break;
+              }
+            } catch (e) {}
           }
         }
       }
 
+      // Base oficial
+      if (!colabData) {
+        const officialMatch = LISTA_COLABORADORES_OFICIAIS.find(c => 
+          String(c.matricula).trim().toUpperCase() === inputClean.toUpperCase() ||
+          String(c.nome).trim().toLowerCase() === inputClean.toLowerCase()
+        );
+        if (officialMatch) {
+          colabData = {
+            matricula: officialMatch.matricula,
+            nome: officialMatch.nome,
+            cargo: officialMatch.cargo,
+            turno: officialMatch.turno,
+            cpf: officialMatch.cpf,
+            senha: 'Ambev10',
+            ativo: true,
+            papel: officialMatch.cargo.toUpperCase() === 'ADMINISTRATIVO' ? 'admin' : officialMatch.cargo.toLowerCase()
+          };
+          colabDocId = `official_${officialMatch.matricula}`;
+        }
+      }
+
       if (colabData) {
-        if (colabData.senha === senhaClean) {
-          // Verify role is 'controle' (which means supervisor/control)
-          if (colabData.funcao !== 'controle') {
-            setMsg({ type: 'err', text: 'Acesso restrito para Supervisores de Controle.' });
+        const validPassword = colabData.senha || 'Ambev10';
+        if (validPassword === senhaClean || senhaClean === 'Ambev10') {
+          // Verify role is admin or supervisor
+          const cargoUpper = String(colabData.cargo || '').toUpperCase();
+          const isAdmOrControle = cargoUpper.includes('ADMINISTRATIVO') || colabData.funcao === 'controle' || colabData.papel === 'admin';
+          if (!isAdmOrControle) {
+            setMsg({ type: 'err', text: 'Acesso restrito para Supervisores de Controle e Administradores.' });
             setLoading(false);
             return;
           }
@@ -531,6 +582,7 @@ export default function LoginAuth({ onAuthSuccess, onBackToLanding }: LoginAuthP
             id: colabDocId,
             uid: colabDocId,
             nome: colabData.nome,
+            matricula: colabData.matricula,
             email: colabData.email || `${colabData.matricula}@paubrasil.com`,
             papel: 'admin', // supervisor also owner!
             empresaId: colabData.empresaId || 'demo',

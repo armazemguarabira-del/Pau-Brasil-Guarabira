@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { Usuario } from '../types';
 import { useEmpresaData } from '../context/EmpresaDataContext';
+import { WqiCollaboratorRanking } from './WqiCollaboratorRanking';
 
 export interface ColaboradorRankingItem {
   matricula: string;
@@ -101,6 +102,7 @@ export default function RankingModule({ user, initialSetor = 'Visão Geral (Meta
     'Política de Estoque',
     'Temperatura',
     '5S',
+    'WQI (Nível Colaborador)',
     'Ações',
     'Ranking Geral'
   ];
@@ -616,7 +618,7 @@ export default function RankingModule({ user, initialSetor = 'Visão Geral (Meta
 
   // ── FILTRAGEM POR SETOR, GRUPO E BUSCA ──
   const filtered = useMemo(() => {
-    if (activeSetor === 'Ranking Geral' || activeSetor === 'Gestão da Capacidade') {
+    if (activeSetor === 'Ranking Geral' || activeSetor === 'Gestão da Capacidade' || activeSetor === 'WQI (Nível Colaborador)') {
       return [];
     }
 
@@ -988,6 +990,15 @@ export default function RankingModule({ user, initialSetor = 'Visão Geral (Meta
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* ==================================================================== */}
+      {/* CASO ESPECIAL: RANKING WQI NÍVEL COLABORADOR (WAREHOUSE QUALITY INDEX) */}
+      {/* ==================================================================== */}
+      {activeSetor === 'WQI (Nível Colaborador)' && (
+        <div className="space-y-6">
+          <WqiCollaboratorRanking theme="dark" />
         </div>
       )}
 

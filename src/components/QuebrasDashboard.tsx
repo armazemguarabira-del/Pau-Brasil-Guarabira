@@ -29,7 +29,8 @@ import {
   RotateCcw,
   BookOpen,
   ShieldCheck,
-  BarChart2
+  BarChart2,
+  CheckCircle2
 } from 'lucide-react';
 import { Usuario, Empresa, QuebraRow } from '../types';
 import { db } from '../firebase';
@@ -42,6 +43,7 @@ import { CrosstabMatrix } from './CrosstabMatrix';
 import ArvoreMotivosTree from './ArvoreMotivosTree';
 import { PadraoOperacionalModal } from './PadraoOperacionalModal';
 import { Checklist5SModal } from './Checklist5SModal';
+import { IndicatorActionModal } from './IndicatorActionModal';
 
 interface QuebrasDashboardProps {
   user: Usuario;
@@ -183,6 +185,7 @@ function QuebrasDashboardInner({ user, empresa, onBack }: QuebrasDashboardProps)
   const [activeSubTab, setActiveSubTab] = useState<'indicadores' | 'wqi' | 'boarda3'>('indicadores');
   const [isPopModalOpen, setIsPopModalOpen] = useState(false);
   const [is5SModalOpen, setIs5SModalOpen] = useState(false);
+  const [isActionModalOpen, setIsActionModalOpen] = useState(false);
   const [viewUnit, setViewUnit] = useState<'rs' | 'hl' | 'sku'>(() => {
     const saved = localStorage.getItem('dashboard_view_unit');
     if (saved === 'rs' || saved === 'hl' || saved === 'sku') return saved;
@@ -606,6 +609,13 @@ function QuebrasDashboardInner({ user, empresa, onBack }: QuebrasDashboardProps)
             className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-xl font-black text-xs transition-all cursor-pointer flex items-center gap-1.5 shadow-xs uppercase tracking-wider"
           >
             <ShieldCheck className="w-3.5 h-3.5 text-slate-950" /> Checklist 5S
+          </button>
+
+          <button 
+            onClick={() => setIsActionModalOpen(true)}
+            className="px-3.5 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl font-black text-xs transition-all cursor-pointer flex items-center gap-1.5 shadow-xs uppercase tracking-wider border border-blue-400/30"
+          >
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-300" /> Plano de Ações (Quebras)
           </button>
 
           {/* REQUISITO 23: 3 SELETORES LADO A LADO: R$, HL, SKU */}
@@ -1658,6 +1668,19 @@ function QuebrasDashboardInner({ user, empresa, onBack }: QuebrasDashboardProps)
         isOpen={is5SModalOpen}
         onClose={() => setIs5SModalOpen(false)}
         defaultSetor="Quebras / WQI"
+        user={user}
+      />
+
+      <IndicatorActionModal
+        isOpen={isActionModalOpen}
+        onClose={() => setIsActionModalOpen(false)}
+        indicatorTitle="Gestão de Quebras"
+        indicatorSubtitle="Visualizando e gerenciando apenas os planos de ação e contramedidas 5W2H de quebras e avarias."
+        indicatorBadge="QUEBRAS DPO"
+        allowedProcessos={['Gestão de Quebras', 'Quebras', 'Avarias', 'Recuperação']}
+        defaultProcesso="Gestão de Quebras"
+        defaultIndicador="Índice de Quebras e Avarias"
+        defaultMeta="≤ 0.08%"
         user={user}
       />
 

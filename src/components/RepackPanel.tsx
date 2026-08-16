@@ -5,7 +5,6 @@ import { Usuario, Empresa, RepackRow, RepackValidadeRow } from '../types';
 import { useEmpresaData } from '../context/EmpresaDataContext';
 import { PRODUCTS } from '../planosData';
 import { TrendingUp, CheckCircle, Clock, Award, BarChart2, BookOpen, Users, FileText, ChevronDown, ChevronUp, AlertCircle, ShieldAlert } from 'lucide-react';
-import SugerirMelhoriaCard from './SugerirMelhoriaCard';
 import { SopBannerViewer } from './SopBannerViewer';
 import { filterHistoryForUser, HistoryRestrictionNotice } from '../utils/historyFilter';
 import { triggerAutoAcaoCorretiva } from '../utils/simulacaoAcoesUtils';
@@ -1463,9 +1462,6 @@ export default function RepackPanel({ user, empresa, shiftStarted, onRequireShif
           </div>
         </div>
       )}
-
-      {/* Sugerir Melhoria / Plano de Ação para Supervisores */}
-      <SugerirMelhoriaCard user={user} empresa={empresa} setor="Repack" />
 
       {/* Modal de Edição de Repack */}
       {editingRepack && (

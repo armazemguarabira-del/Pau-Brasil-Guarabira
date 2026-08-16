@@ -4,7 +4,6 @@ import { collection, addDoc, deleteDoc, doc } from 'firebase/firestore';
 import { Usuario, Empresa, Tarefa, ArmazemTemperaturaLog, TmrDemand } from '../types';
 import { useEmpresaData } from '../context/EmpresaDataContext';
 import { PRODUCTS } from '../planosData';
-import SugerirMelhoriaCard from './SugerirMelhoriaCard';
 import { filterHistoryForUser, HistoryRestrictionNotice } from '../utils/historyFilter';
 import { ManualInstrucaoCard } from './ManualInstrucaoCard';
 import { 
@@ -18,7 +17,7 @@ import {
   calculateEfdMetrics 
 } from '../utils/efcEfdManager';
 import { addTmrDemand, getStoredTmrDemands, deleteTmrDemand, updateTmrDemandOperators } from '../utils/tmrManager';
-import { Upload, FileSpreadsheet, CheckCircle2, Clock, AlertTriangle, Truck, Play, Check, Filter, Trash2, Edit3, Plus, X, Calendar, Thermometer, Droplets, AlertCircle, ShieldAlert, Users, Search, ArrowRight, ExternalLink } from 'lucide-react';
+import { Upload, FileSpreadsheet, CheckCircle2, Clock, AlertTriangle, Truck, Play, Check, Filter, Trash2, Edit3, Plus, X, Calendar, Thermometer, Droplets, AlertCircle, ShieldAlert, ShieldCheck, Users, Search, ArrowRight, ExternalLink } from 'lucide-react';
 import ValidadesPanel from './ValidadesPanel';
 import RefugoPanel from './RefugoPanel';
 import TemperaturaImportExportBar from './TemperaturaImportExportBar';
@@ -401,10 +400,16 @@ export default function ConferentePanel({ user, empresa, initialTab, theme = 'da
     setShowAddAvulsaModal(false);
   };
 
-  // Subtab navigation: 'import_placas' | 'rr' | 'tmr' | 'validade' | 'temperatura' | 'wlp' | '5s' | 'retorno_rota'
-  const [panelTab, setPanelTab] = useState<'import_placas' | 'rr' | 'tmr' | 'validade' | 'temperatura' | 'wlp' | '5s' | 'retorno_rota'>(
+  // Subtab navigation: 'import_placas' | 'rr' | 'tmr' | 'validade' | 'temperatura' | 'wlp' | '5s' | 'retorno_rota' | 'acoes'
+  const [panelTab, setPanelTab] = useState<'import_placas' | 'rr' | 'tmr' | 'validade' | 'temperatura' | 'wlp' | '5s' | 'retorno_rota' | 'acoes'>(
     initialTab === 'refugo' ? 'retorno_rota' : (initialTab as any) || 'import_placas'
   );
+
+  useEffect(() => {
+    if (initialTab) {
+      setPanelTab(initialTab === 'refugo' ? 'retorno_rota' : (initialTab as any));
+    }
+  }, [initialTab]);
   const [importTableFilter, setImportTableFilter] = useState<'Todos' | 'EFC' | 'EFD' | 'Pernoites'>('Todos');
   const [placaSearchFilter, setPlacaSearchFilter] = useState('');
 
@@ -1389,6 +1394,18 @@ export default function ConferentePanel({ user, empresa, initialTab, theme = 'da
           <Truck className="w-4 h-4 shrink-0 text-emerald-400" />
           <span className="truncate">8. Retorno Rota</span>
         </button>
+
+        <button
+          onClick={() => setPanelTab('acoes')}
+          className={`px-3 py-2.5 rounded-lg font-sans font-bold text-xs uppercase tracking-wider transition-all border-none cursor-pointer flex items-center justify-center gap-1.5 ${
+            panelTab === 'acoes'
+              ? 'bg-amber-500 text-slate-950 font-black shadow-md'
+              : 'text-[#6a7d92] hover:text-white bg-transparent'
+          }`}
+        >
+          <ShieldCheck className="w-4 h-4 shrink-0" />
+          <span className="truncate">9. Guia Ações</span>
+        </button>
       </div>
 
       {/* ── ABA 1: R&R (RESSUPRIMENTO & REABASTECIMENTO) ── */}
@@ -1535,9 +1552,6 @@ export default function ConferentePanel({ user, empresa, initialTab, theme = 'da
               </button>
             </div>
           </div>
-
-          {/* GUIA DE AÇÕES CORRETIVAS E MELHORIAS - CONFERENTE */}
-          <GuiaAcoesOperacionais user={user} roleName="Conferente" />
 
           {/* Relatório de Atividades Diárias (R&R) */}
           <div className="g-card p-6">
@@ -3865,7 +3879,10 @@ export default function ConferentePanel({ user, empresa, initialTab, theme = 'da
         </div>
       )}
 
-      <SugerirMelhoriaCard user={user} empresa={empresa} setor="Conferente" />
+      {/* ── ABA 9: GUIA DE AÇÕES DO CONFERENTE ── */}
+      {panelTab === 'acoes' && (
+        <GuiaAcoesOperacionais user={user} roleName="Conferente" />
+      )}
     </div>
   );
 }

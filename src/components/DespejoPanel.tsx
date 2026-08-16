@@ -5,7 +5,6 @@ import { Usuario, Empresa, DespejoRow } from '../types';
 import { useEmpresaData } from '../context/EmpresaDataContext';
 import DespejoDashboard from './DespejoDashboard';
 import { TrendingUp, CheckCircle, Clock, Award, BarChart2 } from 'lucide-react';
-import SugerirMelhoriaCard from './SugerirMelhoriaCard';
 import { SopBannerViewer } from './SopBannerViewer';
 import { filterHistoryForUser, HistoryRestrictionNotice } from '../utils/historyFilter';
 import { elaborarTemposIlustrativosOperacao } from '../utils/quebrasDespejoUtils';
@@ -687,9 +686,6 @@ export default function DespejoPanel({ user, empresa, shiftStarted, onRequireShi
           })()}
         </div>
       )}
-
-      {/* Sugerir Melhoria / Plano de Ação para Supervisores */}
-      <SugerirMelhoriaCard user={user} empresa={empresa} setor="Despejo" />
     </div>
   );
 }

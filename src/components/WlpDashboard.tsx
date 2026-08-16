@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { IndicatorActionModal } from './IndicatorActionModal';
 import { 
   BarChart,
   Bar,
@@ -160,6 +161,7 @@ export const WlpDashboard: React.FC<WlpDashboardProps> = ({
   user,
   empresaId = 'demo'
 }) => {
+  const [isActionModalOpen, setIsActionModalOpen] = useState(false);
   const [selectedMesAno, setSelectedMesAno] = useState<string>('08/2026');
   const [activeSubTab, setActiveSubTab] = useState<'indicador' | 'historico_diario' | 'desvios_dpo' | 'pontos_jornada' | 'presentes_dia' | 'pnp_ajudante' | 'pnp_empilhador' | 'pnp_conferente'>('indicador');
 
@@ -1335,6 +1337,15 @@ PAULO PEREIRA DA SILVA;Ajudante;01/08/2026;07:00;16:20;Turno Normal`;
           </div>
 
           <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => setIsActionModalOpen(true)}
+              className="px-3.5 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black text-[11px] uppercase tracking-wider rounded-xl transition-all cursor-pointer shadow-md flex items-center gap-1.5 border border-blue-400/30"
+            >
+              <CheckCircle2 className="w-4 h-4 text-emerald-300" />
+              <span>Plano de Ações (WLP / PNP)</span>
+            </button>
+
             <button
               type="button"
               onClick={exportWlpModelExcel}
@@ -4226,6 +4237,19 @@ PAULO PEREIRA DA SILVA;Ajudante;01/08/2026;07:00;16:20;Turno Normal`;
           </div>
         </div>
       )}
+
+      {/* DEDICATED ACTION MODAL (FILTERED FOR WLP & PNP) */}
+      <IndicatorActionModal
+        isOpen={isActionModalOpen}
+        onClose={() => setIsActionModalOpen(false)}
+        indicatorTitle="WLP & PNP"
+        indicatorSubtitle="Visualizando e gerenciando apenas os planos de ação e contramedidas 5W2H para desvios de WLP e PNP abaixo da meta oficial de 6,23 HL/HH."
+        indicatorBadge="WLP DPO"
+        allowedProcessos={['WLP', 'PNP', 'WLP / PNP', 'Produtividade Geral']}
+        defaultProcesso="WLP"
+        defaultIndicador="Produtividade WLP / PNP (HL/HH)"
+        defaultMeta="6.23 HL/HH"
+      />
 
     </div>
   );

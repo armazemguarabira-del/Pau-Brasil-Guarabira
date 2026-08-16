@@ -4,7 +4,6 @@ import { collection, addDoc, deleteDoc, doc } from 'firebase/firestore';
 import { Usuario, Empresa, BlitzRefugoRow } from '../types';
 import { useEmpresaData } from '../context/EmpresaDataContext';
 import { TrendingUp, CheckCircle, Clock, Award, BarChart2 } from 'lucide-react';
-import SugerirMelhoriaCard from './SugerirMelhoriaCard';
 import { filterHistoryForUser, HistoryRestrictionNotice } from '../utils/historyFilter';
 
 interface RefugoPanelProps {
@@ -829,9 +828,6 @@ export default function RefugoPanel({ user, empresa }: RefugoPanelProps) {
           </div>
         </div>
       )}
-
-      {/* Sugerir Melhoria / Plano de Ação para Supervisores */}
-      <SugerirMelhoriaCard user={user} empresa={empresa} setor="Retorno de Rota" />
     </div>
   );
 }

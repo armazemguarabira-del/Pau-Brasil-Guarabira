@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import * as XLSX from 'xlsx';
 import { 
   CheckCircle2, 
   X, 
@@ -20,7 +21,11 @@ import {
   Target,
   BarChart3,
   Database,
-  PieChart
+  PieChart,
+  FileSpreadsheet,
+  HelpCircle,
+  Sparkles,
+  CheckCircle
 } from 'lucide-react';
 import { db } from '../firebase';
 import { collection, query, where, getDocs, doc, setDoc, deleteDoc } from 'firebase/firestore';
@@ -132,53 +137,251 @@ export const getUserAssignedAreasList = (
   return SETORES_5S;
 };
 
-export const generateYTD5SAudits = (): Audit5SRecord[] => {
-  const list: Audit5SRecord[] = [];
-  const currentYear = 2026;
-  const currentMonth = 8; // Jan to Aug
-  
-  for (let m = 1; m <= currentMonth; m++) {
-    const monthStr = m < 10 ? `0${m}` : `${m}`;
-    // Days in month for realistic audits
-    const auditDays = [1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 15, 16, 17, 18, 19, 20, 22, 23, 24, 25];
-    
-    auditDays.forEach((dayNum, dayIndex) => {
-      const dayStr = dayNum < 10 ? `0${dayNum}` : `${dayNum}`;
-      const dataISO = `${currentYear}-${monthStr}-${dayStr}`;
-      const dataFormatted = `${dayStr}/${monthStr}/${currentYear}`;
+import { generateYTD5SAuditsFast, getStored5SAudits, save5SAuditRecord, saveBulk5SAudits } from '../utils/fiveSStore';
 
-      SETORES_5S.forEach((areaName, areaIdx) => {
-        const mapped = MAPEAMENTO_RESPONSAVEIS_5S.find(item => item.area === areaName);
-        const respName = mapped ? mapped.colaborador : 'DEJEAN SILVA DE OLIVEIRA';
-        
-        const scoreVal = 8 + ((areaIdx + dayIndex + m) % 3);
-        const notaPct = Math.round((scoreVal / 10) * 100);
-        const answers = Array(10).fill(true).map((_, i) => i < scoreVal);
-        
-        list.push({
-          id: `seed_5s_${areaName.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase()}_${dataISO}`,
-          dataISO,
-          dataFormatted,
-          setor: areaName,
-          operador: respName,
-          liderAuditor: 'Líder Operacional',
-          pontos: scoreVal,
-          notaPercentual: notaPct,
-          respostas: answers,
-          observacoesNaoConforme: scoreVal < 10 ? 'Organização e adequação do setor realizadas conforme padrão.' : '',
-          fotoUrl: null,
-          createdAt: new Date().toISOString(),
-          empresaId: 'demo',
-          seiriStatus: answers[0],
-          seitonStatus: answers[1],
-          seisoStatus: answers[7],
-          seiketsuStatus: answers[4],
-          shitsukeStatus: answers[9]
-        });
-      });
-    });
+export const generateYTD5SAudits = (): Audit5SRecord[] => {
+  return generateYTD5SAuditsFast();
+};
+
+/* =========================================================================
+   FUNÇÕES AUXILIARES DE EXPORTAÇÃO E IMPORTAÇÃO EXCEL (.XLSX) / JSON / CSV
+   ========================================================================= */
+
+// Função para formatar / normalizar datas do Excel ou String
+export const parse5SDateValue = (val: any): { dataISO: string; dataFormatted: string } => {
+  const today = new Date();
+  const todayISO = today.toISOString().split('T')[0];
+  const todayFormatted = `${String(today.getDate()).padStart(2, '0')}/${String(today.getMonth() + 1).padStart(2, '0')}/${today.getFullYear()}`;
+
+  if (!val) return { dataISO: todayISO, dataFormatted: todayFormatted };
+
+  // Se for número serial de data do Excel (ex: 45520)
+  if (typeof val === 'number') {
+    const d = new Date(Math.round((val - 25569) * 86400 * 1000));
+    if (!isNaN(d.getTime())) {
+      const y = d.getUTCFullYear();
+      const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+      const day = String(d.getUTCDate()).padStart(2, '0');
+      return { dataISO: `${y}-${m}-${day}`, dataFormatted: `${day}/${m}/${y}` };
+    }
   }
-  return list;
+
+  const str = String(val).trim();
+
+  // Se estiver em formato DD/MM/AAAA ou DD-MM-AAAA
+  const matchBR = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  if (matchBR) {
+    const day = matchBR[1].padStart(2, '0');
+    const m = matchBR[2].padStart(2, '0');
+    const y = matchBR[3];
+    return { dataISO: `${y}-${m}-${day}`, dataFormatted: `${day}/${m}/${y}` };
+  }
+
+  // Se estiver em formato AAAA-MM-DD ou AAAA/MM/DD
+  const matchISO = str.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+  if (matchISO) {
+    const y = matchISO[1];
+    const m = matchISO[2].padStart(2, '0');
+    const day = matchISO[3].padStart(2, '0');
+    return { dataISO: `${y}-${m}-${day}`, dataFormatted: `${day}/${m}/${y}` };
+  }
+
+  return { dataISO: todayISO, dataFormatted: todayFormatted };
+};
+
+// Normalizar resposta booleana das perguntas (SIM / NÃO)
+export const parse5SBooleanAnswer = (val: any): boolean => {
+  if (val === undefined || val === null || val === '') return true;
+  if (typeof val === 'boolean') return val;
+  if (typeof val === 'number') return val > 0;
+  const s = String(val).trim().toUpperCase();
+  if (['SIM', 'S', 'TRUE', '1', 'OK', 'C', 'CONFORME', 'YES', 'Y', 'V', 'VERDADEIRO'].includes(s)) return true;
+  if (['NAO', 'NÃO', 'N', 'FALSE', '0', 'NOK', 'NC', 'NÃO CONFORME', 'NAO CONFORME', 'NO', 'F', 'FALSO'].includes(s)) return false;
+  return true;
+};
+
+// EXPORTAR MODELO DE EXEMPLO OFICIAL EM EXCEL (.XLSX)
+export const exportExcel5SExample = () => {
+  const wb = XLSX.utils.book_new();
+
+  // SHEET 1: PLANILHA MODELO PARA IMPORTAÇÃO
+  const headers = [
+    'Área',
+    'Data (DD/MM/AAAA)',
+    'Quem Aplicou',
+    'Colaborador Responsável',
+    'P1 - Posto Organizado (SIM/NÃO)',
+    'P2 - Endereço Correto (SIM/NÃO)',
+    'P3 - Corredores Livres (SIM/NÃO)',
+    'P4 - Ferramentas Guardadas (SIM/NÃO)',
+    'P5 - Uso de EPIs (SIM/NÃO)',
+    'P6 - Sem Riscos Inseguros (SIM/NÃO)',
+    'P7 - Extintores Desobstruídos (SIM/NÃO)',
+    'P8 - Piso Limpo e Seco (SIM/NÃO)',
+    'P9 - Descarte Correto (SIM/NÃO)',
+    'P10 - Anomalias Comunicadas (SIM/NÃO)',
+    'Observações e Ações Corretivas'
+  ];
+
+  const today = new Date();
+  const dayStr = String(today.getDate()).padStart(2, '0');
+  const monthStr = String(today.getMonth() + 1).padStart(2, '0');
+  const yearStr = today.getFullYear();
+  const sampleDate = `${dayStr}/${monthStr}/${yearStr}`;
+
+  const rows = MAPEAMENTO_RESPONSAVEIS_5S.map((item, idx) => {
+    const isPedroFrota = idx % 4 === 0;
+    const auditor = isPedroFrota ? 'Pedro Bruno (Setor de Frota)' : 'Líder Operacional 5S';
+    const isPerfeito = idx % 2 === 0;
+    return [
+      item.area,
+      sampleDate,
+      auditor,
+      item.colaborador,
+      'SIM',
+      'SIM',
+      'SIM',
+      'SIM',
+      'SIM',
+      isPerfeito ? 'SIM' : 'NÃO',
+      'SIM',
+      'SIM',
+      'SIM',
+      'SIM',
+      isPerfeito ? 'Área inspecionada 100% conforme padrão 5S.' : 'Pallet desalinhado corrigido durante a inspeção.'
+    ];
+  });
+
+  const wsData = [headers, ...rows];
+  const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+  ws['!cols'] = [
+    { wch: 32 }, // Área
+    { wch: 18 }, // Data
+    { wch: 30 }, // Quem Aplicou
+    { wch: 32 }, // Colaborador Responsável
+    { wch: 32 }, // P1
+    { wch: 32 }, // P2
+    { wch: 32 }, // P3
+    { wch: 32 }, // P4
+    { wch: 30 }, // P5
+    { wch: 32 }, // P6
+    { wch: 32 }, // P7
+    { wch: 30 }, // P8
+    { wch: 32 }, // P9
+    { wch: 34 }, // P10
+    { wch: 45 }  // Observações
+  ];
+
+  XLSX.utils.book_append_sheet(wb, ws, 'Auditorias_5S_Armazem');
+
+  // SHEET 2: GUIA DAS 10 PERGUNTAS OFICIAIS DE 5S
+  const dictHeaders = ['Nº', 'Pilar / Categoria', 'Pergunta Oficial do 5S', 'Critério de Preenchimento'];
+  const dictRows = PERGUNTAS_5S_OFICIAIS.map(p => [
+    `P${p.id}`,
+    p.categoria,
+    p.pergunta,
+    'Preencha com "SIM" (Conforme = 1 ponto) ou "NÃO" (Não Conforme = 0 pontos).'
+  ]);
+
+  const wsDict = XLSX.utils.aoa_to_sheet([dictHeaders, ...dictRows]);
+  wsDict['!cols'] = [
+    { wch: 8 },
+    { wch: 22 },
+    { wch: 80 },
+    { wch: 45 }
+  ];
+  XLSX.utils.book_append_sheet(wb, wsDict, 'Guia_Perguntas_5S');
+
+  XLSX.writeFile(wb, `Modelo_Exemplo_Auditorias_5S.xlsx`);
+};
+
+// EXPORTAR TODA A BASE ATUAL EM EXCEL (.XLSX)
+export const exportAuditsToExcel = (auditsList?: Audit5SRecord[]) => {
+  const list = auditsList && auditsList.length > 0 ? auditsList : (() => {
+    try {
+      const saved = localStorage.getItem('af_5s_audits') || localStorage.getItem('5s_audits_history');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  })();
+
+  if (list.length === 0) {
+    alert('Nenhum registro para exportar.');
+    return;
+  }
+
+  const wb = XLSX.utils.book_new();
+  const headers = [
+    'ID',
+    'Data (ISO)',
+    'Data Formatada',
+    'Área / Setor',
+    'Colaborador Responsável',
+    'Quem Aplicou (Auditor)',
+    'Pontos (0-10)',
+    'Nota (%)',
+    'P1 (SIM/NÃO)',
+    'P2 (SIM/NÃO)',
+    'P3 (SIM/NÃO)',
+    'P4 (SIM/NÃO)',
+    'P5 (SIM/NÃO)',
+    'P6 (SIM/NÃO)',
+    'P7 (SIM/NÃO)',
+    'P8 (SIM/NÃO)',
+    'P9 (SIM/NÃO)',
+    'P10 (SIM/NÃO)',
+    'Observações / Não Conformidades'
+  ];
+
+  const rows = list.map(item => [
+    item.id,
+    item.dataISO,
+    item.dataFormatted,
+    item.setor,
+    item.operador,
+    item.liderAuditor || 'Líder Operacional',
+    item.pontos,
+    `${item.notaPercentual}%`,
+    item.respostas?.[0] ? 'SIM' : 'NÃO',
+    item.respostas?.[1] ? 'SIM' : 'NÃO',
+    item.respostas?.[2] ? 'SIM' : 'NÃO',
+    item.respostas?.[3] ? 'SIM' : 'NÃO',
+    item.respostas?.[4] ? 'SIM' : 'NÃO',
+    item.respostas?.[5] ? 'SIM' : 'NÃO',
+    item.respostas?.[6] ? 'SIM' : 'NÃO',
+    item.respostas?.[7] ? 'SIM' : 'NÃO',
+    item.respostas?.[8] ? 'SIM' : 'NÃO',
+    item.respostas?.[9] ? 'SIM' : 'NÃO',
+    item.observacoesNaoConforme || ''
+  ]);
+
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+  ws['!cols'] = [
+    { wch: 30 },
+    { wch: 14 },
+    { wch: 16 },
+    { wch: 30 },
+    { wch: 30 },
+    { wch: 28 },
+    { wch: 14 },
+    { wch: 12 },
+    { wch: 10 },
+    { wch: 10 },
+    { wch: 10 },
+    { wch: 10 },
+    { wch: 10 },
+    { wch: 10 },
+    { wch: 10 },
+    { wch: 10 },
+    { wch: 10 },
+    { wch: 10 },
+    { wch: 45 }
+  ];
+
+  XLSX.utils.book_append_sheet(wb, ws, 'Base_Auditorias_5S');
+  XLSX.writeFile(wb, `Base_Auditorias_5S_Completa_${new Date().toISOString().split('T')[0]}.xlsx`);
 };
 
 /* MODAL DE IMPORTAÇÃO E EXPORTAÇÃO DA BASE DE DADOS 5S */
@@ -195,6 +398,7 @@ export const ImportExport5SModal: React.FC<ImportExport5SModalProps> = ({
 }) => {
   const [importStatus, setImportStatus] = useState<string>('');
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
+  const [previewAudits, setPreviewAudits] = useState<Audit5SRecord[]>([]);
 
   if (!isOpen) return null;
 
@@ -255,41 +459,227 @@ export const ImportExport5SModal: React.FC<ImportExport5SModalProps> = ({
     link.remove();
   };
 
+  // UPLOAD E PROCESSAMENTO DE EXCEL (.XLSX / .XLS), JSON OU CSV
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setIsProcessing(true);
-    setImportStatus('Lendo arquivo...');
-    const reader = new FileReader();
+    setImportStatus(`Lendo arquivo "${file.name}"...`);
+    setPreviewAudits([]);
 
+    const fileNameLower = file.name.toLowerCase();
+
+    // PROCESSAMENTO DE ARQUIVOS EXCEL (.xlsx / .xls)
+    if (fileNameLower.endsWith('.xlsx') || fileNameLower.endsWith('.xls')) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        try {
+          const buffer = event.target?.result as ArrayBuffer;
+          const wb = XLSX.read(buffer, { type: 'array' });
+          const firstSheetName = wb.SheetNames[0];
+          const ws = wb.Sheets[firstSheetName];
+          const rawRows: any[] = XLSX.utils.sheet_to_json(ws, { defval: '' });
+
+          if (!rawRows || rawRows.length === 0) {
+            throw new Error('A planilha está vazia ou sem linhas de dados.');
+          }
+
+          const importedList: Audit5SRecord[] = [];
+
+          rawRows.forEach((row, idx) => {
+            // Normalizar chaves do objeto para busca flexível
+            const normalizedRow: Record<string, any> = {};
+            Object.keys(row).forEach(k => {
+              const cleanKey = k.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+              normalizedRow[cleanKey] = row[k];
+            });
+
+            // Extrair Área / Setor
+            const setorVal = (
+              normalizedRow['area'] || 
+              normalizedRow['setor'] || 
+              normalizedRow['local'] || 
+              normalizedRow['posto'] || 
+              'PICKING'
+            ).toString().trim().toUpperCase();
+
+            // Extrair Data
+            const rawData = normalizedRow['data'] || normalizedRow['dataiso'] || normalizedRow['date'] || normalizedRow['dia'] || normalizedRow['data formatada'] || normalizedRow['data auditoria'];
+            const { dataISO, dataFormatted } = parse5SDateValue(rawData);
+
+            // Extrair Quem Aplicou (Auditor / Líder)
+            const liderAuditor = (
+              normalizedRow['quem aplicou'] || 
+              normalizedRow['auditor'] || 
+              normalizedRow['lider'] || 
+              normalizedRow['liderauditor'] || 
+              normalizedRow['aplicador'] || 
+              normalizedRow['quem realizou'] || 
+              normalizedRow['avaliador'] || 
+              'Líder Operacional'
+            ).toString().trim();
+
+            // Extrair Colaborador Responsável da Área
+            let operador = (
+              normalizedRow['colaborador responsavel'] || 
+              normalizedRow['colaborador'] || 
+              normalizedRow['responsavel'] || 
+              normalizedRow['operador'] || 
+              normalizedRow['auditado'] || 
+              normalizedRow['nome'] || 
+              ''
+            ).toString().trim();
+
+            if (!operador) {
+              const mapped = MAPEAMENTO_RESPONSAVEIS_5S.find(m => m.area === setorVal);
+              operador = mapped ? mapped.colaborador : 'DEJEAN SILVA DE OLIVEIRA';
+            }
+
+            // Extrair respostas das 10 perguntas
+            const respostas: boolean[] = [];
+            for (let p = 1; p <= 10; p++) {
+              // Buscar chave que contenha p1, p2, etc. ou parte do texto
+              const matchingKey = Object.keys(normalizedRow).find(k => {
+                return k.startsWith(`p${p}`) || k.includes(`p${p} `) || k.includes(`p${p}_`) || k.includes(`pergunta ${p}`) || k.includes(`pergunta${p}`);
+              });
+
+              if (matchingKey) {
+                respostas.push(parse5SBooleanAnswer(normalizedRow[matchingKey]));
+              } else {
+                // Tenta buscar por palavras-chave
+                if (p === 1) respostas.push(parse5SBooleanAnswer(normalizedRow['posto organizado'] || normalizedRow['organizacao'] || 'SIM'));
+                else if (p === 2) respostas.push(parse5SBooleanAnswer(normalizedRow['endereco correto'] || normalizedRow['armazenados'] || 'SIM'));
+                else if (p === 3) respostas.push(parse5SBooleanAnswer(normalizedRow['corredores'] || normalizedRow['circulacao'] || 'SIM'));
+                else if (p === 4) respostas.push(parse5SBooleanAnswer(normalizedRow['ferramentas'] || normalizedRow['equipamentos'] || 'SIM'));
+                else if (p === 5) respostas.push(parse5SBooleanAnswer(normalizedRow['epis'] || normalizedRow['epi'] || 'SIM'));
+                else if (p === 6) respostas.push(parse5SBooleanAnswer(normalizedRow['condicoes inseguras'] || normalizedRow['riscos'] || 'SIM'));
+                else if (p === 7) respostas.push(parse5SBooleanAnswer(normalizedRow['extintores'] || normalizedRow['saidas'] || 'SIM'));
+                else if (p === 8) respostas.push(parse5SBooleanAnswer(normalizedRow['piso limpo'] || normalizedRow['limpeza'] || 'SIM'));
+                else if (p === 9) respostas.push(parse5SBooleanAnswer(normalizedRow['descarte'] || normalizedRow['residuos'] || 'SIM'));
+                else if (p === 10) respostas.push(parse5SBooleanAnswer(normalizedRow['anomalias'] || normalizedRow['disciplina'] || 'SIM'));
+                else respostas.push(true);
+              }
+            }
+
+            const pontos = respostas.filter(Boolean).length;
+            const notaPercentual = Math.round((pontos / 10) * 100);
+
+            // Observações
+            const obs = (
+              normalizedRow['observacoes e acoes corretivas'] || 
+              normalizedRow['observacoes'] || 
+              normalizedRow['observacao'] || 
+              normalizedRow['obs'] || 
+              normalizedRow['nao conformidade'] || 
+              (pontos === 10 ? 'Conforme padrão 5S.' : 'Itens não conformes tratados e comunicados.')
+            ).toString().trim();
+
+            const sanitizedSetor = setorVal.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
+            const docId = `imp_5s_${sanitizedSetor}_${dataISO}_${idx}`;
+
+            importedList.push({
+              id: docId,
+              dataISO,
+              dataFormatted,
+              setor: setorVal,
+              operador,
+              liderAuditor,
+              pontos,
+              notaPercentual,
+              respostas,
+              observacoesNaoConforme: obs,
+              fotoUrl: null,
+              createdAt: new Date().toISOString(),
+              empresaId: 'demo',
+              seiriStatus: respostas[0] && respostas[1] && respostas[2] && respostas[3],
+              seitonStatus: respostas[1],
+              seisoStatus: respostas[7] && respostas[8],
+              seiketsuStatus: respostas[4] && respostas[5] && respostas[6],
+              shitsukeStatus: respostas[9]
+            });
+          });
+
+          if (importedList.length === 0) {
+            throw new Error('Nenhum registro de auditoria válido pôde ser extraído da planilha.');
+          }
+
+          const currentList = getStoredAudits();
+          const map = new Map<string, Audit5SRecord>();
+          currentList.forEach(item => map.set(`${item.setor}_${item.dataISO}`, item));
+          importedList.forEach(item => map.set(`${item.setor}_${item.dataISO}`, item));
+
+          const merged = Array.from(map.values());
+          saveAuditsToStorage(merged);
+
+          setPreviewAudits(importedList);
+          setImportStatus(`✅ Importação de Excel realizada com sucesso! ${importedList.length} auditorias importadas/atualizadas (${merged.length} no histórico total).`);
+          setIsProcessing(false);
+        } catch (err: any) {
+          setImportStatus(`❌ Erro ao ler Excel: ${err.message || 'Formato incompatível.'}`);
+          setIsProcessing(false);
+        }
+      };
+      reader.readAsArrayBuffer(file);
+      return;
+    }
+
+    // PROCESSAMENTO DE ARQUIVOS JSON OU CSV
+    const reader = new FileReader();
     reader.onload = (event) => {
       try {
         const text = event.target?.result as string;
         let importedList: Audit5SRecord[] = [];
 
-        if (file.name.endsWith('.json')) {
-          importedList = JSON.parse(text);
-        } else if (file.name.endsWith('.csv')) {
+        if (fileNameLower.endsWith('.json')) {
+          const parsed = JSON.parse(text);
+          if (Array.isArray(parsed)) {
+            importedList = parsed.map((item, idx) => {
+              const { dataISO, dataFormatted } = parse5SDateValue(item.dataISO || item.dataFormatted || item.data);
+              const setor = (item.setor || item.area || 'PICKING').toUpperCase();
+              const respostas = Array.isArray(item.respostas) && item.respostas.length === 10
+                ? item.respostas
+                : Array(10).fill(true);
+              const pontos = typeof item.pontos === 'number' ? item.pontos : respostas.filter(Boolean).length;
+              const notaPercentual = typeof item.notaPercentual === 'number' ? item.notaPercentual : Math.round((pontos / 10) * 100);
+
+              return {
+                id: item.id || `imp_json_5s_${idx}_${Date.now()}`,
+                dataISO,
+                dataFormatted,
+                setor,
+                operador: item.operador || item.colaborador || 'DEJEAN SILVA DE OLIVEIRA',
+                liderAuditor: item.liderAuditor || item.auditor || 'Líder Operacional',
+                pontos,
+                notaPercentual,
+                respostas,
+                observacoesNaoConforme: item.observacoesNaoConforme || item.observacoes || '',
+                fotoUrl: item.fotoUrl || null,
+                createdAt: item.createdAt || new Date().toISOString(),
+                empresaId: item.empresaId || 'demo'
+              };
+            });
+          }
+        } else if (fileNameLower.endsWith('.csv')) {
           const lines = text.split('\n').filter(l => l.trim().length > 0);
           if (lines.length > 1) {
             lines.slice(1).forEach((line, idx) => {
               const cols = line.split(',').map(c => c.trim().replace(/^"|"$/g, ''));
               if (cols.length >= 4) {
-                const dataISO = cols[1] || new Date().toISOString().split('T')[0];
-                const setor = cols[3] || 'REPACK';
+                const { dataISO, dataFormatted } = parse5SDateValue(cols[1] || cols[2]);
+                const setor = (cols[3] || 'PICKING').toUpperCase();
                 const operador = cols[4] || 'Operador';
                 const pontos = parseInt(cols[6] || '10', 10);
                 const notaPercentual = parseInt(cols[7] || '100', 10);
                 importedList.push({
-                  id: `imp_5s_${idx}_${Date.now()}`,
+                  id: `imp_csv_5s_${idx}_${Date.now()}`,
                   dataISO,
-                  dataFormatted: cols[2] || dataISO,
+                  dataFormatted,
                   setor,
                   operador,
-                  liderAuditor: cols[5] || 'Líder',
-                  pontos,
-                  notaPercentual,
+                  liderAuditor: cols[5] || 'Líder Operacional',
+                  pontos: isNaN(pontos) ? 10 : pontos,
+                  notaPercentual: isNaN(notaPercentual) ? 100 : notaPercentual,
                   respostas: Array(10).fill(true),
                   observacoesNaoConforme: cols[8] || '',
                   fotoUrl: null,
@@ -306,7 +696,6 @@ export const ImportExport5SModal: React.FC<ImportExport5SModalProps> = ({
         }
 
         const currentList = getStoredAudits();
-        // Merge and remove duplicates by ID or (Setor + DataISO)
         const map = new Map<string, Audit5SRecord>();
         currentList.forEach(item => map.set(`${item.setor}_${item.dataISO}`, item));
         importedList.forEach(item => map.set(`${item.setor}_${item.dataISO}`, item));
@@ -314,6 +703,7 @@ export const ImportExport5SModal: React.FC<ImportExport5SModalProps> = ({
         const merged = Array.from(map.values());
         saveAuditsToStorage(merged);
 
+        setPreviewAudits(importedList);
         setImportStatus(`✅ Importação concluída! ${importedList.length} registros importados (${merged.length} no total na base).`);
         setIsProcessing(false);
       } catch (err: any) {
@@ -328,91 +718,180 @@ export const ImportExport5SModal: React.FC<ImportExport5SModalProps> = ({
   const handleSeedFullYear = () => {
     setIsProcessing(true);
     setImportStatus('Gerando base histórica do ano (Jan a Ago 2026)...');
+    setPreviewAudits([]);
     setTimeout(() => {
       const ytdData = generateYTD5SAudits();
       saveAuditsToStorage(ytdData);
-      setImportStatus(`✅ Base completa do ano carregada com sucesso! (${ytdData.length} registros).`);
+      setImportStatus(`✅ Base completa do ano carregada com sucesso! (${ytdData.length} registros cadastrados).`);
       setIsProcessing(false);
     }, 400);
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-xs animate-fadeIn">
-      <div className="w-full max-w-xl bg-slate-900 border border-slate-700 rounded-2xl p-6 shadow-2xl text-white space-y-6">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-xs animate-fadeIn">
+      <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-slate-900 border-2 border-amber-500/40 rounded-2xl p-5 sm:p-6 shadow-2xl text-white space-y-5">
+        
+        {/* CABEÇALHO */}
         <div className="flex items-center justify-between border-b border-slate-800 pb-4">
-          <div className="flex items-center gap-2.5">
-            <Database className="w-6 h-6 text-amber-400" />
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-amber-500/20 border border-amber-500/30 rounded-xl text-amber-400">
+              <FileSpreadsheet className="w-6 h-6" />
+            </div>
             <div>
-              <h3 className="text-base font-black uppercase text-white tracking-wider">
-                Base de Dados de Auditorias 5S
+              <h3 className="text-base font-black uppercase text-white tracking-wider flex items-center gap-2">
+                Importação & Exportação de Auditorias 5S
               </h3>
               <p className="text-xs text-slate-400">
-                Importar, exportar ou sincronizar histórico do início do ano até agora.
+                Importe planilhas Excel (.xlsx/.xls) ou arquivos JSON/CSV com área, data, avaliador e as 10 perguntas do 5S.
               </p>
             </div>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white p-1 rounded-lg">
+          <button onClick={onClose} className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 cursor-pointer">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* BOTOES DE EXPORTACAO E IMPORTACAO */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <button
-            onClick={handleExportJSON}
-            className="p-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl flex items-center justify-center gap-2 text-xs font-bold text-amber-300 transition-all cursor-pointer"
-          >
-            <Download className="w-4 h-4 text-amber-400" /> Exportar Base (JSON)
-          </button>
-
-          <button
-            onClick={handleExportCSV}
-            className="p-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl flex items-center justify-center gap-2 text-xs font-bold text-emerald-300 transition-all cursor-pointer"
-          >
-            <Download className="w-4 h-4 text-emerald-400" /> Exportar Planilha (CSV)
-          </button>
-        </div>
-
-        {/* UPLOAD DE ARQUIVO */}
-        <div className="p-4 bg-slate-950 border border-dashed border-slate-700 rounded-xl flex flex-col items-center justify-center text-center space-y-2">
-          <UploadCloud className="w-8 h-8 text-sky-400" />
-          <span className="text-xs font-black uppercase text-white">Importar Arquivo (.JSON ou .CSV)</span>
-          <span className="text-[11px] text-slate-400 max-w-sm">
-            Selecione uma base de dados externa com os registros desde o início do ano para atualizar o dashboard automaticamente.
-          </span>
-          <label className="mt-2 px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded-lg font-bold text-xs cursor-pointer transition-all">
-            Escolher Arquivo do Computador
-            <input type="file" accept=".json,.csv" onChange={handleFileUpload} className="hidden" />
-          </label>
-        </div>
-
-        {/* RESET OU CARREGAR BASE COMPLETA DO ANO */}
-        <div className="p-4 bg-amber-950/30 border border-amber-500/30 rounded-xl space-y-2">
-          <div className="flex items-center gap-2 text-amber-300 font-bold text-xs uppercase">
-            <RefreshCw className="w-4 h-4 text-amber-400" /> Carregar Base Padrão do Ano (Jan a Ago 2026)
+        {/* BOTÃO EM DESTAQUE: BAIXAR MODELO DE EXEMPLO EM EXCEL */}
+        <div className="p-4 bg-gradient-to-r from-emerald-950/60 to-slate-900 border-2 border-emerald-500/50 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-lg">
+          <div className="space-y-1">
+            <div className="text-xs font-black uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
+              <Sparkles className="w-4 h-4 text-emerald-400" /> Planilha Modelo Oficial (Excel .xlsx)
+            </div>
+            <p className="text-[11px] text-slate-300">
+              Baixe o modelo pré-formatado contendo as 14 áreas oficiais do armazém, quem aplicou, responsáveis e as 10 perguntas do 5S prontas para preenchimento.
+            </p>
           </div>
-          <p className="text-[11px] text-slate-300 leading-relaxed">
-            Caso deseje preencher o histórico completo da fábrica do início do ano (Janeiro) até o mês atual (Agosto) com todas as 14 áreas e colaboradores cadastrados, clique no botão abaixo.
-          </p>
           <button
-            onClick={handleSeedFullYear}
-            disabled={isProcessing}
-            className="w-full py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs uppercase tracking-wider rounded-lg transition-all shadow-md cursor-pointer disabled:opacity-50"
+            type="button"
+            onClick={exportExcel5SExample}
+            className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs uppercase tracking-wider rounded-xl transition-all shadow-md cursor-pointer flex items-center justify-center gap-2 shrink-0"
           >
-            {isProcessing ? 'Processando...' : '⚡ Carregar / Sincronizar Base Histórica 2026'}
+            <Download className="w-4 h-4 text-emerald-100" /> Baixar Modelo Excel
           </button>
         </div>
 
+        {/* ÁREA DE UPLOAD DE ARQUIVOS */}
+        <div className="p-5 bg-[#0b1222] border-2 border-dashed border-sky-500/40 rounded-xl flex flex-col items-center justify-center text-center space-y-2.5">
+          <div className="p-3 bg-sky-500/10 rounded-full text-sky-400">
+            <UploadCloud className="w-8 h-8" />
+          </div>
+          <span className="text-sm font-black uppercase text-white tracking-wider">
+            Importar Auditorias do Mês (Excel, JSON ou CSV)
+          </span>
+          <span className="text-xs text-slate-400 max-w-md">
+            Selecione o arquivo preenchido (.xlsx, .xls, .json ou .csv). O sistema calculará as notas, dispersão e atualizará o ranking e gráficos automaticamente.
+          </span>
+          
+          <label className="mt-2 px-5 py-2.5 bg-sky-600 hover:bg-sky-500 text-white rounded-xl font-black text-xs uppercase tracking-wider cursor-pointer transition-all shadow-lg flex items-center gap-2">
+            <Upload className="w-4 h-4" /> Selecionar Arquivo do Computador
+            <input 
+              type="file" 
+              accept=".xlsx,.xls,.json,.csv" 
+              onChange={handleFileUpload} 
+              className="hidden" 
+            />
+          </label>
+          <span className="text-[10px] text-slate-500 font-mono">Formatos suportados: .xlsx, .xls, .json, .csv</span>
+        </div>
+
+        {/* STATUS DA IMPORTAÇÃO */}
         {importStatus && (
-          <div className="p-3 bg-slate-800 border border-slate-700 rounded-xl text-xs font-mono font-bold text-center text-amber-200">
+          <div className="p-3.5 bg-slate-800 border border-slate-700 rounded-xl text-xs font-mono font-bold text-center text-amber-200">
             {importStatus}
           </div>
         )}
 
-        <div className="flex justify-end pt-2">
+        {/* PRÉVIA DOS DADOS IMPORTADOS */}
+        {previewAudits.length > 0 && (
+          <div className="p-4 bg-[#0b1222] border border-emerald-500/40 rounded-xl space-y-2">
+            <div className="flex items-center justify-between text-xs font-bold text-emerald-400 uppercase tracking-wider">
+              <span>Prévia dos Registros Importados ({previewAudits.length})</span>
+              <span className="text-[10px] text-slate-400 font-mono">Atualizados no Dashboard</span>
+            </div>
+            <div className="max-h-40 overflow-y-auto overflow-x-auto">
+              <table className="w-full text-left text-[11px] font-mono">
+                <thead>
+                  <tr className="text-slate-400 border-b border-slate-800 text-[10px] uppercase">
+                    <th className="p-1.5">Data</th>
+                    <th className="p-1.5">Área</th>
+                    <th className="p-1.5">Quem Aplicou</th>
+                    <th className="p-1.5">Responsável</th>
+                    <th className="p-1.5 text-center">Pontos</th>
+                    <th className="p-1.5 text-center">Nota</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60 text-slate-300">
+                  {previewAudits.slice(0, 10).map((item, idx) => (
+                    <tr key={idx} className="hover:bg-slate-800/30">
+                      <td className="p-1.5 whitespace-nowrap">{item.dataFormatted}</td>
+                      <td className="p-1.5 font-bold text-amber-300">{item.setor}</td>
+                      <td className="p-1.5 text-slate-400">{item.liderAuditor || 'Líder'}</td>
+                      <td className="p-1.5 text-slate-300">{item.operador}</td>
+                      <td className="p-1.5 text-center font-bold text-emerald-400">{item.pontos}/10</td>
+                      <td className="p-1.5 text-center font-bold">{item.notaPercentual}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {previewAudits.length > 10 && (
+              <div className="text-[10px] text-slate-400 text-center italic">
+                ... e mais {previewAudits.length - 10} registros salvos com sucesso.
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* EXPORTAR BASE ATUAL COMPLETA */}
+        <div className="space-y-2">
+          <div className="text-xs font-black uppercase text-slate-300 tracking-wider">
+            Exportar Base de Dados Armazenada
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+            <button
+              onClick={() => exportAuditsToExcel()}
+              className="p-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl flex items-center justify-center gap-2 text-xs font-bold text-emerald-300 transition-all cursor-pointer shadow-sm"
+            >
+              <Download className="w-4 h-4 text-emerald-400" /> Base Atual (Excel)
+            </button>
+
+            <button
+              onClick={handleExportJSON}
+              className="p-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl flex items-center justify-center gap-2 text-xs font-bold text-amber-300 transition-all cursor-pointer shadow-sm"
+            >
+              <Download className="w-4 h-4 text-amber-400" /> Base Atual (JSON)
+            </button>
+
+            <button
+              onClick={handleExportCSV}
+              className="p-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl flex items-center justify-center gap-2 text-xs font-bold text-sky-300 transition-all cursor-pointer shadow-sm"
+            >
+              <Download className="w-4 h-4 text-sky-400" /> Planilha (CSV)
+            </button>
+          </div>
+        </div>
+
+        {/* SINCRONIZAÇÃO DA BASE DO ANO */}
+        <div className="p-4 bg-amber-950/30 border border-amber-500/30 rounded-xl space-y-2">
+          <div className="flex items-center gap-2 text-amber-300 font-bold text-xs uppercase">
+            <RefreshCw className="w-4 h-4 text-amber-400" /> Carregar Histórico Padrão (Jan a Ago 2026)
+          </div>
+          <p className="text-[11px] text-slate-300 leading-relaxed">
+            Preencha a fábrica com auditorias históricas realistas de Janeiro a Agosto com todas as 14 áreas oficiais.
+          </p>
+          <button
+            onClick={handleSeedFullYear}
+            disabled={isProcessing}
+            className="w-full py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl transition-all shadow-md cursor-pointer disabled:opacity-50"
+          >
+            {isProcessing ? 'Processando...' : '⚡ Sincronizar Base Histórica 2026'}
+          </button>
+        </div>
+
+        <div className="flex justify-end pt-2 border-t border-slate-800">
           <button
             onClick={onClose}
-            className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold rounded-lg cursor-pointer"
+            className="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold uppercase rounded-xl cursor-pointer"
           >
             Fechar
           </button>
@@ -444,15 +923,8 @@ export const Collaborator5SPerformanceCard: React.FC<Collaborator5SPerformanceCa
 
   const loadAudits = () => {
     try {
-      const saved = localStorage.getItem('af_5s_audits') || localStorage.getItem('5s_audits_history');
-      if (saved) {
-        setAudits(JSON.parse(saved));
-      } else {
-        const seeded = generateYTD5SAudits();
-        localStorage.setItem('af_5s_audits', JSON.stringify(seeded));
-        localStorage.setItem('5s_audits_history', JSON.stringify(seeded));
-        setAudits(seeded);
-      }
+      const data = getStored5SAudits();
+      setAudits(data);
     } catch {
       // fallback
     }
@@ -805,32 +1277,7 @@ export const Checklist5SForm: React.FC<Checklist5SFormProps> = ({
     };
 
     try {
-      // 1. SAVE / OVERWRITE IN FIRESTORE
-      if (db) {
-        try {
-          const docRef = doc(db, 'af_5s_audits', docId);
-          await setDoc(docRef, newRecord);
-        } catch (firestoreErr) {
-          console.warn('Firestore fallback on 5S save:', firestoreErr);
-        }
-      }
-
-      // 2. SAVE / OVERWRITE IN LOCALSTORAGE (SINGLE SOURCE OF TRUTH FOR CLIENT)
-      const existingStr = localStorage.getItem('af_5s_audits') || localStorage.getItem('5s_audits_history');
-      let list: Audit5SRecord[] = existingStr ? JSON.parse(existingStr) : [];
-      
-      // Filter out previous record for SAME SETOR and SAME DATE (SOBRESCREVER REGISTRO ANTERIOR)
-      list = list.filter(item => !(item.setor === setor && item.dataISO === dataISO) && item.id !== docId);
-      
-      // Unshift new updated record
-      list.unshift(newRecord);
-      localStorage.setItem('af_5s_audits', JSON.stringify(list));
-      localStorage.setItem('5s_audits_history', JSON.stringify(list));
-
-      // Broadcast event so other panels update immediately
-      window.dispatchEvent(new CustomEvent('5s_audit_updated', { detail: newRecord }));
-      window.dispatchEvent(new Event('5s_responsaveis_updated'));
-      window.dispatchEvent(new Event('storage'));
+      await save5SAuditRecord(newRecord);
 
       setIsSaving(false);
       setIsSaved(true);

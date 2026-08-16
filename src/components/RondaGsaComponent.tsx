@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   ShieldCheck, 
   CheckCircle2, 
@@ -21,10 +21,18 @@ import {
   ClipboardList,
   BarChart2,
   PieChart,
-  Filter
+  Filter,
+  Download,
+  Upload,
+  FolderOpen,
+  FileSpreadsheet,
+  ExternalLink,
+  Trash2
 } from 'lucide-react';
 import { db } from '../firebase';
 import { collection, getDocs, doc, setDoc } from 'firebase/firestore';
+import { exportRondaGsaManualPdf } from '../utils/exportRondaGsaPdf';
+import * as XLSX from 'xlsx';
 
 export type NivelAvaliacao = 'excelente' | 'bom' | 'razoavel' | 'ruim';
 
@@ -162,6 +170,12 @@ export const RondaGsaComponent: React.FC<RondaGsaComponentProps> = ({
   });
 
   const [observacoesItem, setObservacoesItem] = useState<Record<number, string>>({});
+  const [pastaCompartilhadaUrl, setPastaCompartilhadaUrl] = useState<string>(() => {
+    return localStorage.getItem('ronda_gsa_pasta_compartilhada') || '';
+  });
+  const [isEditingPasta, setIsEditingPasta] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Sync with Firestore
   useEffect(() => {
@@ -276,6 +290,137 @@ export const RondaGsaComponent: React.FC<RondaGsaComponentProps> = ({
     alert(`✅ Ronda de Qualidade Semanal salva com sucesso!\nPercentual de Qualidade: ${pctQualidade}% — Status: ${status}`);
   };
 
+  // Salvar Caminho da Pasta Compartilhada
+  const handleSavePastaCompartilhada = (url: string) => {
+    setPastaCompartilhadaUrl(url);
+    localStorage.setItem('ronda_gsa_pasta_compartilhada', url);
+    setIsEditingPasta(false);
+  };
+
+  // Exportar Formulário em Branco / Manual em PDF
+  const handleExportBlankPdf = () => {
+    exportRondaGsaManualPdf({
+      dataStr: new Date().toLocaleDateString('pt-BR'),
+      auditorNome: auditorNome || 'Controle de Qualidade',
+      localAuditado: 'Armazém Geral (Guarabira)',
+    });
+  };
+
+  // Importar Retroativo do Ano (Excel / CSV / JSON)
+  const handleImportRetroativoFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const fileName = file.name.toLowerCase();
+
+      if (fileName.endsWith('.json')) {
+        const text = await file.text();
+        const importedData = JSON.parse(text);
+        if (Array.isArray(importedData)) {
+          const merged = [...importedData, ...records];
+          // Remove duplicados por ID
+          const uniqueMap = new Map();
+          merged.forEach(item => uniqueMap.set(item.id, item));
+          const uniqueList = Array.from(uniqueMap.values());
+          setRecords(uniqueList);
+          localStorage.setItem('ronda_gsa_audits_history', JSON.stringify(uniqueList));
+          alert(`✅ Importação concluída com sucesso! ${importedData.length} rondas adicionadas ao histórico anual.`);
+        }
+      } else {
+        // Leitura com XLSX
+        const data = await file.arrayBuffer();
+        const workbook = XLSX.read(data, { type: 'array' });
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
+        const jsonRows: any[] = XLSX.utils.sheet_to_json(worksheet);
+
+        if (jsonRows && jsonRows.length > 0) {
+          const newImportedRecords: RondaGSARecord[] = jsonRows.map((row, idx) => {
+            const dataStr = String(row['Data'] || row['DATA'] || row['Data Audit'] || '2026-01-15');
+            const local = String(row['Local'] || row['LOCAL'] || row['Setor'] || 'Armazém Central');
+            const colab = String(row['Colaborador'] || row['COLABORADOR'] || row['Auditado'] || 'Equipe Armazém');
+            const auditor = String(row['Auditor'] || row['AUDITOR'] || row['Auditor Nome'] || 'Controle Qualidade');
+            const pct = Number(row['Percentual'] || row['% Qualidade'] || row['Nota %'] || 88);
+
+            // Mapear respostas se existirem
+            const respostas: Record<number, NivelAvaliacao> = {};
+            QUESTOES_RONDA_GSA.forEach(q => {
+              const respVal = String(row[`Q${q.id}`] || row[`Item ${q.id}`] || row[q.pergunta] || 'excelente').toLowerCase();
+              if (respVal.includes('exc') || respVal === '4') respostas[q.id] = 'excelente';
+              else if (respVal.includes('bom') || respVal.includes('verde') || respVal === '3') respostas[q.id] = 'bom';
+              else if (respVal.includes('raz') || respVal.includes('amarel') || respVal === '2') respostas[q.id] = 'razoavel';
+              else if (respVal.includes('ruim') || respVal.includes('verm') || respVal === '1') respostas[q.id] = 'ruim';
+              else respostas[q.id] = 'excelente';
+            });
+
+            const countExc = Object.values(respostas).filter(v => v === 'excelente').length;
+            const countB = Object.values(respostas).filter(v => v === 'bom').length;
+            const countRaz = Object.values(respostas).filter(v => v === 'razoavel').length;
+            const countR = Object.values(respostas).filter(v => v === 'ruim').length;
+
+            const calcTotalPoints = (countExc * 4) + (countB * 3) + (countRaz * 2) + (countR * 1);
+            const calculatedPct = Math.round((calcTotalPoints / (34 * 4)) * 100);
+            const finalPct = pct || calculatedPct;
+
+            const dateParts = dataStr.includes('/') ? dataStr.split('/') : dataStr.split('-');
+            let dataFormatted = dataStr;
+            let dataISO = new Date().toISOString().split('T')[0];
+            let mesAno = '08/2026';
+
+            if (dataStr.includes('/')) {
+              dataFormatted = `${dateParts[0].padStart(2, '0')}/${dateParts[1].padStart(2, '0')}/${dateParts[2]}`;
+              dataISO = `${dateParts[2]}-${dateParts[1].padStart(2, '0')}-${dateParts[0].padStart(2, '0')}`;
+              mesAno = `${dateParts[1].padStart(2, '0')}/${dateParts[2]}`;
+            } else if (dataStr.includes('-')) {
+              dataISO = dataStr;
+              dataFormatted = `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}`;
+              mesAno = `${dateParts[1]}/${dateParts[0]}`;
+            }
+
+            return {
+              id: `gsa-retro-${Date.now()}-${idx}`,
+              dataISO,
+              dataFormatted,
+              mesAno,
+              localAuditado: local,
+              colaboradorAuditado: colab,
+              auditorNome: auditor,
+              respostasAvaliacao: respostas,
+              observacoesItem: {},
+              respostaTreinamento: String(row['Treinamento'] || 'Treinamento de Boas Práticas Operacionais e 5S'),
+              pontos: Number(((finalPct / 100) * 10).toFixed(1)),
+              pontosPercentual: finalPct,
+              countExcelente: countExc,
+              countBom: countB,
+              countRazoavel: countRaz,
+              countRuim: countR,
+              statusPontuacao: getStatusFromPct(finalPct),
+              criadoEm: new Date().toISOString()
+            };
+          });
+
+          const merged = [...newImportedRecords, ...records];
+          const uniqueMap = new Map();
+          merged.forEach(item => uniqueMap.set(item.id, item));
+          const uniqueList = Array.from(uniqueMap.values());
+          setRecords(uniqueList);
+          localStorage.setItem('ronda_gsa_audits_history', JSON.stringify(uniqueList));
+          alert(`✅ Importação de retroativo concluída! ${newImportedRecords.length} rondas anuais integradas com sucesso.`);
+        } else {
+          alert('⚠️ O arquivo selecionado está vazio ou não possui linhas válidas.');
+        }
+      }
+    } catch (err: any) {
+      console.error('Erro na importação retroativa:', err);
+      alert(`❌ Erro ao ler arquivo: ${err.message || 'Verifique o formato do arquivo'}`);
+    }
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
   // Filter records by Month
   const filteredRecords = records.filter(r => {
     if (selectedMonthFilter === 'todos') return true;
@@ -298,7 +443,7 @@ export const RondaGsaComponent: React.FC<RondaGsaComponentProps> = ({
     <div className="space-y-6">
       
       {/* CABEÇALHO DA SEÇÃO RONDA DE QUALIDADE */}
-      <div className="bg-[#111a30] border border-blue-500/30 rounded-2xl p-5 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+      <div className="bg-[#111a30] border border-blue-500/30 rounded-2xl p-5 shadow-xl flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
         <div className="flex items-start gap-3">
           <div className="p-3 bg-blue-500/20 border border-blue-500/30 rounded-xl text-blue-400 shrink-0">
             <ClipboardList className="w-8 h-8" />
@@ -319,13 +464,118 @@ export const RondaGsaComponent: React.FC<RondaGsaComponentProps> = ({
           </div>
         </div>
 
-        <button
-          onClick={() => setShowForm(!showForm)}
-          className="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-black text-xs uppercase tracking-wider rounded-xl transition-all cursor-pointer shadow-lg flex items-center gap-2 shrink-0"
-        >
-          {showForm ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
-          {showForm ? 'Fechar Formulário' : '+ Nova Ronda Semanal'}
-        </button>
+        {/* BOTÕES DE AÇÃO: EXPORTAR PDF, IMPORTAR RETROATIVO E NOVA RONDA */}
+        <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleImportRetroativoFile}
+            accept=".xlsx,.xls,.csv,.json"
+            className="hidden"
+          />
+
+          <button
+            type="button"
+            onClick={handleExportBlankPdf}
+            className="px-3.5 py-2.5 bg-[#0b1222] hover:bg-slate-800 text-sky-400 font-bold text-xs uppercase tracking-wider rounded-xl border border-sky-500/30 transition-all cursor-pointer shadow-lg flex items-center gap-1.5"
+            title="Baixar formulário das 34 questões em PDF para preenchimento manual"
+          >
+            <Download className="w-4 h-4" />
+            <span>Exportar PDF Manual</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="px-3.5 py-2.5 bg-[#0b1222] hover:bg-slate-800 text-amber-400 font-bold text-xs uppercase tracking-wider rounded-xl border border-amber-500/30 transition-all cursor-pointer shadow-lg flex items-center gap-1.5"
+            title="Importar planilha com histórico anual retroativo de rondas e respostas"
+          >
+            <Upload className="w-4 h-4" />
+            <span>Importar Retroativo Anual</span>
+          </button>
+
+          <button
+            onClick={() => setShowForm(!showForm)}
+            className="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-black text-xs uppercase tracking-wider rounded-xl transition-all cursor-pointer shadow-lg flex items-center gap-2"
+          >
+            {showForm ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+            {showForm ? 'Fechar Formulário' : '+ Nova Ronda Semanal'}
+          </button>
+        </div>
+      </div>
+
+      {/* CAMPO DE PASTA COMPARTILHADA DA QUALIDADE DO ARMAZÉM */}
+      <div className="bg-[#111a30] border border-slate-800 rounded-2xl p-4 shadow-lg flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-3 flex-1">
+          <div className="p-2 bg-indigo-500/20 text-indigo-400 rounded-lg shrink-0">
+            <FolderOpen className="w-5 h-5" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <span className="text-[10px] font-black uppercase text-indigo-400 block">
+              Pasta Compartilhada da Qualidade (Google Drive / Rede Corporativa)
+            </span>
+            {isEditingPasta ? (
+              <div className="flex items-center gap-2 mt-1">
+                <input
+                  type="text"
+                  defaultValue={pastaCompartilhadaUrl}
+                  id="input-pasta-url"
+                  placeholder="Cole o link do Google Drive, OneDrive ou caminho de rede aqui..."
+                  className="flex-1 bg-[#0b1222] border border-indigo-500/40 rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-500 outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const el = document.getElementById('input-pasta-url') as HTMLInputElement;
+                    handleSavePastaCompartilhada(el?.value || '');
+                  }}
+                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg cursor-pointer flex items-center gap-1"
+                >
+                  <Save className="w-3.5 h-3.5" /> Salvar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsEditingPasta(false)}
+                  className="px-2 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-400 rounded-lg text-xs"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ) : (
+              <div className="text-xs text-slate-300 truncate mt-0.5">
+                {pastaCompartilhadaUrl ? (
+                  <span className="font-mono text-indigo-300">{pastaCompartilhadaUrl}</span>
+                ) : (
+                  <span className="text-slate-500 italic">Nenhum caminho ou link de pasta compartilhada cadastrado.</span>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0">
+          {!isEditingPasta && (
+            <button
+              type="button"
+              onClick={() => setIsEditingPasta(true)}
+              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-lg transition-all cursor-pointer"
+            >
+              {pastaCompartilhadaUrl ? 'Alterar Caminho' : '+ Colar Caminho'}
+            </button>
+          )}
+
+          {pastaCompartilhadaUrl && (
+            <a
+              href={pastaCompartilhadaUrl.startsWith('http') ? pastaCompartilhadaUrl : `https://${pastaCompartilhadaUrl}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-lg transition-all cursor-pointer flex items-center gap-1.5 shadow-md"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              <span>Abrir Pasta</span>
+            </a>
+          )}
+        </div>
       </div>
 
       {/* GRÁFICO DE QUALIDADE DO LOCAL AUDITADO (GLOBAL/MENSAL) */}
@@ -798,12 +1048,41 @@ export const RondaGsaComponent: React.FC<RondaGsaComponentProps> = ({
                         </span>
                       </td>
                       <td className="p-3 text-center">
-                        <button
-                          onClick={() => setSelectedRecord(r)}
-                          className="px-2.5 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded text-[10px] font-bold uppercase cursor-pointer transition-all flex items-center justify-center gap-1 mx-auto"
-                        >
-                          <Eye className="w-3 h-3" /> Detalhes
-                        </button>
+                        <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            onClick={() => setSelectedRecord(r)}
+                            className="px-2.5 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded text-[10px] font-bold uppercase cursor-pointer transition-all flex items-center gap-1"
+                            title="Ver respostas completas e desvios"
+                          >
+                            <Eye className="w-3 h-3" /> Detalhes
+                          </button>
+                          <button
+                            onClick={() => {
+                              exportRondaGsaManualPdf({
+                                dataStr: r.dataFormatted,
+                                auditorNome: r.auditorNome,
+                                localAuditado: `${r.localAuditado} - Insp: ${r.colaboradorAuditado}`,
+                              });
+                            }}
+                            className="p-1 bg-slate-800 hover:bg-slate-700 text-sky-400 rounded text-[10px] font-bold cursor-pointer transition-all"
+                            title="Baixar formulário desta ronda em PDF"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (window.confirm(`Deseja excluir a ronda do dia ${r.dataFormatted}?`)) {
+                                const next = records.filter(item => item.id !== r.id);
+                                setRecords(next);
+                                localStorage.setItem('ronda_gsa_audits_history', JSON.stringify(next));
+                              }
+                            }}
+                            className="p-1 bg-slate-800 hover:bg-rose-900/50 text-rose-400 rounded text-[10px] font-bold cursor-pointer transition-all"
+                            title="Excluir registro"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}

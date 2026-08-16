@@ -23,6 +23,7 @@ import {
   Sparkles,
   Clock,
   TrendingUp,
+  Shield,
   ShieldCheck,
   ExternalLink,
   Truck,
@@ -505,41 +506,36 @@ export default function AjudantePanel({ user, empresa, theme = 'dark' }: Ajudant
       )}
 
       {/* HEADER BAR & SHIFT CONTROL */}
-      <div className="bg-[#11151c] border border-[#222d3a] p-5 rounded-2xl flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 shadow-xl">
-        <div className="flex items-center gap-3">
-          <div className="p-3 bg-indigo-500/10 border border-indigo-500/30 rounded-xl text-indigo-400">
-            <Users className="w-7 h-7" />
+      <div className="bg-white border border-slate-200 text-slate-900 p-4 sm:p-5 rounded-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm">
+        <div className="flex items-center gap-3.5">
+          <div className="p-3 bg-blue-50 border border-blue-100 rounded-2xl text-blue-600 shrink-0">
+            <Users className="w-6 h-6" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-xl font-black uppercase tracking-wider text-white">
-                Operação Ajudante
-              </h1>
-              <span className="bg-indigo-500/10 text-indigo-400 border border-indigo-500/30 text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full">
+              <span className="bg-blue-50 text-blue-600 border border-blue-200 text-[11px] font-black uppercase px-3 py-0.5 rounded-full inline-block">
                 Especialista de Armazém
               </span>
             </div>
-            <p className="text-xs text-slate-400 mt-0.5">
+            <p className="text-xs text-slate-500 font-medium mt-1">
               Atendimento unificado: Repack, Despejo e Avarias de Quebras.
             </p>
           </div>
         </div>
 
         {/* CONTROLES DA JORNADA & INTERVALO */}
-        <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto justify-end border-t lg:border-t-0 border-[#222d3a] pt-3 lg:pt-0">
-          
-          {/* BOTÃO INICIAR / INTERVALO / FINALIZAR JORNADA */}
+        <div className="flex flex-wrap items-center gap-3 w-full md:w-auto justify-end">
           {!shiftStarted ? (
             <button
               onClick={handleStartShift}
-              className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs uppercase tracking-wider flex items-center gap-2 cursor-pointer shadow-lg shadow-emerald-950/40 border border-emerald-400"
+              className="px-6 py-2.5 rounded-xl bg-[#00a86b] hover:bg-[#00925d] text-white font-black text-xs uppercase tracking-wider flex items-center gap-2 cursor-pointer shadow-sm transition-all"
             >
               <Play className="w-4 h-4 fill-white" />
               <span>INICIAR JORNADA</span>
             </button>
           ) : (
-            <div className="flex flex-wrap items-center gap-2 bg-[#151b23] p-1.5 rounded-xl border border-emerald-500/30">
-              <div className="px-3 py-1 flex items-center gap-2 text-xs font-mono font-bold text-emerald-400">
+            <div className="flex flex-wrap items-center gap-2 bg-slate-50 p-1.5 rounded-xl border border-slate-200">
+              <div className="px-3 py-1 flex items-center gap-2 text-xs font-mono font-bold text-emerald-700 bg-emerald-50 rounded-lg border border-emerald-200">
                 <span className="relative flex h-2 w-2">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
@@ -550,304 +546,261 @@ export default function AjudantePanel({ user, empresa, theme = 'dark' }: Ajudant
               {!inInterval ? (
                 <button
                   onClick={handleStartInterval}
-                  className="px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 border border-amber-500/40 text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"
-                  title="Marcar início do intervalo de almoço/descanso no mesmo local da jornada"
+                  className="px-3 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"
+                  title="Marcar início do intervalo de almoço/descanso"
                 >
                   <Utensils className="w-3.5 h-3.5" />
-                  <span>Sair P/ Intervalo (Almoço)</span>
+                  <span>Sair P/ Intervalo</span>
                 </button>
               ) : (
                 <button
                   onClick={handleEndInterval}
-                  className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shadow-md border border-amber-300 animate-pulse"
-                  title="Marcar retorno do intervalo de almoço/descanso"
+                  className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shadow-sm animate-pulse"
+                  title="Marcar retorno do intervalo"
                 >
                   <Clock className="w-3.5 h-3.5" />
-                  <span>Retornar do Intervalo (Desde {intervalStartTime})</span>
+                  <span>Retornar ({intervalStartTime})</span>
                 </button>
               )}
 
               <button
                 onClick={handleFinishShiftClick}
-                className="px-4 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-black text-xs uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shadow border border-rose-400"
+                className="px-4 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-black text-xs uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shadow-sm"
               >
                 <CheckCircle2 className="w-4 h-4" />
-                <span>FINALIZAR JORNADA</span>
+                <span>FINALIZAR</span>
               </button>
             </div>
           )}
         </div>
       </div>
 
-      {/* PAINEL EXCLUSIVO DO COLABORADOR LOGADO - PNP E METAS VS REAL */}
-      <OperationalCollaboratorPnpBanner user={user} theme={theme} />
-
-      {/* PAINEL DE STATUS DA META DE PRODUTIVIDADE DO DIA */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3.5">
-        {/* REPACK META 1: 10 CX/HORA (GATILHO -10 CX/H) */}
-        <div className={`border p-4 rounded-xl flex flex-col justify-between transition-all ${
-          isGatilhoRepack10CxAtivo
-            ? 'bg-rose-950/20 border-rose-500/50'
-            : todayRepackEntries.length > 0 && realRepackCxHora >= 10
-            ? 'bg-[#11151c] border-emerald-500/40'
-            : 'bg-[#11151c] border-[#222d3a]'
-        }`}>
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2">
-              <div className={`p-2 rounded-lg ${isGatilhoRepack10CxAtivo ? 'bg-rose-500/20 text-rose-400' : 'bg-amber-500/10 text-amber-400'}`}>
-                <Zap className="w-4 h-4" />
+      {/* 3 METRIC CARDS (REPACK, DESPEJO, QUALIDADE & WQI DO MÊS) */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 w-full">
+        {/* CARD 1: META REPACK HOJE */}
+        <div className="bg-white border border-slate-200 text-slate-900 p-4 sm:p-5 rounded-2xl shadow-sm flex flex-col justify-between h-full">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-blue-50 text-blue-500 rounded-xl border border-blue-100 shrink-0">
+                <RefreshCw className="w-5 h-5" />
               </div>
               <div>
-                <span className="text-[10px] font-black text-amber-400 uppercase tracking-wider block">Repack • Meta 1 (10 cx/h)</span>
-                <span className="text-[11px] font-bold text-slate-300 block">Ritmo Operacional</span>
+                <span className="font-extrabold text-[11px] text-slate-700 uppercase tracking-wider block">
+                  META REPACK HOJE
+                </span>
+                <span className="font-bold text-[10px] text-slate-400 uppercase tracking-wider block">
+                  (TEMPO POR UNIDADE)
+                </span>
               </div>
             </div>
-            <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full border shrink-0 ${
-              isGatilhoRepack10CxAtivo
-                ? 'bg-rose-500/20 text-rose-300 border-rose-500/40 animate-pulse'
-                : todayRepackEntries.length > 0 && realRepackCxHora >= 10
-                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                : 'bg-slate-800 text-slate-400 border-slate-700'
-            }`}>
-              {isGatilhoRepack10CxAtivo ? '⚠ GATILHO (<10)' : todayRepackEntries.length > 0 && realRepackCxHora >= 10 ? '🟢 DENTRO' : '⚪ SEM DADOS'}
-            </span>
-          </div>
-          
-          {/* Real vs Meta lado a lado */}
-          <div className="grid grid-cols-2 gap-2 bg-[#090d14] p-2.5 rounded-lg border border-slate-800 text-center my-1">
+
             <div>
-              <span className="text-[9px] uppercase font-bold text-slate-400 block">Real</span>
-              <span className={`text-base font-black font-mono ${isGatilhoRepack10CxAtivo ? 'text-rose-400' : 'text-emerald-400'}`}>
-                {realRepackCxHora.toFixed(1)} <span className="text-[9px] text-slate-400 font-normal">cx/h</span>
-              </span>
-            </div>
-            <div className="border-l border-slate-800">
-              <span className="text-[9px] uppercase font-bold text-slate-400 block">Meta</span>
-              <span className="text-base font-black font-mono text-amber-400">
-                10.0 <span className="text-[9px] text-slate-400 font-normal">cx/h</span>
-              </span>
+              {todayRepackEntries.length === 0 ? (
+                <span className="border border-slate-300 text-slate-500 font-bold text-[10px] uppercase px-2.5 py-1 rounded-full inline-flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+                  SEM REGISTROS
+                </span>
+              ) : hasMissedRepackMeta ? (
+                <span className="bg-rose-50 text-rose-700 border border-rose-300 font-bold text-[10px] uppercase px-2.5 py-1 rounded-full inline-flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
+                  FORA DA META
+                </span>
+              ) : (
+                <span className="bg-emerald-50 text-emerald-700 border border-emerald-300 font-bold text-[10px] uppercase px-2.5 py-1 rounded-full inline-flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                  META ATINGIDA
+                </span>
+              )}
             </div>
           </div>
-          <span className="text-[9px] text-slate-400 font-mono block mt-1">
-            Gatilho: -10 cx/h | {totalRepackQty} cx repacadas hoje
-          </span>
+
+          <div className="text-[11px] text-slate-500 font-medium mt-4">
+            <span>Soma Meta Produtos:</span>
+            <div className="text-slate-600 font-bold mt-0.5">
+              {totalRepackMetaMins.toFixed(0)} min | Tempo Realizado: {totalRepackRealMins.toFixed(0)} min
+            </div>
+          </div>
         </div>
 
-        {/* REPACK META 2: META POR EMBALAGEM (SOMA DAS METAS DO DIA VS REAL) */}
-        <div className={`border p-4 rounded-xl flex flex-col justify-between transition-all ${
-          hasMissedRepackMeta
-            ? 'bg-rose-950/20 border-rose-500/50'
-            : todayRepackEntries.length > 0
-            ? 'bg-[#11151c] border-purple-500/40'
-            : 'bg-[#11151c] border-[#222d3a]'
-        }`}>
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2">
-              <div className="p-2 bg-purple-500/10 text-purple-400 rounded-lg">
-                <RefreshCw className="w-4 h-4" />
+        {/* CARD 2: META DESPEJO HOJE */}
+        <div className="bg-white border border-slate-200 text-slate-900 p-4 sm:p-5 rounded-2xl shadow-sm flex flex-col justify-between h-full">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-rose-50 text-rose-500 rounded-xl border border-rose-100 shrink-0">
+                <Trash2 className="w-5 h-5" />
               </div>
               <div>
-                <span className="text-[10px] font-black text-purple-400 uppercase tracking-wider block">Repack • Meta 2 (Embalagem)</span>
-                <span className="text-[11px] font-bold text-slate-300 block">Soma Metas vs Real</span>
+                <span className="font-extrabold text-[11px] text-slate-700 uppercase tracking-wider block">
+                  META DESPEJO HOJE
+                </span>
+                <span className="font-bold text-[10px] text-slate-400 uppercase tracking-wider block">
+                  (TEMPO POR UNIDADE)
+                </span>
               </div>
             </div>
-            <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full border shrink-0 ${
-              hasMissedRepackMeta
-                ? 'bg-rose-500/20 text-rose-300 border-rose-500/40 animate-pulse'
-                : todayRepackEntries.length > 0
-                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                : 'bg-slate-800 text-slate-400 border-slate-700'
-            }`}>
-              {hasMissedRepackMeta ? '🔴 FORA' : todayRepackEntries.length > 0 ? '🟢 DENTRO' : '⚪ SEM DADOS'}
-            </span>
+
+            <div>
+              {todayDespejoEntries.length === 0 ? (
+                <span className="border border-slate-300 text-slate-500 font-bold text-[10px] uppercase px-2.5 py-1 rounded-full inline-flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+                  SEM REGISTROS
+                </span>
+              ) : hasMissedDespejoMeta ? (
+                <span className="bg-rose-50 text-rose-700 border border-rose-300 font-bold text-[10px] uppercase px-2.5 py-1 rounded-full inline-flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
+                  FORA DA META
+                </span>
+              ) : (
+                <span className="bg-emerald-50 text-emerald-700 border border-emerald-300 font-bold text-[10px] uppercase px-2.5 py-1 rounded-full inline-flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                  META ATINGIDA
+                </span>
+              )}
+            </div>
           </div>
 
-          {/* Real vs Meta lado a lado */}
-          <div className="grid grid-cols-2 gap-2 bg-[#090d14] p-2.5 rounded-lg border border-slate-800 text-center my-1">
-            <div>
-              <span className="text-[9px] uppercase font-bold text-slate-400 block">Real (Hoje)</span>
-              <span className={`text-base font-black font-mono ${hasMissedRepackMeta ? 'text-rose-400' : 'text-purple-300'}`}>
-                {totalRepackRealMins.toFixed(0)} <span className="text-[9px] text-slate-400 font-normal">min</span>
-              </span>
-            </div>
-            <div className="border-l border-slate-800">
-              <span className="text-[9px] uppercase font-bold text-slate-400 block">Meta Somada</span>
-              <span className="text-base font-black font-mono text-amber-400">
-                {totalRepackMetaMins.toFixed(0)} <span className="text-[9px] text-slate-400 font-normal">min</span>
-              </span>
+          <div className="text-[11px] text-slate-500 font-medium mt-4">
+            <span>Soma Meta Produtos:</span>
+            <div className="text-slate-600 font-bold mt-0.5">
+              {totalDespejoMetaMins.toFixed(0)} min | Tempo Realizado: {totalDespejoRealMins.toFixed(0)} min
             </div>
           </div>
-          <span className="text-[9px] text-slate-400 font-mono block mt-1">
-            {todayRepackEntries.length} lançamento(s) somado(s)
-          </span>
         </div>
 
-        {/* DESPEJO SUMMARY */}
-        <div className="bg-[#11151c] border border-[#222d3a] p-4 rounded-xl flex flex-col justify-between">
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2">
-              <div className="p-2 bg-rose-500/10 text-rose-400 rounded-lg">
-                <Trash2 className="w-4 h-4" />
+        {/* CARD 3: QUALIDADE & WQI DO MÊS */}
+        <div className="bg-white border border-slate-200 text-slate-900 p-4 sm:p-5 rounded-2xl shadow-sm flex flex-col justify-between h-full">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-sky-50 text-sky-500 rounded-xl border border-sky-100 shrink-0">
+                <Award className="w-5 h-5" />
               </div>
               <div>
-                <span className="text-[10px] font-black text-rose-400 uppercase tracking-wider block">Despejo • Tempo Unidade</span>
-                <span className="text-[11px] font-bold text-slate-300 block">Soma Metas vs Real</span>
+                <span className="font-extrabold text-[11px] text-slate-700 uppercase tracking-wider block">
+                  QUALIDADE & WQI DO MÊS
+                </span>
               </div>
             </div>
-            <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full border shrink-0 ${
-              hasMissedDespejoMeta 
-                ? 'bg-rose-500/20 text-rose-400 border-rose-500/40 animate-pulse' 
-                : todayDespejoEntries.length > 0 
-                ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40' 
-                : 'bg-slate-800 text-slate-400 border-slate-700'
-            }`}>
-              {hasMissedDespejoMeta ? '🔴 FORA' : todayDespejoEntries.length > 0 ? '🟢 DENTRO' : '⚪ SEM DADOS'}
-            </span>
+
+            <div>
+              <span className="bg-emerald-100 text-emerald-800 border border-emerald-300 font-extrabold text-[10px] uppercase px-2.5 py-1 rounded-full inline-flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                META ATINGIDA
+              </span>
+            </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-2 bg-[#090d14] p-2.5 rounded-lg border border-slate-800 text-center my-1">
-            <div>
-              <span className="text-[9px] uppercase font-bold text-slate-400 block">Real</span>
-              <span className={`text-base font-black font-mono ${hasMissedDespejoMeta ? 'text-rose-400' : 'text-rose-300'}`}>
-                {totalDespejoRealMins.toFixed(0)} <span className="text-[9px] text-slate-400 font-normal">min</span>
-              </span>
-            </div>
-            <div className="border-l border-slate-800">
-              <span className="text-[9px] uppercase font-bold text-slate-400 block">Meta</span>
-              <span className="text-base font-black font-mono text-amber-400">
-                {totalDespejoMetaMins.toFixed(0)} <span className="text-[9px] text-slate-400 font-normal">min</span>
-              </span>
-            </div>
+          <div className="flex items-baseline justify-end my-1">
+            <span className="text-2xl font-black text-emerald-600">98.2%</span>
           </div>
-          <span className="text-[9px] text-slate-400 font-mono block mt-1">
-            {todayDespejoEntries.length} lançamento(s) de despejo
-          </span>
-        </div>
 
-        {/* WQI SUMMARY */}
-        <div className="bg-[#11151c] border border-[#222d3a] p-4 rounded-xl flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-sky-500/10 text-sky-400 rounded-lg">
-              <Award className="w-5 h-5" />
-            </div>
-            <div>
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Qualidade & WQI do Mês</span>
-              <span className="text-xs font-bold text-white block">
-                Atingimento Acumulado: <strong className="text-emerald-400 font-mono text-sm">98.2%</strong>
-              </span>
-              <span className="text-[10px] text-slate-400 block font-mono">
-                Meta do Mês: ≥ 95.0%
-              </span>
-            </div>
+          <div className="text-[11px] text-slate-500 font-medium">
+            <span>Meta do Mês: ≥ 95.0%</span>
           </div>
-          <span className="text-[10px] font-black uppercase px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shrink-0">
-            🟢 META ATINGIDA
-          </span>
         </div>
       </div>
 
       {/* WARNING IF SHIFT NOT STARTED */}
       {!shiftStarted && (
-        <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3.5 flex items-center justify-between text-xs text-amber-300">
-          <div className="flex items-center gap-2">
-            <Clock className="w-4 h-4 text-amber-400 flex-shrink-0" />
+        <div className="bg-sky-50/70 border border-sky-200 text-sky-950 px-4 py-3 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm">
+          <div className="flex items-center gap-2 text-xs font-semibold text-slate-700">
+            <Clock className="w-4 h-4 text-blue-600 shrink-0" />
             <span>
               <strong>Atenção:</strong> Você ainda não iniciou a jornada de hoje. Clique em <strong>INICIAR JORNADA</strong> no topo para habilitar os lançamentos.
             </span>
           </div>
           <button
             onClick={handleStartShift}
-            className="px-3 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-[10px] uppercase tracking-wider rounded-lg flex-shrink-0 cursor-pointer"
+            className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-black uppercase tracking-wider rounded-xl transition-all shadow-sm shrink-0 cursor-pointer"
           >
-            Iniciar Agora
+            INICIAR AGORA
           </button>
         </div>
       )}
 
       {/* MAIN TABS NAV - SYMMETRICAL 7 TABS */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2 bg-[#11151c] border border-[#222d3a] p-2 rounded-xl w-full">
+      <div className="bg-white border border-slate-200 p-1.5 rounded-2xl flex items-center gap-1.5 shadow-sm overflow-x-auto w-full">
         <button
           onClick={() => setActiveTab('repack')}
-          className={`px-3 py-2.5 rounded-lg font-sans font-bold text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2 ${
+          className={`px-4 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap ${
             activeTab === 'repack'
-              ? 'bg-purple-600 text-white font-black shadow'
-              : 'text-slate-400 hover:text-white bg-transparent'
+              ? 'bg-blue-600 text-white shadow-sm'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
           }`}
         >
-          <RefreshCw className="w-4 h-4 shrink-0" />
-          <span className="truncate">1. Repack</span>
+          <RefreshCw className="w-3.5 h-3.5 shrink-0" />
+          <span>1. REPACK</span>
         </button>
 
         <button
           onClick={() => setActiveTab('despejo')}
-          className={`px-3 py-2.5 rounded-lg font-sans font-bold text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2 ${
+          className={`px-4 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap ${
             activeTab === 'despejo'
-              ? 'bg-rose-600 text-white font-black shadow'
-              : 'text-slate-400 hover:text-white bg-transparent'
+              ? 'bg-blue-600 text-white shadow-sm'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
           }`}
         >
-          <Trash2 className="w-4 h-4 shrink-0" />
-          <span className="truncate">2. Despejo</span>
+          <Trash2 className="w-3.5 h-3.5 shrink-0" />
+          <span>2. DESPEJO</span>
         </button>
 
         <button
           onClick={() => setActiveTab('quebras')}
-          className={`px-3 py-2.5 rounded-lg font-sans font-bold text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2 ${
+          className={`px-4 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap ${
             activeTab === 'quebras'
-              ? 'bg-amber-600 text-white font-black shadow'
-              : 'text-slate-400 hover:text-white bg-transparent'
+              ? 'bg-blue-600 text-white shadow-sm'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
           }`}
         >
-          <AlertTriangle className="w-4 h-4 shrink-0" />
-          <span className="truncate">3. Quebras</span>
+          <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+          <span>3. QUEBRAS</span>
         </button>
 
         <button
           onClick={() => setActiveTab('retorno_rota')}
-          className={`px-3 py-2.5 rounded-lg font-sans font-bold text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2 ${
+          className={`px-4 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap ${
             activeTab === 'retorno_rota'
-              ? 'bg-emerald-600 text-white font-black shadow'
-              : 'text-slate-400 hover:text-white bg-transparent'
+              ? 'bg-blue-600 text-white shadow-sm'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
           }`}
         >
-          <Truck className="w-4 h-4 shrink-0" />
-          <span className="truncate">4. Retorno Rota</span>
+          <Truck className="w-3.5 h-3.5 shrink-0" />
+          <span>4. RETORNO DE ROTA</span>
         </button>
 
         <button
           onClick={() => setActiveTab('5s')}
-          className={`px-3 py-2.5 rounded-lg font-sans font-bold text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2 ${
+          className={`px-4 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap ${
             activeTab === '5s'
-              ? 'bg-amber-500 text-slate-950 font-black shadow'
-              : 'text-slate-400 hover:text-white bg-transparent'
+              ? 'bg-blue-600 text-white shadow-sm'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
           }`}
         >
-          <SquareCheck className="w-4 h-4 shrink-0" />
-          <span className="truncate">5. Realização 5S</span>
+          <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+          <span>5. REALIZAÇÃO DO 5S</span>
         </button>
 
         <button
           onClick={() => setActiveTab('historico')}
-          className={`px-3 py-2.5 rounded-lg font-sans font-bold text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2 ${
+          className={`px-4 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap ${
             activeTab === 'historico'
-              ? 'bg-cyan-600 text-white font-black shadow'
-              : 'text-slate-400 hover:text-white bg-transparent'
+              ? 'bg-blue-600 text-white shadow-sm'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
           }`}
         >
-          <History className="w-4 h-4 shrink-0" />
-          <span className="truncate">6. Histórico</span>
+          <History className="w-3.5 h-3.5 shrink-0" />
+          <span>6. HISTÓRICO</span>
         </button>
 
         <button
           onClick={() => setActiveTab('acoes')}
-          className={`px-3 py-2.5 rounded-lg font-sans font-bold text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2 ${
+          className={`px-4 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap ${
             activeTab === 'acoes'
-              ? 'bg-amber-500 text-slate-950 font-black shadow'
-              : 'text-slate-400 hover:text-white bg-transparent'
+              ? 'bg-blue-600 text-white shadow-sm'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
           }`}
         >
-          <ShieldCheck className="w-4 h-4 shrink-0" />
-          <span className="truncate">7. Guia Ações</span>
+          <Zap className="w-3.5 h-3.5 shrink-0" />
+          <span>7. GUIA AÇÕES</span>
         </button>
       </div>
 

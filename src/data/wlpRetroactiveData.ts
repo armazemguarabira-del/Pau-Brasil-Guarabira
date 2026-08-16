@@ -276,7 +276,12 @@ export const RAW_PONTOS_WLP_TEXT = `03/02/2026;536,06;CICERO MATHEU DE OLIVEIRA 
 28/02/2026;419,29;OZENILDO SOUSA SILVA;;06:58;10:00;
 28/02/2026;419,29;PAULO PEREIRA DA SILVA;;13:03;20:53;`;
 
+let cachedRetroactiveResult: PontoRetroativoRaw[] | null = null;
+
 export function parseRetroactiveText(): PontoRetroativoRaw[] {
+  if (cachedRetroactiveResult) {
+    return cachedRetroactiveResult;
+  }
   const result: PontoRetroativoRaw[] = [];
 
   // 1. Process structured official rows from WLP_OFFICIAL_DATASET_2026
@@ -331,5 +336,6 @@ export function parseRetroactiveText(): PontoRetroativoRaw[] {
       }
     }
   }
+  cachedRetroactiveResult = result;
   return result;
 }

@@ -6,7 +6,6 @@ import { useEmpresaData } from '../context/EmpresaDataContext';
 import { PRODUCTS } from '../planosData';
 import { TrendingUp, CheckCircle, Clock, Award, BarChart2, AlertTriangle, FileSpreadsheet, Upload, Download, FileText, Database, Check, RefreshCw } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import SugerirMelhoriaCard from './SugerirMelhoriaCard';
 import { SopBannerViewer } from './SopBannerViewer';
 import { filterHistoryForUser, HistoryRestrictionNotice } from '../utils/historyFilter';
 import { triggerAutoAcaoCorretiva } from '../utils/simulacaoAcoesUtils';
@@ -1255,9 +1254,6 @@ export default function QuebrasPanel({ user, empresa, shiftStarted, onRequireShi
           })()}
         </div>
       )}
-
-      {/* Sugerir Melhoria / Plano de Ação para Supervisores */}
-      <SugerirMelhoriaCard user={user} empresa={empresa} setor="Quebras" />
 
       {/* Modal de Edição de Lançamento no Histórico */}
       {editingRow && (

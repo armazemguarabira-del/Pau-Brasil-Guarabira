@@ -4,7 +4,6 @@ import { collection, addDoc, deleteDoc, doc, updateDoc } from 'firebase/firestor
 import { Usuario, Empresa, ArmazemRow } from '../types';
 import { useEmpresaData } from '../context/EmpresaDataContext';
 import { TrendingUp, CheckCircle, Clock, Award, BarChart2, Pencil } from 'lucide-react';
-import SugerirMelhoriaCard from './SugerirMelhoriaCard';
 import { SopBannerViewer } from './SopBannerViewer';
 
 interface ArmazemPanelProps {
@@ -1144,9 +1143,6 @@ export default function ArmazemPanel({ user, empresa }: ArmazemPanelProps) {
           </div>
         </div>
       )}
-
-      {/* Sugerir Melhoria / Plano de Ação para Supervisores */}
-      <SugerirMelhoriaCard user={user} empresa={empresa} setor="EFC / EFD" />
     </div>
   );
 }

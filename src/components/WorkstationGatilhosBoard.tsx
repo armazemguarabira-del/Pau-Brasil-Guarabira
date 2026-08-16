@@ -587,20 +587,11 @@ export const WorkstationGatilhosBoard: React.FC<WorkstationGatilhosBoardProps> =
             </div>
 
             <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={() => setIsModalOpen(true)}
-                className="px-4 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl shadow-lg transition-all cursor-pointer flex items-center gap-2 border border-amber-400/50"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Registrar Desvio no Gatilho</span>
-              </button>
-
               {onNavigateToAcoes && (
                 <button
                   type="button"
                   onClick={onNavigateToAcoes}
-                  className="px-4 py-2.5 bg-[#0b1222] hover:bg-slate-800 text-amber-400 font-bold text-xs uppercase tracking-wider rounded-xl border border-amber-500/30 transition-all cursor-pointer flex items-center gap-2"
+                  className="px-4 py-2.5 bg-[#0b1222] hover:bg-slate-800 text-amber-400 font-bold text-xs uppercase tracking-wider rounded-xl border border-amber-500/30 transition-all cursor-pointer flex items-center gap-2 shadow-lg"
                 >
                   <FileText className="w-4 h-4" />
                   <span>Planos de Ação DPO</span>

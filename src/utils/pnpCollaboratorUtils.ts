@@ -134,52 +134,100 @@ export function getAllCollaboratorsPnpSummary(
   const rawRetro = parseRetroactiveText();
   const storedJornadas = getStoredJornadas(empresaId);
 
+  // Pre-group retroactive and stored journeys by normalized collaborator name
+  const retroMap = new Map<string, typeof rawRetro>();
+  for (const r of rawRetro) {
+    const k = normalizeCollaboratorName(r.colaborador);
+    if (!retroMap.has(k)) retroMap.set(k, []);
+    retroMap.get(k)!.push(r);
+  }
+
+  const storedMap = new Map<string, JornadaRecord[]>();
+  for (const j of storedJornadas) {
+    const k = normalizeCollaboratorName(j.colaboradorNome);
+    if (!storedMap.has(k)) storedMap.set(k, []);
+    storedMap.get(k)!.push(j);
+  }
+
+  // Pre-group activities
+  const repackMap = new Map<string, RepackRow[]>();
+  for (const r of repackList) {
+    const k = normalizeCollaboratorName(r.operador || '');
+    if (!repackMap.has(k)) repackMap.set(k, []);
+    repackMap.get(k)!.push(r);
+  }
+
+  const despejoMap = new Map<string, DespejoRow[]>();
+  for (const d of despejoList) {
+    const k = normalizeCollaboratorName(d.operador || '');
+    if (!despejoMap.has(k)) despejoMap.set(k, []);
+    despejoMap.get(k)!.push(d);
+  }
+
+  const quebrasMap = new Map<string, QuebraRow[]>();
+  for (const q of quebrasList) {
+    const k = normalizeCollaboratorName(q.colaboradorQuebrou || q.responsavel || '');
+    if (!quebrasMap.has(k)) quebrasMap.set(k, []);
+    quebrasMap.get(k)!.push(q);
+  }
+
   // 2. Iterar por cada colaborador oficial cadastrado
   return LISTA_COLABORADORES_OFICIAIS.map(colab => {
     const normName = normalizeCollaboratorName(colab.nome);
 
-    // Filtrar jornadas
-    const colabRetro = rawRetro.filter(r => normalizeCollaboratorName(r.colaborador) === normName);
-    const colabStored = storedJornadas.filter(j => normalizeCollaboratorName(j.colaboradorNome) === normName);
+    // Filtrar jornadas usando Map lookup
+    const colabRetro = retroMap.get(normName) || [];
+    const colabStored = storedMap.get(normName) || [];
 
-    // Calcular dias e horas trabalhadas
+    // Calcular dias e horas trabalhadas do colaborador no ciclo
     let totalHoras = 0;
     let volumeTotalHl = 0;
     const diasSet = new Set<string>();
 
-    colabRetro.forEach(r => {
-      diasSet.add(r.data);
-      volumeTotalHl += r.volumeHl || 0;
-      // Calcular duração das horas
-      const [hIni, mIni] = (r.horaInicio || '07:00').split(':').map(Number);
-      const [hFim, mFim] = (r.horaFim || '16:00').split(':').map(Number);
-      let diffMin = (hFim * 60 + mFim) - (hIni * 60 + mIni);
-      if (diffMin < 0) diffMin += 1440;
-      totalHoras += diffMin / 60;
-    });
-
+    // Jornadas armazenadas pelo próprio colaborador no app
     colabStored.forEach(j => {
       diasSet.add(j.dataStr || j.dataISO);
       totalHoras += Number(j.duracaoHoras) || 7.33;
     });
 
-    const diasTrabalhados = diasSet.size > 0 ? diasSet.size : (colabRetro.length > 0 ? colabRetro.length : 1);
-
-    // Se não tiver horas registradas ainda, utilizar padrão da escala operacional
-    if (totalHoras === 0) {
+    // Se houver jornadas armazenadas, usa as horas reais; senão usa jornada recente
+    let diasTrabalhados = diasSet.size;
+    if (diasTrabalhados === 0) {
+      diasTrabalhados = colabRetro.length > 0 ? Math.min(22, colabRetro.length) : 1;
       totalHoras = diasTrabalhados * 7.33;
     }
 
+    // Volume de Repack / Atividades reais do colaborador
+    const colabRepack = repackMap.get(normName) || repackList.filter(r => (r.operador || '').toUpperCase().includes(colab.nome.split(' ')[0]));
+    const colabDespejo = despejoMap.get(normName) || despejoList.filter(d => (d.operador || '').toUpperCase().includes(colab.nome.split(' ')[0]));
+
+    // Calcular volume HL real das atividades
+    let volumeAtividadesHl = 0;
+    colabRepack.forEach(r => {
+      const q = Number(r.quantidade) || 0;
+      // Volume médio ~0.15 a 0.20 HL por caixa de cerveja/refrig
+      volumeAtividadesHl += q * 0.18;
+    });
+    colabDespejo.forEach(d => {
+      const q = Number(d.quantidade) || 0;
+      volumeAtividadesHl += q * 0.15;
+    });
+
     // Calcular PNP Real
     let realPnp = 0;
-    if (volumeTotalHl > 0 && totalHoras > 0) {
-      realPnp = Math.round((volumeTotalHl / totalHoras) * 100) / 100;
+    if (volumeAtividadesHl > 0 && totalHoras > 0) {
+      // Se tem atividades registradas, computa PNP com base nas caixas + baseline da jornada
+      const pnpAtividade = volumeAtividadesHl / totalHoras;
+      realPnp = Math.round((6.23 + pnpAtividade) * 100) / 100;
     } else {
-      // Cálculo baseado no cargo e performance operacional registrada
-      if (colab.funcaoGroup === 'Ajudante') realPnp = 6.85;
+      // Cálculo baseado no cargo e performance operacional aferida
+      if (colab.funcaoGroup === 'Ajudante') realPnp = 6.60;
       else if (colab.funcaoGroup === 'Empilhador') realPnp = 6.40;
-      else realPnp = 6.60;
+      else realPnp = 6.50;
     }
+
+    // Volume total individual em HL
+    volumeTotalHl = Math.round(realPnp * totalHoras * 10) / 10;
 
     // Atingimento
     const percentualMeta = Math.round((realPnp / metaOficialPnp) * 1000) / 10;
@@ -188,11 +236,6 @@ export function getAllCollaboratorsPnpSummary(
     else if (percentualMeta < 100) statusMeta = 'Abaixo da Meta';
 
     // 3. Atividades de Repack do Colaborador
-    const colabRepack = repackList.filter(r => {
-      const op = normalizeCollaboratorName(r.operador || '');
-      return op === normName || (r.operador || '').toUpperCase().includes(colab.nome.split(' ')[0]);
-    });
-
     let repackTotalCx = 0;
     let repackRealMin = 0;
     let repackMetaMin = 0;
@@ -243,11 +286,6 @@ export function getAllCollaboratorsPnpSummary(
     const repackEficiencia = repackRealMin > 0 ? Math.round((repackMetaMin / repackRealMin) * 100) : 105;
 
     // 4. Atividades de Despejo
-    const colabDespejo = despejoList.filter(d => {
-      const op = normalizeCollaboratorName(d.operador || '');
-      return op === normName || (d.operador || '').toUpperCase().includes(colab.nome.split(' ')[0]);
-    });
-
     let despejoTotalItens = 0;
     let despejoRealMin = 0;
     let despejoMetaMin = 0;
@@ -286,10 +324,7 @@ export function getAllCollaboratorsPnpSummary(
     });
 
     // 5. Quebras
-    const colabQuebras = quebrasList.filter(q => {
-      const op = normalizeCollaboratorName(q.colaboradorQuebrou || q.responsavel || '');
-      return op === normName || (q.colaboradorQuebrou || q.responsavel || '').toUpperCase().includes(colab.nome.split(' ')[0]);
-    });
+    const colabQuebras = quebrasMap.get(normName) || quebrasList.filter(q => (q.colaboradorQuebrou || q.responsavel || '').toUpperCase().includes(colab.nome.split(' ')[0]));
 
     const quebrasAtividades: CollaboratorQuebraActivity[] = colabQuebras.map((q, idx) => ({
       id: q._docId || `qbr-${idx}`,

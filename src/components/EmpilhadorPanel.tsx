@@ -3,7 +3,6 @@ import { db } from '../firebase';
 import { collection, updateDoc, doc, addDoc } from 'firebase/firestore';
 import { Usuario, Empresa, Tarefa, TmrDemand, FefoRelocationDemand } from '../types';
 import { useEmpresaData } from '../context/EmpresaDataContext';
-import SugerirMelhoriaCard from './SugerirMelhoriaCard';
 import { filterHistoryForUser, HistoryRestrictionNotice } from '../utils/historyFilter';
 import { 
   getStoredEfcVehicles, 
@@ -48,6 +47,7 @@ import {
   Download,
   HelpCircle,
   SquareCheck,
+  ShieldCheck,
   Zap,
   Power,
   RotateCcw
@@ -180,8 +180,8 @@ export default function EmpilhadorPanel({ user, empresa, theme = 'dark' }: Empil
   const [checklist, setChecklist] = useState(defaultChecklist);
   const [checklistDone, setChecklistDone] = useState<boolean>(false);
 
-  // Subtab for Demand Board: 7 main tabs ('carregamento' | 'descarregamento' | 'tmr' | 'rr' | 'realocacao_dedo' | '5s' | 'historico')
-  const [demandTab, setDemandTab] = useState<'carregamento' | 'descarregamento' | 'tmr' | 'rr' | 'realocacao_dedo' | '5s' | 'historico'>('carregamento');
+  // Subtab for Demand Board: 8 main tabs ('carregamento' | 'descarregamento' | 'tmr' | 'rr' | 'realocacao_dedo' | '5s' | 'historico' | 'acoes')
+  const [demandTab, setDemandTab] = useState<'carregamento' | 'descarregamento' | 'tmr' | 'rr' | 'realocacao_dedo' | '5s' | 'historico' | 'acoes'>('carregamento');
   
   // Per-tab history toggle states
   const [efcHistoryView, setEfcHistoryView] = useState<boolean>(false);
@@ -979,9 +979,6 @@ export default function EmpilhadorPanel({ user, empresa, theme = 'dark' }: Empil
             </div>
           </div>
 
-          {/* QUADRO DE AÇÕES CORRETIVAS E MELHORIAS ATRIBUÍDAS AO OPERADOR DE EMPILHADEIRA */}
-          <GuiaAcoesOperacionais user={user} roleName="Operador de Empilhadeira" />
-
           {/* QUADRO DE DEMANDAS TABS */}
           <div className="g-card p-6 flex flex-col gap-5">
             <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3 border-b border-[#222d3a] pb-4">
@@ -990,7 +987,7 @@ export default function EmpilhadorPanel({ user, empresa, theme = 'dark' }: Empil
                   <Activity className="w-4 h-4 text-amber-400" /> QUADRO DE DEMANDAS DO DIA DOS EMPILHADORES
                 </h4>
                 <p className="text-[10px] text-slate-400 font-medium">
-                  Ciclo Operacional Ativo: EFC (Carregamento) ➔ EFD (Descarregamento) ➔ Histórico de Conclusões
+                  Ciclo Operacional Ativo: EFC (Carregamento) ➔ EFD (Descarregamento) ➔ Histórico de Conclusões ➔ Guia de Ações
                 </p>
               </div>
 
@@ -1019,8 +1016,8 @@ export default function EmpilhadorPanel({ user, empresa, theme = 'dark' }: Empil
               </div>
             </div>
 
-            {/* TAB SELECTORS - 7 OPERATIONAL TABS */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2 bg-[#151b23] border border-[#222d3a] p-2 rounded-xl w-full">
+            {/* TAB SELECTORS - 8 OPERATIONAL TABS */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2 bg-[#151b23] border border-[#222d3a] p-2 rounded-xl w-full">
               <button
                 onClick={() => setDemandTab('carregamento')}
                 className={`px-3 py-2.5 rounded-lg font-sans font-bold text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
@@ -1030,7 +1027,7 @@ export default function EmpilhadorPanel({ user, empresa, theme = 'dark' }: Empil
                 }`}
               >
                 <Truck className="w-4 h-4 shrink-0" />
-                <span className="truncate">1. Carregamento</span>
+                <span className="truncate">1. Carreg.</span>
                 <span className="bg-slate-900 text-amber-300 text-[9px] px-1.5 py-0.5 rounded-full font-mono font-bold shrink-0">
                   {efcPendingVehicles.length}
                 </span>
@@ -1045,7 +1042,7 @@ export default function EmpilhadorPanel({ user, empresa, theme = 'dark' }: Empil
                 }`}
               >
                 <Clock className="w-4 h-4 shrink-0" />
-                <span className="truncate">2. Descarregamento</span>
+                <span className="truncate">2. Descarreg.</span>
                 <span className="bg-emerald-950 text-emerald-200 text-[9px] px-1.5 py-0.5 rounded-full font-mono font-bold shrink-0">
                   {efdPendingVehicles.length}
                 </span>
@@ -1060,7 +1057,7 @@ export default function EmpilhadorPanel({ user, empresa, theme = 'dark' }: Empil
                 }`}
               >
                 <Layers className="w-4 h-4 shrink-0" />
-                <span className="truncate">3. TMR Revendas</span>
+                <span className="truncate">3. TMR</span>
                 <span className="bg-purple-950 text-purple-200 text-[9px] px-1.5 py-0.5 rounded-full font-mono font-bold shrink-0">
                   {myAssignedTmr.filter(t => t.status !== 'done').length}
                 </span>
@@ -1075,7 +1072,7 @@ export default function EmpilhadorPanel({ user, empresa, theme = 'dark' }: Empil
                 }`}
               >
                 <Package className="w-4 h-4 shrink-0" />
-                <span className="truncate">4. Ressuprimento</span>
+                <span className="truncate">4. Ressupr.</span>
                 <span className="bg-emerald-950 text-emerald-200 text-[9px] px-1.5 py-0.5 rounded-full font-mono font-bold shrink-0">
                   {myAssignedTasks.filter(t => t.status !== 'done').length}
                 </span>
@@ -1090,7 +1087,7 @@ export default function EmpilhadorPanel({ user, empresa, theme = 'dark' }: Empil
                 }`}
               >
                 <AlertTriangle className="w-4 h-4 shrink-0 text-amber-300" />
-                <span className="truncate">5. Realocação Dedo</span>
+                <span className="truncate">5. Realoc.</span>
                 <span className="bg-red-950 text-red-200 text-[9px] px-1.5 py-0.5 rounded-full font-mono font-bold shrink-0">
                   {myAssignedFefo.filter(t => t.status !== 'done').length}
                 </span>
@@ -1105,7 +1102,7 @@ export default function EmpilhadorPanel({ user, empresa, theme = 'dark' }: Empil
                 }`}
               >
                 <CheckCircle2 className="w-4 h-4 shrink-0" />
-                <span className="truncate">6. Realização 5S</span>
+                <span className="truncate">6. 5S</span>
               </button>
 
               <button
@@ -1121,6 +1118,18 @@ export default function EmpilhadorPanel({ user, empresa, theme = 'dark' }: Empil
                 <span className="bg-cyan-950 text-cyan-200 text-[9px] px-1.5 py-0.5 rounded-full font-mono shrink-0">
                   {totalOpsCompleted}
                 </span>
+              </button>
+
+              <button
+                onClick={() => setDemandTab('acoes')}
+                className={`px-3 py-2.5 rounded-lg font-sans font-bold text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                  demandTab === 'acoes'
+                    ? 'bg-amber-500 text-slate-950 font-black shadow'
+                    : 'text-slate-400 hover:text-white bg-transparent'
+                }`}
+              >
+                <ShieldCheck className="w-4 h-4 shrink-0" />
+                <span className="truncate">8. Guia Ações</span>
               </button>
             </div>
 
@@ -1871,6 +1880,11 @@ export default function EmpilhadorPanel({ user, empresa, theme = 'dark' }: Empil
                 </div>
               </div>
             )}
+
+            {/* ABA 8: GUIA DE AÇÕES DO OPERADOR DE EMPILHADEIRA */}
+            {demandTab === 'acoes' && (
+              <GuiaAcoesOperacionais user={user} roleName="Operador de Empilhadeira" />
+            )}
           </div>
 
           {/* POP OPERACIONAL MODAL WITH REQUIRED CIENTE AGREEMENT */}
@@ -2059,9 +2073,6 @@ export default function EmpilhadorPanel({ user, empresa, theme = 'dark' }: Empil
 
         </div>
       )}
-
-      {/* Sugerir Melhoria / Plano de Ação para Supervisores */}
-      <SugerirMelhoriaCard user={user} empresa={empresa} setor="Picking & Empilhadeiras" />
     </div>
   );
 }

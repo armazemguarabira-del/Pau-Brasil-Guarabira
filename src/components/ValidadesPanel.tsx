@@ -5,7 +5,6 @@ import { collection, addDoc, deleteDoc, doc, updateDoc } from 'firebase/firestor
 import { Usuario, Empresa, ValidadeRow } from '../types';
 import { useEmpresaData } from '../context/EmpresaDataContext';
 import { PRODUCTS } from '../planosData';
-import SugerirMelhoriaCard from './SugerirMelhoriaCard';
 import { SopBannerViewer } from './SopBannerViewer';
 import { filterHistoryForUser, HistoryRestrictionNotice } from '../utils/historyFilter';
 import { calcularQuebrasFefoEstoqueXEstoque, calcularQuebrasFefoEstoqueXPicking } from '../utils/matrizBlocos';
@@ -1981,9 +1980,6 @@ export default function ValidadesPanel({ user, empresa, hideSugerirMelhoria }: V
           </div>
         </div>
       )}
-
-      {/* Sugerir Melhoria / Plano de Ação para Supervisores */}
-      {!hideSugerirMelhoria && <SugerirMelhoriaCard user={user} empresa={empresa} setor="Validade" />}
     </div>
   );
 }

@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { Usuario, Empresa } from '../types';
 import { ExecutiveActionBoard } from './ExecutiveActionBoard';
 import RegistrosPanel from './RegistrosPanel';
-import { ListChecks, ShieldCheck, Layers, Plus } from 'lucide-react';
+import { ListChecks, ShieldCheck, Layers, Plus, Flame, Sparkles } from 'lucide-react';
+import { openModalAcaoDesvio, openModalAcaoMelhoria } from '../utils/actionsEvents';
 
 interface SimulacaoAcoesPanelProps {
   user: Usuario;
@@ -28,30 +29,54 @@ export default function SimulacaoAcoesPanel({ user, empresa = null, onNavigate =
           </p>
         </div>
 
-        <div className="flex items-center gap-2 bg-[#0b1222] p-1.5 rounded-xl border border-slate-800">
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Ação de Desvio */}
           <button
-            onClick={() => setActiveTab('acoes')}
-            className={`px-4 py-2 rounded-lg font-black text-xs uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer border-none ${
-              activeTab === 'acoes'
-                ? 'bg-emerald-600 text-white shadow-md'
-                : 'text-slate-400 hover:text-white bg-transparent'
-            }`}
+            type="button"
+            onClick={() => openModalAcaoDesvio()}
+            className="px-3 py-2 rounded-xl bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-500/40 text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all hover:scale-105 cursor-pointer"
+            title="Registrar Ação de Desvio ou Estouro de Gatilho DPO"
           >
-            <ListChecks className="w-4 h-4" />
-            Planos de Ação DPO
+            <Flame className="w-3.5 h-3.5 text-red-400 animate-pulse" />
+            <span>+ Ação de Desvio</span>
           </button>
 
+          {/* Ação de Melhoria */}
           <button
-            onClick={() => setActiveTab('governanca')}
-            className={`px-4 py-2 rounded-lg font-black text-xs uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer border-none ${
-              activeTab === 'governanca'
-                ? 'bg-emerald-600 text-white shadow-md'
-                : 'text-slate-400 hover:text-white bg-transparent'
-            }`}
+            type="button"
+            onClick={() => openModalAcaoMelhoria()}
+            className="px-3 py-2 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/40 text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all hover:scale-105 cursor-pointer"
+            title="Registrar Ação de Melhoria TOR e Reuniões DPO"
           >
-            <Layers className="w-4 h-4" />
-            Governança & Setores Operacionais
+            <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+            <span>+ Ação de Melhoria TOR</span>
           </button>
+
+          <div className="flex items-center gap-1.5 bg-[#0b1222] p-1.5 rounded-xl border border-slate-800">
+            <button
+              onClick={() => setActiveTab('acoes')}
+              className={`px-3.5 py-1.5 rounded-lg font-black text-xs uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer border-none ${
+                activeTab === 'acoes'
+                  ? 'bg-emerald-600 text-white shadow-md'
+                  : 'text-slate-400 hover:text-white bg-transparent'
+              }`}
+            >
+              <ListChecks className="w-3.5 h-3.5" />
+              Planos DPO
+            </button>
+
+            <button
+              onClick={() => setActiveTab('governanca')}
+              className={`px-3.5 py-1.5 rounded-lg font-black text-xs uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer border-none ${
+                activeTab === 'governanca'
+                  ? 'bg-emerald-600 text-white shadow-md'
+                  : 'text-slate-400 hover:text-white bg-transparent'
+              }`}
+            >
+              <Layers className="w-3.5 h-3.5" />
+              Governança
+            </button>
+          </div>
         </div>
       </div>
 
@@ -64,4 +89,5 @@ export default function SimulacaoAcoesPanel({ user, empresa = null, onNavigate =
     </div>
   );
 }
+
 

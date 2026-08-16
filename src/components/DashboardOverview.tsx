@@ -80,12 +80,14 @@ import { Checklist5SModal, Audit5SRecord } from './Checklist5SModal';
 import { Workstation5SSection } from './Workstation5SSection';
 import { WorkstationCriticosRecolhimento } from './WorkstationCriticosRecolhimento';
 import { WorkstationExecutivePnpSection } from './WorkstationExecutivePnpSection';
+import { OperationalCollaboratorPnpBanner } from './OperationalCollaboratorPnpBanner';
 import { AgendaExecutivoComponent } from './AgendaExecutivoComponent';
 import { DiarioBordoComponent } from './DiarioBordoComponent';
 import { ReunioesComponent } from './ReunioesComponent';
 import { FluxogramaDemandasComponent } from './FluxogramaDemandasComponent';
 import { WlpDashboard } from './WlpDashboard';
 import { WorkstationGatilhosBoard } from './WorkstationGatilhosBoard';
+import { ItensCriticosEVerificacao } from './ItensCriticosEVerificacao';
 import { collection, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useEmpresaData } from '../context/EmpresaDataContext';
@@ -1335,76 +1337,20 @@ export default function DashboardOverview({
             onRefresh={() => (empresaData as any)?.refetchValidades?.() || (empresaData as any)?.refreshAllData?.()}
           />
 
-          {/* VISÃO EXECUTIVA • PRODUTIVIDADE PNP DE TODOS OS COLABORADORES */}
-          <WorkstationExecutivePnpSection empresaId={empresa?.id || 'demo'} />
+          {/* ACOMPANHAMENTO DE PNP: INDIVIDUAL PARA O OPERACIONAL / VISÃO EXECUTIVA PARA GESTÃO */}
+          {isSupervisorOrAdmin && viewMode !== 'operacional' ? (
+            <WorkstationExecutivePnpSection empresaId={empresa?.id || 'demo'} />
+          ) : (
+            <OperationalCollaboratorPnpBanner user={user} theme="dark" />
+          )}
 
-          {/* TRÍPLICE ESTRUTURA: IC (ITENS CRÍTICOS) & IV (ITENS DE VERIFICAÇÃO DO DIA) */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* ITENS CRÍTICOS DO DIA (IC) */}
-            <div className="bg-[#111a30] border border-rose-500/30 rounded-2xl p-5 space-y-3">
-              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                <h3 className="text-xs font-black uppercase tracking-wider text-rose-400 flex items-center gap-2">
-                  <AlertTriangle className="w-4 h-4 text-rose-400" /> IC - Itens Críticos do Dia
-                </h3>
-                <span className="text-[9px] bg-rose-500/20 text-rose-300 font-bold px-2 py-0.5 rounded border border-rose-500/30">
-                  Atenção Imediata
-                </span>
-              </div>
+          {/* TRÍPLICE ESTRUTURA: IC (ITENS CRÍTICOS) & IV (ITENS DE VERIFICAÇÃO DO DIA) - UNIFICADO EXECUTIVO E OPERACIONAL */}
+          <ItensCriticosEVerificacao user={user} isSupervisorOrAdmin={isSupervisorOrAdmin} />
 
-              <div className="space-y-2">
-                <div className="p-3 bg-[#0b1222] rounded-xl border border-rose-500/20 flex items-start gap-2.5">
-                  <span className="w-2 h-2 rounded-full bg-rose-500 mt-1 shrink-0" />
-                  <div>
-                    <strong className="text-xs text-white block">Produtos com Shelf Life ≤ 15 dias no Armazém</strong>
-                    <span className="text-[10px] text-slate-400">Verificar lote e priorizar saída de SKUs críticos via FEFO.</span>
-                  </div>
-                </div>
-
-                <div className="p-3 bg-[#0b1222] rounded-xl border border-rose-500/20 flex items-start gap-2.5">
-                  <span className="w-2 h-2 rounded-full bg-rose-500 mt-1 shrink-0" />
-                  <div>
-                    <strong className="text-xs text-white block">Avaria Elevada na Rua C (Picking Puxado)</strong>
-                    <span className="text-[10px] text-slate-400">Respeitar amarração correta de palete para evitar quebra em curva.</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* ITENS DE VERIFICAÇÃO DO DIA (IV) */}
-            <div className="bg-[#111a30] border border-sky-500/30 rounded-2xl p-5 space-y-3">
-              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                <h3 className="text-xs font-black uppercase tracking-wider text-sky-400 flex items-center gap-2">
-                  <ClipboardCheck className="w-4 h-4 text-sky-400" /> IV - Itens de Verificação Diária
-                </h3>
-                <span className="text-[9px] bg-sky-500/20 text-sky-300 font-bold px-2 py-0.5 rounded border border-sky-500/30">
-                  Checklist Rotina
-                </span>
-              </div>
-
-              <div className="space-y-2">
-                <div className="p-3 bg-[#0b1222] rounded-xl border border-sky-500/20 flex items-start gap-2.5">
-                  <CheckCircle2 className="w-4 h-4 text-sky-400 shrink-0 mt-0.5" />
-                  <div>
-                    <strong className="text-xs text-white block">Execução Rigorosa da Regra FEFO</strong>
-                    <span className="text-[10px] text-slate-400">Conferir data de validade impresso antes da montagem.</span>
-                  </div>
-                </div>
-
-                <div className="p-3 bg-[#0b1222] rounded-xl border border-sky-500/20 flex items-start gap-2.5">
-                  <CheckCircle2 className="w-4 h-4 text-sky-400 shrink-0 mt-0.5" />
-                  <div>
-                    <strong className="text-xs text-white block">Checklist Diário de Empilhadeira & Transpaleteira</strong>
-                    <span className="text-[10px] text-slate-400">Checagem de fluido, buzina e travamento antes do início do turno.</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* RECONHECIMENTO DA SEMANA & MELHORES COLABORADORES */}
+          {/* RECONHECIMENTO DA SEMANA & MELHORES COLABORADORES POR OPERAÇÃO */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* RECONHECIMENTO */}
-            <div className="bg-[#111a30] border border-indigo-500/30 rounded-2xl p-5 space-y-3">
+            <div className="bg-[#111a30] border border-indigo-500/30 rounded-2xl p-5 space-y-3 shadow-xl">
               <span className="text-[10px] font-black uppercase tracking-widest text-indigo-400 bg-indigo-500/10 px-2.5 py-0.5 rounded-full border border-indigo-500/20 flex items-center gap-1 w-max">
                 <Award className="w-3.5 h-3.5" /> Destaque da Semana
               </span>
@@ -1417,11 +1363,11 @@ export default function DashboardOverview({
               </p>
             </div>
 
-            {/* RANKING DOS MELHORES TOP 5 (OPERADORES VS AJUDANTES) */}
-            <div className="lg:col-span-2 bg-[#111a30] border border-slate-800 rounded-2xl p-5 space-y-4">
+            {/* RANKING DOS MELHORES TOP 5 POR OPERAÇÃO */}
+            <div className="lg:col-span-2 bg-[#111a30] border border-slate-800 rounded-2xl p-5 space-y-4 shadow-xl">
               <div className="flex items-center justify-between border-b border-slate-800 pb-3">
                 <h3 className="text-xs font-black uppercase tracking-wider text-emerald-400 flex items-center gap-2">
-                  <Award className="w-4 h-4 text-emerald-400" /> Top 5 Melhores Desempenhos da Unidade (Guarabira)
+                  <Award className="w-4 h-4 text-emerald-400" /> Melhores Colaboradores por Operação (Guarabira)
                 </h3>
                 <button
                   onClick={() => onNavigate('ranking-produtividade')}
@@ -1433,108 +1379,114 @@ export default function DashboardOverview({
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {/* TOP 5 EMPILHADORES */}
-                <div className="p-3 bg-[#0b1222] rounded-xl border border-slate-800 space-y-2">
-                  <span className="text-[10px] text-amber-400 font-black uppercase tracking-wider block border-b border-slate-800 pb-1 flex items-center justify-between">
-                    <span>Top 5 Empilhadores</span>
-                    <span className="text-[9px] text-slate-500 font-normal">Operador Empilhadeira</span>
-                  </span>
-                  {CADASTRO_MESTRE_COLABORADORES
-                    .filter(c => c.funcaoGroup === 'Empilhador')
-                    .sort((a, b) => b.percentualMeta - a.percentualMeta)
-                    .slice(0, 5)
-                    .map((item, idx) => (
-                      <div 
-                        key={item.matricula ? `${item.matricula}-${idx}` : idx} 
-                        onClick={() => onNavigate('ranking-produtividade')}
-                        className="flex items-center justify-between text-xs py-1.5 px-2 hover:bg-slate-800/50 rounded-lg cursor-pointer transition-all border-b border-slate-800/30 last:border-0"
-                      >
-                        <div className="flex items-center gap-2 overflow-hidden">
-                          <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 ${
-                            idx === 0 ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' :
-                            idx === 1 ? 'bg-slate-400/20 text-slate-300 border border-slate-400/30' :
-                            idx === 2 ? 'bg-amber-700/20 text-amber-500 border border-amber-700/30' :
-                            'bg-slate-800 text-slate-400'
-                          }`}>
-                            {idx + 1}º
-                          </span>
-                          <div className="truncate">
-                            <strong className="text-white block truncate">{item.nome}</strong>
-                            <span className="text-[9px] text-slate-400 block">{item.setor}</span>
+                <div className="p-3 bg-[#0b1222] rounded-xl border border-amber-500/20 space-y-2">
+                  <div className="border-b border-slate-800 pb-1.5 flex flex-col">
+                    <span className="text-[11px] text-amber-400 font-black uppercase tracking-wider">Top 5 Empilhadores</span>
+                    <span className="text-[9px] text-slate-400 font-medium">Operador de Empilhadeira</span>
+                  </div>
+                  <div className="space-y-1">
+                    {CADASTRO_MESTRE_COLABORADORES
+                      .filter(c => c.funcaoGroup === 'Empilhador')
+                      .sort((a, b) => b.percentualMeta - a.percentualMeta)
+                      .slice(0, 5)
+                      .map((item, idx) => (
+                        <div 
+                          key={item.matricula ? `${item.matricula}-${idx}` : idx} 
+                          onClick={() => onNavigate('ranking-produtividade')}
+                          className="flex items-center justify-between text-xs py-1.5 px-2 hover:bg-slate-800/60 rounded-lg cursor-pointer transition-all border-b border-slate-800/40 last:border-0"
+                        >
+                          <div className="flex items-center gap-2 overflow-hidden min-w-0">
+                            <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 ${
+                              idx === 0 ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' :
+                              idx === 1 ? 'bg-slate-400/20 text-slate-300 border border-slate-400/30' :
+                              idx === 2 ? 'bg-amber-700/20 text-amber-500 border border-amber-700/30' :
+                              'bg-slate-800 text-slate-400'
+                            }`}>
+                              {idx + 1}º
+                            </span>
+                            <div className="truncate">
+                              <strong className="text-white block text-[11px] truncate">{item.nome}</strong>
+                              <span className="text-[9px] text-slate-400 block truncate">{item.setor}</span>
+                            </div>
                           </div>
+                          <span className="font-mono text-amber-400 font-bold shrink-0 text-[11px] ml-1.5">{item.resultado} {item.unidadeMedida}</span>
                         </div>
-                        <span className="font-mono text-amber-400 font-bold shrink-0 ml-1">{item.resultado} {item.unidadeMedida}</span>
-                      </div>
-                    ))}
+                      ))}
+                  </div>
                 </div>
 
                 {/* TOP 5 AJUDANTES */}
-                <div className="p-3 bg-[#0b1222] rounded-xl border border-slate-800 space-y-2">
-                  <span className="text-[10px] text-sky-400 font-black uppercase tracking-wider block border-b border-slate-800 pb-1 flex items-center justify-between">
-                    <span>Top 5 Ajudantes</span>
-                    <span className="text-[9px] text-slate-500 font-normal">Ajudante Armazém</span>
-                  </span>
-                  {CADASTRO_MESTRE_COLABORADORES
-                    .filter(c => c.funcaoGroup === 'Ajudante')
-                    .sort((a, b) => b.percentualMeta - a.percentualMeta)
-                    .slice(0, 5)
-                    .map((item, idx) => (
-                      <div 
-                        key={item.matricula ? `${item.matricula}-${idx}` : idx} 
-                        onClick={() => onNavigate('ranking-produtividade')}
-                        className="flex items-center justify-between text-xs py-1.5 px-2 hover:bg-slate-800/50 rounded-lg cursor-pointer transition-all border-b border-slate-800/30 last:border-0"
-                      >
-                        <div className="flex items-center gap-2 overflow-hidden">
-                          <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 ${
-                            idx === 0 ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' :
-                            idx === 1 ? 'bg-slate-400/20 text-slate-300 border border-slate-400/30' :
-                            idx === 2 ? 'bg-amber-700/20 text-amber-500 border border-amber-700/30' :
-                            'bg-slate-800 text-slate-400'
-                          }`}>
-                            {idx + 1}º
-                          </span>
-                          <div className="truncate">
-                            <strong className="text-white block truncate">{item.nome}</strong>
-                            <span className="text-[9px] text-slate-400 block">{item.setor}</span>
+                <div className="p-3 bg-[#0b1222] rounded-xl border border-sky-500/20 space-y-2">
+                  <div className="border-b border-slate-800 pb-1.5 flex flex-col">
+                    <span className="text-[11px] text-sky-400 font-black uppercase tracking-wider">Top 5 Ajudantes</span>
+                    <span className="text-[9px] text-slate-400 font-medium">Ajudante de Armazém</span>
+                  </div>
+                  <div className="space-y-1">
+                    {CADASTRO_MESTRE_COLABORADORES
+                      .filter(c => c.funcaoGroup === 'Ajudante')
+                      .sort((a, b) => b.percentualMeta - a.percentualMeta)
+                      .slice(0, 5)
+                      .map((item, idx) => (
+                        <div 
+                          key={item.matricula ? `${item.matricula}-${idx}` : idx} 
+                          onClick={() => onNavigate('ranking-produtividade')}
+                          className="flex items-center justify-between text-xs py-1.5 px-2 hover:bg-slate-800/60 rounded-lg cursor-pointer transition-all border-b border-slate-800/40 last:border-0"
+                        >
+                          <div className="flex items-center gap-2 overflow-hidden min-w-0">
+                            <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 ${
+                              idx === 0 ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' :
+                              idx === 1 ? 'bg-slate-400/20 text-slate-300 border border-slate-400/30' :
+                              idx === 2 ? 'bg-amber-700/20 text-amber-500 border border-amber-700/30' :
+                              'bg-slate-800 text-slate-400'
+                            }`}>
+                              {idx + 1}º
+                            </span>
+                            <div className="truncate">
+                              <strong className="text-white block text-[11px] truncate">{item.nome}</strong>
+                              <span className="text-[9px] text-slate-400 block truncate">{item.setor}</span>
+                            </div>
                           </div>
+                          <span className="font-mono text-sky-400 font-bold shrink-0 text-[11px] ml-1.5">{item.resultado} {item.unidadeMedida}</span>
                         </div>
-                        <span className="font-mono text-sky-400 font-bold shrink-0 ml-1">{item.resultado} {item.unidadeMedida}</span>
-                      </div>
-                    ))}
+                      ))}
+                  </div>
                 </div>
 
                 {/* TOP 5 CONFERENTES */}
-                <div className="p-3 bg-[#0b1222] rounded-xl border border-slate-800 space-y-2">
-                  <span className="text-[10px] text-emerald-400 font-black uppercase tracking-wider block border-b border-slate-800 pb-1 flex items-center justify-between">
-                    <span>Top 5 Conferentes</span>
-                    <span className="text-[9px] text-slate-500 font-normal">Conferente Armazém</span>
-                  </span>
-                  {CADASTRO_MESTRE_COLABORADORES
-                    .filter(c => (c.funcaoGroup as string) === 'Conferente' || c.funcaoGroup === 'Operador')
-                    .sort((a, b) => b.percentualMeta - a.percentualMeta)
-                    .slice(0, 5)
-                    .map((item, idx) => (
-                      <div 
-                        key={item.matricula ? `${item.matricula}-${idx}` : idx} 
-                        onClick={() => onNavigate('ranking-produtividade')}
-                        className="flex items-center justify-between text-xs py-1.5 px-2 hover:bg-slate-800/50 rounded-lg cursor-pointer transition-all border-b border-slate-800/30 last:border-0"
-                      >
-                        <div className="flex items-center gap-2 overflow-hidden">
-                          <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 ${
-                            idx === 0 ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' :
-                            idx === 1 ? 'bg-slate-400/20 text-slate-300 border border-slate-400/30' :
-                            idx === 2 ? 'bg-amber-700/20 text-amber-500 border border-amber-700/30' :
-                            'bg-slate-800 text-slate-400'
-                          }`}>
-                            {idx + 1}º
-                          </span>
-                          <div className="truncate">
-                            <strong className="text-white block truncate">{item.nome}</strong>
-                            <span className="text-[9px] text-slate-400 block">{item.setor}</span>
+                <div className="p-3 bg-[#0b1222] rounded-xl border border-emerald-500/20 space-y-2">
+                  <div className="border-b border-slate-800 pb-1.5 flex flex-col">
+                    <span className="text-[11px] text-emerald-400 font-black uppercase tracking-wider">Top 5 Conferentes</span>
+                    <span className="text-[9px] text-slate-400 font-medium">Conferente de Armazém</span>
+                  </div>
+                  <div className="space-y-1">
+                    {CADASTRO_MESTRE_COLABORADORES
+                      .filter(c => (c.funcaoGroup as string) === 'Conferente' || c.funcaoGroup === 'Operador')
+                      .sort((a, b) => b.percentualMeta - a.percentualMeta)
+                      .slice(0, 5)
+                      .map((item, idx) => (
+                        <div 
+                          key={item.matricula ? `${item.matricula}-${idx}` : idx} 
+                          onClick={() => onNavigate('ranking-produtividade')}
+                          className="flex items-center justify-between text-xs py-1.5 px-2 hover:bg-slate-800/60 rounded-lg cursor-pointer transition-all border-b border-slate-800/40 last:border-0"
+                        >
+                          <div className="flex items-center gap-2 overflow-hidden min-w-0">
+                            <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 ${
+                              idx === 0 ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' :
+                              idx === 1 ? 'bg-slate-400/20 text-slate-300 border border-slate-400/30' :
+                              idx === 2 ? 'bg-amber-700/20 text-amber-500 border border-amber-700/30' :
+                              'bg-slate-800 text-slate-400'
+                            }`}>
+                              {idx + 1}º
+                            </span>
+                            <div className="truncate">
+                              <strong className="text-white block text-[11px] truncate">{item.nome}</strong>
+                              <span className="text-[9px] text-slate-400 block truncate">{item.setor}</span>
+                            </div>
                           </div>
+                          <span className="font-mono text-emerald-400 font-bold shrink-0 text-[11px] ml-1.5">{item.resultado} {item.unidadeMedida}</span>
                         </div>
-                        <span className="font-mono text-emerald-400 font-bold shrink-0 ml-1">{item.resultado} {item.unidadeMedida}</span>
-                      </div>
-                    ))}
+                      ))}
+                  </div>
                 </div>
               </div>
             </div>

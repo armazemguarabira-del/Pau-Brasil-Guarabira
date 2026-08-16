@@ -649,7 +649,7 @@ export default function MatrizAbcLogisticaPanel({ user, empresaId = 'demo' }: Ma
                     fill="#f59e0b" 
                     radius={[6, 6, 0, 0]} 
                     className="cursor-pointer"
-                    onClick={(data) => setFiltroGrafico({ tipo: 'curvaValor', valor: data.classe.replace('Classe ', '') })}
+                    onClick={(data: any) => data?.classe && setFiltroGrafico({ tipo: 'curvaValor', valor: String(data.classe).replace('Classe ', '') })}
                   />
                 </BarChart>
               </ResponsiveContainer>
@@ -673,7 +673,7 @@ export default function MatrizAbcLogisticaPanel({ user, empresaId = 'demo' }: Ma
                     fill="#10b981" 
                     radius={[6, 6, 0, 0]} 
                     className="cursor-pointer"
-                    onClick={(data) => setFiltroGrafico({ tipo: 'curvaEstoque', valor: data.classe.replace('Classe ', '') })}
+                    onClick={(data: any) => data?.classe && setFiltroGrafico({ tipo: 'curvaEstoque', valor: String(data.classe).replace('Classe ', '') })}
                   />
                 </BarChart>
               </ResponsiveContainer>
@@ -697,7 +697,7 @@ export default function MatrizAbcLogisticaPanel({ user, empresaId = 'demo' }: Ma
                     fill="#8b5cf6" 
                     radius={[6, 6, 0, 0]} 
                     className="cursor-pointer"
-                    onClick={(data) => setFiltroGrafico({ tipo: 'curvaOperacional', valor: data.classe.replace('Classe ', '') })}
+                    onClick={(data: any) => data?.classe && setFiltroGrafico({ tipo: 'curvaOperacional', valor: String(data.classe).replace('Classe ', '') })}
                   />
                 </BarChart>
               </ResponsiveContainer>

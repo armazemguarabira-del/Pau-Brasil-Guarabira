@@ -44,13 +44,15 @@ import {
   RotateCcw,
   Users,
   EyeOff,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Flame
 } from 'lucide-react';
 import { LISTA_COLABORADORES_OFICIAIS } from './RankingModule';
 import { ManualInstrucaoCard } from './ManualInstrucaoCard';
 import { useEmpresaData } from '../context/EmpresaDataContext';
 import { db } from '../firebase';
 import { collection, addDoc } from 'firebase/firestore';
+import { openModalAcaoDesvio, openModalAcaoMelhoria } from '../utils/actionsEvents';
 
 interface QuadroDesviosEAcoesProps {
   user: Usuario;
@@ -1024,6 +1026,28 @@ export const QuadroDesviosEAcoes: React.FC<QuadroDesviosEAcoesProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-2 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-800">
+            {/* Ação de Desvio */}
+            <button
+              type="button"
+              onClick={() => openModalAcaoDesvio()}
+              className="px-3 py-2 rounded-xl bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-500/40 text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all hover:scale-105 cursor-pointer shadow-xs whitespace-nowrap"
+              title="Registrar Ação de Desvio ou Estouro de Gatilho DPO"
+            >
+              <Flame className="w-3.5 h-3.5 text-red-400 animate-pulse shrink-0" />
+              <span>+ Ação de Desvio</span>
+            </button>
+
+            {/* Ação de Melhoria */}
+            <button
+              type="button"
+              onClick={() => openModalAcaoMelhoria()}
+              className="px-3 py-2 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/40 text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all hover:scale-105 cursor-pointer shadow-xs whitespace-nowrap"
+              title="Registrar Ação de Melhoria TOR e Reuniões DPO"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              <span>+ Ação de Melhoria TOR</span>
+            </button>
+
             <button
               type="button"
               onClick={() => setIsImportModalOpen(true)}
@@ -1031,7 +1055,7 @@ export const QuadroDesviosEAcoes: React.FC<QuadroDesviosEAcoesProps> = ({
               title="Importar planilha de ações retroativas ou cadastrar manualmente"
             >
               <FileSpreadsheet className="w-4 h-4 text-indigo-200 shrink-0" />
-              <span>Importar Ações Retroativas</span>
+              <span>Importar Planilha</span>
             </button>
 
             <button

@@ -42,8 +42,7 @@ import DnSwotPanel from './components/DnSwotPanel';
 import AuditoriaDpoPanel from './components/AuditoriaDpoPanel';
 import CategoryIndexPanel from './components/CategoryIndexPanel';
 import PlataformasExternasPanel from './components/PlataformasExternasPanel';
-import { 
-  TreinamentosQualidadePanel, 
+import { TreinamentosQualidadePanel, 
   BloqueioArmazemPanel, 
   DevolucaoPanel, 
   ContagemInventarioPanel, 
@@ -52,6 +51,9 @@ import {
   GestaoWlpPanel, 
   CicloCarretasPanel 
 } from './components/NovosProcessosDpoPanels';
+import { ModalAcaoDesvio } from './components/ModalAcaoDesvio';
+import { ModalAcaoMelhoria } from './components/ModalAcaoMelhoria';
+import { openModalAcaoDesvio, openModalAcaoMelhoria } from './utils/actionsEvents';
 import { AgenteDpoModal } from './components/AgenteDpoModal';
 import { AgendaExecutivoComponent } from './components/AgendaExecutivoComponent';
 import { DiarioBordoComponent } from './components/DiarioBordoComponent';
@@ -66,7 +68,7 @@ import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { doc, getDoc, collection, query, where, onSnapshot } from 'firebase/firestore';
 import { Usuario, Empresa } from './types';
 import { motion, AnimatePresence } from 'motion/react';
-import { Sun, Moon, Zap, PanelLeftOpen, PanelLeftClose, ArrowLeft, ArrowRight, LayoutGrid, LogOut } from 'lucide-react';
+import { Sun, Moon, Zap, PanelLeftOpen, PanelLeftClose, ArrowLeft, ArrowRight, LayoutGrid, LogOut, Flame, Sparkles, AlertOctagon } from 'lucide-react';
 
 function HeaderClock({ theme }: { theme: 'light' | 'dark' }) {
   const [timeStr, setTimeStr] = useState('');
@@ -215,6 +217,33 @@ export default function App() {
   const [activeActions, setActiveActions] = useState<any[]>([]);
   const [isDpoAgentOpen, setIsDpoAgentOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+
+  // Estados dos Modais de Ações: Desvios (Ocorrências/Gatilhos) e Melhoria (TOR)
+  const [isDesvioModalOpen, setIsDesvioModalOpen] = useState(false);
+  const [desvioModalData, setDesvioModalData] = useState<any>(null);
+
+  const [isMelhoriaModalOpen, setIsMelhoriaModalOpen] = useState(false);
+  const [melhoriaModalData, setMelhoriaModalData] = useState<any>(null);
+
+  // Listeners globais para abertura dos modais de qualquer ponto do sistema
+  useEffect(() => {
+    const handleOpenDesvio = (e: any) => {
+      setDesvioModalData(e.detail || null);
+      setIsDesvioModalOpen(true);
+    };
+    const handleOpenMelhoria = (e: any) => {
+      setMelhoriaModalData(e.detail || null);
+      setIsMelhoriaModalOpen(true);
+    };
+
+    window.addEventListener('abrir-modal-acao-desvio', handleOpenDesvio);
+    window.addEventListener('abrir-modal-acao-melhoria', handleOpenMelhoria);
+
+    return () => {
+      window.removeEventListener('abrir-modal-acao-desvio', handleOpenDesvio);
+      window.removeEventListener('abrir-modal-acao-melhoria', handleOpenMelhoria);
+    };
+  }, []);
 
   // Sync user, empresa, and activePanel to localStorage for session persistence
   useEffect(() => {
@@ -1340,12 +1369,26 @@ export default function App() {
               </div>
             </div>
 
-            {/* Right Side Header Controls: 1. Sino, 2. Ir Para Operação, 3. Escolher Tema, 4. Logout (Sair) */}
+            {/* Right Side Header Controls: 1. Retornar ao Workstation, 2. Sino, 3. Ir Para Operação, 4. Escolher Tema, 5. Logout (Sair) */}
             <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
-              {/* 1. OPERATIONAL NOTIFICATION BELL (SINO) */}
+              
+              {/* 1. BOTAO: RETORNAR AO WORKSTATION */}
+              {user && activePanel !== 'visao-geral' && (
+                <button
+                  type="button"
+                  onClick={() => navigateToPanel('visao-geral')}
+                  className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white px-3 py-1.5 rounded-xl font-black text-[10px] md:text-[11px] uppercase tracking-wider shadow-md hover:scale-[1.03] active:scale-95 transition-all cursor-pointer flex items-center gap-1.5 border border-blue-400/40 flex-shrink-0"
+                  title="Retornar para o Painel Workstation (Centro de Controle)"
+                >
+                  <LayoutGrid className="w-3.5 h-3.5 text-sky-200 flex-shrink-0" />
+                  <span className="whitespace-nowrap font-black">Retornar ao Workstation</span>
+                </button>
+              )}
+
+              {/* 2. OPERATIONAL NOTIFICATION BELL (SINO) */}
               <OperationalNotificationBell user={user} onNavigate={navigateToPanel} />
 
-              {/* 2. YELLOW "IR PARA OPERAÇÃO" BUTTON */}
+              {/* 3. YELLOW "IR PARA OPERAÇÃO" BUTTON */}
               {user && (
                 <button
                   type="button"
@@ -1367,7 +1410,7 @@ export default function App() {
                 </button>
               )}
 
-              {/* 3. THEME TOGGLE BUTTON (ESCOLHER O TEMA) */}
+              {/* 5. THEME TOGGLE BUTTON (ESCOLHER O TEMA) */}
               <button
                 type="button"
                 onClick={() => setTheme(prev => prev === 'dark' ? 'light' : 'dark')}
@@ -1454,6 +1497,21 @@ export default function App() {
             }}
           />
         )}
+
+        {/* MODAIS GLOBAIS DE AÇÕES: DESVIOS & GATILHOS E MELHORIA & TOR */}
+        <ModalAcaoDesvio
+          isOpen={isDesvioModalOpen}
+          onClose={() => setIsDesvioModalOpen(false)}
+          user={user}
+          initialData={desvioModalData}
+        />
+
+        <ModalAcaoMelhoria
+          isOpen={isMelhoriaModalOpen}
+          onClose={() => setIsMelhoriaModalOpen(false)}
+          user={user}
+          initialData={melhoriaModalData}
+        />
       </div>
     </EmpresaDataProvider>
   );

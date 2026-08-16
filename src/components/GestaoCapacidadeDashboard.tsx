@@ -53,6 +53,7 @@ import { processPosicaoPallet021101Import } from '../utils/estoqueParsers';
 import { PRODUCTS } from '../planosData';
 import { getProductMeta, PRODUCT_CATALOG_DETAILS } from '../utils/productCatalogData';
 import { PadraoOperacionalModal } from './PadraoOperacionalModal';
+import { IndicatorActionModal } from './IndicatorActionModal';
 import PoliticaEstoqueDashboard from './PoliticaEstoqueDashboard';
 import CurvaAbcTrimestralTab from './CurvaAbcTrimestralTab';
 import MatrizAbcLogisticaPanel from './MatrizAbcLogisticaPanel';
@@ -230,6 +231,7 @@ export default function GestaoCapacidadeDashboard({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTargetArea, setSelectedTargetArea] = useState<'ALL' | 'CENTRAL' | 'PICKING' | 'MARKETPLACE' | 'CONTINGENCIA' | 'PULMAO' | 'PNC'>('ALL');
   const [isPopOpen, setIsPopOpen] = useState(false);
+  const [isActionModalOpen, setIsActionModalOpen] = useState(false);
   const [showOfficialLayoutModal, setShowOfficialLayoutModal] = useState(false);
   const [lastUploadInfo, setLastUploadInfo] = useState<string | null>(null);
 
@@ -826,6 +828,14 @@ export default function GestaoCapacidadeDashboard({
           >
             <BookOpen className="w-4 h-4" />
             Padrão Operacional (POP)
+          </button>
+
+          <button
+            onClick={() => setIsActionModalOpen(true)}
+            className="px-3.5 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black text-xs rounded-xl shadow-xs uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer border border-blue-400/30"
+          >
+            <CheckCircle2 className="w-4 h-4 text-emerald-300" />
+            Plano de Ações (Capacidade & Layout)
           </button>
 
           {onBack && (
@@ -2539,6 +2549,20 @@ export default function GestaoCapacidadeDashboard({
         moduleName="Gestão de Capacidade & Layout do Armazém"
         isOpen={isPopOpen}
         onClose={() => setIsPopOpen(false)}
+        user={user}
+      />
+
+      {/* DEDICATED ACTION MODAL (FILTERED FOR CAPACIDADE & LAYOUT & CURVA ABC) */}
+      <IndicatorActionModal
+        isOpen={isActionModalOpen}
+        onClose={() => setIsActionModalOpen(false)}
+        indicatorTitle="Gestão de Capacidade & Layout"
+        indicatorSubtitle="Visualizando e gerenciando apenas os planos de ação e contramedidas 5W2H relacionados à Curva ABC, Otimização de Layout e Gestão de Capacidade."
+        indicatorBadge="CAPACIDADE DPO"
+        allowedProcessos={['Gestão de Capacidade', 'Curva ABC', 'Layout', 'Otimização de Layout', 'Capacidade']}
+        defaultProcesso="Gestão de Capacidade"
+        defaultIndicador="Otimização de Layout, Curva ABC e Capacidade Instalada"
+        defaultMeta="≤ 85% de Ocupação / 100% Curva ABC"
         user={user}
       />
 

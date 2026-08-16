@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Usuario } from '../types';
-import { Search, AlertTriangle, Clock, CheckCircle2, Play, MessageSquare, Send, ShieldCheck, FilterX } from 'lucide-react';
+import { Search, AlertTriangle, Clock, CheckCircle2, Play, MessageSquare, Send, ShieldCheck, FilterX, Trash2 } from 'lucide-react';
 import { db } from '../firebase';
 
 export interface ActionItem {
@@ -71,13 +71,17 @@ export const GuiaAcoesOperacionais: React.FC<GuiaAcoesOperacionaisProps> = ({ us
       console.warn("Firestore acoes fetch error (using fallback):", err);
     }
 
-    // 2. LocalStorage Fallback & Default Seed Actions if empty
+    // 2. LocalStorage Fallback
     try {
       const local = localStorage.getItem('af_desvios_acoes_v2');
       if (local) {
         const parsed = JSON.parse(local);
         if (Array.isArray(parsed)) {
           parsed.forEach((item: any) => {
+            // Ignorar ações marcadas como automáticas do sistema se houver
+            if (item.isAutomatica || item.origem === 'automatica' || item.tipo === 'automatica') {
+              return;
+            }
             if (!loaded.some(a => a.id === item.id)) {
               loaded.push({
                 id: String(item.id),
@@ -100,38 +104,25 @@ export const GuiaAcoesOperacionais: React.FC<GuiaAcoesOperacionaisProps> = ({ us
       }
     } catch (e) {}
 
-    // 3. Guarantee baseline sample actions if none exist so the user can test
-    if (loaded.length === 0) {
-      loaded = [
-        {
-          id: 'demo_act_1',
-          titulo: `Cumprimento do Padrão Operacional - ${roleName}`,
-          indicador: 'Inspecionar Equipamentos & EPIs',
-          desvioEncontrado: 'Conferência prévia de segurança e checklist antes de iniciar atividades.',
-          descricao: 'Verificar estado dos paletes, trava das rodas e uso obrigatório de botas e luvas.',
-          processo: roleName,
-          responsavel: user.nome,
-          criadoEm: new Date().toISOString(),
-          prazo: 'Imediato',
-          status: 'pendente'
-        },
-        {
-          id: 'demo_act_2',
-          titulo: `Alinhamento de Produtividade & Qualidade (${roleName})`,
-          indicador: 'Redução de Avarias e Registro em Tempo Real',
-          desvioEncontrado: 'Orientação para registrar quebras imediatamente após identificar avaria.',
-          descricao: 'Garantir que todas as quebras identificadas no pátio sejam informadas com foto e lote.',
-          processo: roleName,
-          responsavel: user.nome,
-          criadoEm: new Date().toISOString(),
-          prazo: 'Em 3 Dias',
-          status: 'em_andamento'
-        }
-      ];
-    }
+    // Remover qualquer ação puramente automática do sistema
+    loaded = loaded.filter(a => !(a.id.startsWith('auto-') || (a as any).isAutomatica));
 
     setActionsList(loaded);
     setLoading(false);
+  };
+
+  const handleClearAutomaticActions = () => {
+    try {
+      const local = localStorage.getItem('af_desvios_acoes_v2');
+      if (local) {
+        const parsed = JSON.parse(local);
+        if (Array.isArray(parsed)) {
+          const cleaned = parsed.filter((item: any) => !item.id?.toString().startsWith('auto-') && !item.isAutomatica && item.origem !== 'automatica');
+          localStorage.setItem('af_desvios_acoes_v2', JSON.stringify(cleaned));
+        }
+      }
+      loadActions();
+    } catch (e) {}
   };
 
   useEffect(() => {
@@ -245,24 +236,34 @@ export const GuiaAcoesOperacionais: React.FC<GuiaAcoesOperacionaisProps> = ({ us
           </div>
         </div>
 
-        {/* SEARCH INPUT ONLY (NO OTHER FILTERS) */}
-        <div className="relative min-w-[260px] sm:w-80">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
-            placeholder="Pesquisar ação por digitando..."
-            className="w-full bg-[#080e1a] border border-slate-700 focus:border-amber-400 text-slate-100 placeholder-slate-500 text-xs font-medium pl-9 pr-8 py-2.5 rounded-xl outline-none shadow-inner transition-colors"
-          />
-          {searchTerm && (
-            <button
-              onClick={() => setSearchTerm('')}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-0.5 rounded cursor-pointer"
-            >
-              <FilterX className="w-3.5 h-3.5" />
-            </button>
-          )}
+        {/* SEARCH INPUT & ACTIONS */}
+        <div className="flex items-center gap-2 flex-wrap min-w-0">
+          <div className="relative min-w-[200px] sm:w-64">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              placeholder="Pesquisar ação..."
+              className="w-full bg-[#080e1a] border border-slate-700 focus:border-amber-400 text-slate-100 placeholder-slate-500 text-xs font-medium pl-9 pr-8 py-2 rounded-xl outline-none shadow-inner transition-colors"
+            />
+            {searchTerm && (
+              <button
+                onClick={() => setSearchTerm('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-0.5 rounded cursor-pointer"
+              >
+                <FilterX className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+          <button
+            onClick={handleClearAutomaticActions}
+            title="Limpar ações automáticas antigas do sistema"
+            className="px-3 py-2 bg-slate-800/80 hover:bg-rose-900/40 text-slate-300 hover:text-rose-200 border border-slate-700 hover:border-rose-500/50 rounded-xl text-[11px] font-bold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+          >
+            <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+            <span>Limpar Automáticas</span>
+          </button>
         </div>
       </div>
 
